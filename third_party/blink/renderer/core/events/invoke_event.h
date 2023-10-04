@@ -20,10 +20,9 @@ class InvokeEvent final : public Event {
     return MakeGarbageCollected<InvokeEvent>(type, initializer);
   }
   static InvokeEvent* Create(const AtomicString& type,
-                             Event::Cancelable cancelable,
-                             const HTMLElement* RelatedTarget,
+                             const HTMLElement* relatedTarget,
                              const AtomicString& action) {
-    auto* event = MakeGarbageCollected<InvokeEvent>(type, cancelable, RelatedTarget,
+    auto* event = MakeGarbageCollected<InvokeEvent>(type, relatedTarget,
                                                     action);
     DCHECK(!event->bubbles());
     return event;
@@ -31,22 +30,25 @@ class InvokeEvent final : public Event {
 
   InvokeEvent();
   InvokeEvent(const AtomicString& type,
-              Event::Cancelable cancelable,
-              const HTMLElement* RelatedTarget,
+              const HTMLElement* relatedTarget,
               const AtomicString& action);
   InvokeEvent(const AtomicString& type, const InvokeEventInit* initializer);
   ~InvokeEvent() override;
-
-  const String& oldState() const;
-  const String& newState() const;
 
   const AtomicString& InterfaceName() const override;
 
   void Trace(Visitor*) const override;
 
+  const String& action() const;
+
+  EventTarget* relatedTarget() const { return related_target_.Get(); }
+  void SetRelatedTarget(EventTarget* related_target) {
+    related_target_ = related_target;
+  }
+
  private:
-  String old_state_;
-  String new_state_;
+  Member<EventTarget> related_target_;
+  String action_; 
 };
 
 }  // namespace blink

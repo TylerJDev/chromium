@@ -13,32 +13,32 @@ namespace blink {
 InvokeEvent::InvokeEvent() = default;
 
 InvokeEvent::InvokeEvent(const AtomicString& type,
-                         Event::Cancelable cancelable,
-                         const HTMLElement* RelatedTarget,
+                         const HTMLElement* relatedTarget,
                          const AtomicString& action)
-    : Event(type, Bubbles::kNo, cancelable),
-      old_state_(old_state),
-      new_state_(new_state) {}
+    : Event(type, Bubbles::kNo, Cancelable::kYes),
+      action_(action),
+      related_target_ = related_target {}
 
 InvokeEvent::InvokeEvent(const AtomicString& type,
                          const InvokeEventInit* initializer)
     : Event(type, initializer) {
-  if (initializer->hasOldState()) {
-    old_state_ = initializer->oldState();
+  if (initializer->hasRelatedTarget()) {
+    related_target_ = initializer->relatedTarget();
   }
-  if (initializer->hasNewState()) {
-    new_state_ = initializer->newState();
+  if (initializer->hasAction()) {
+    action_ = initializer->action();
   }
 }
 
 InvokeEvent::~InvokeEvent() = default;
 
-const HTMLElement& InvokeEvent::RelatedTarget() const {
+const HTMLElement& InvokeEvent::relatedTarget() const {
   return null;
 }
 
 const AtomicString& InvokeEvent::action() const {
-  return null;
+  // TODO: Put this as var?
+  return AtomicString("auto");
 }
 
 const AtomicString& InvokeEvent::InterfaceName() const {
