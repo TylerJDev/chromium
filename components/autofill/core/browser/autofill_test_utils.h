@@ -147,6 +147,11 @@ Iban GetIban();
 // Returns an IBAN full of dummy info, different to the above.
 Iban GetIban2();
 
+// Returns server-based IBANs full of dummy info.
+Iban GetServerIban();
+Iban GetServerIban2();
+Iban GetServerIban3();
+
 // Returns an IBAN full of dummy info, different to the above and without
 // nickname.
 Iban GetIbanWithoutNickname();
@@ -183,6 +188,9 @@ CreditCard GetVirtualCard();
 // Returns a randomly generated credit card of |record_type|. Note that the
 // card is not guaranteed to be valid/sane from a card validation standpoint.
 CreditCard GetRandomCreditCard(CreditCard::RecordType record_Type);
+
+// Returns a copy of `credit_card` with `cvc` set as specified.
+CreditCard WithCvc(CreditCard credit_card, std::u16string cvc = u"123");
 
 // Returns a credit card cloud token data full of dummy info.
 CreditCardCloudTokenData GetCreditCardCloudTokenData1();
@@ -278,7 +286,8 @@ void SetCreditCardInfo(CreditCard* credit_card,
                        const char* card_number,
                        const char* expiration_month,
                        const char* expiration_year,
-                       const std::string& billing_address_id);
+                       const std::string& billing_address_id,
+                       const std::u16string& cvc = u"");
 
 // TODO(isherman): We should do this automatically for all tests, not manually
 // on a per-test basis: http://crbug.com/57221

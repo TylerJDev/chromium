@@ -70,7 +70,7 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.homepage.HomepageManager;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.tab.TabUtils;
 import org.chromium.chrome.browser.tabmodel.TabModelFilter;
 import org.chromium.chrome.browser.tasks.ReturnToChromeUtil;
@@ -184,7 +184,7 @@ public class InstantStartTabSwitcherTest {
 
         onViewWaiting(allOf(withParent(withId(TabUiTestHelper.getTabSwitcherParentId(
                                     mActivityTestRule.getActivity()))),
-                withId(org.chromium.chrome.test.R.id.tab_list_view)));
+                withId(org.chromium.chrome.test.R.id.tab_list_recycler_view)));
         Assert.assertFalse(cta.findViewById(org.chromium.chrome.test.R.id.url_bar).isFocused());
     }
 
@@ -338,7 +338,7 @@ public class InstantStartTabSwitcherTest {
         TabUiTestHelper.verifyTabModelTabCount(cta, 1, 0);
         onView(allOf(withParent(
                              withId(org.chromium.chrome.test.R.id.tab_switcher_module_container)),
-                       withId(org.chromium.chrome.test.R.id.tab_list_view)))
+                       withId(org.chromium.chrome.test.R.id.tab_list_recycler_view)))
                 .check(matches(isDisplayed()));
         RecyclerView tabListView =
                 (RecyclerView) StartSurfaceTestUtils.getCarouselTabSwitcherTabListView(cta);
@@ -374,7 +374,7 @@ public class InstantStartTabSwitcherTest {
 
         int tabSwitcherParentViewId = TabUiTestHelper.getTabSwitcherParentId(cta);
         // Make sure the grid tab switcher is scrolled down to show the selected tab.
-        onView(allOf(withId(org.chromium.chrome.test.R.id.tab_list_view),
+        onView(allOf(withId(org.chromium.chrome.test.R.id.tab_list_recycler_view),
                        withParent(withId(tabSwitcherParentViewId))))
                 .check((v, noMatchException) -> {
                     if (noMatchException != null) throw noMatchException;
@@ -393,7 +393,7 @@ public class InstantStartTabSwitcherTest {
                 .check(matches(not(isDisplayed())));
 
         // Scroll the tab list a little bit and shadow should show.
-        onView(allOf(withId(org.chromium.chrome.test.R.id.tab_list_view),
+        onView(allOf(withId(org.chromium.chrome.test.R.id.tab_list_recycler_view),
                        withParent(withId(tabSwitcherParentViewId))))
                 .perform(swipeUp());
         onView(allOf(withTagValue(is(SHADOW_VIEW_TAG)),
@@ -558,7 +558,7 @@ public class InstantStartTabSwitcherTest {
         TabUiTestHelper.verifyTabModelTabCount(cta, 1, 0);
 
         StartSurfaceTestUtils.pressHome();
-        Assert.assertTrue(SharedPreferencesManager.getInstance().readBoolean(
+        Assert.assertTrue(ChromeSharedPreferences.getInstance().readBoolean(
                 ChromePreferenceKeys.IS_LAST_VISITED_TAB_SRP, false));
 
         // Simulates pressing Chrome's icon and launching Chrome from warm start.
@@ -570,7 +570,7 @@ public class InstantStartTabSwitcherTest {
         StartSurfaceTestUtils.launchFirstMVTile(cta, 1);
 
         StartSurfaceTestUtils.pressHome();
-        Assert.assertFalse(SharedPreferencesManager.getInstance().readBoolean(
+        Assert.assertFalse(ChromeSharedPreferences.getInstance().readBoolean(
                 ChromePreferenceKeys.IS_LAST_VISITED_TAB_SRP, false));
     }
 
@@ -585,7 +585,7 @@ public class InstantStartTabSwitcherTest {
         StartSurfaceTestUtils.createThumbnailBitmapAndWriteToFile(1, mBrowserControlsStateProvider);
         TabAttributeCache.setTitleForTesting(0, "Google SRP");
         TabAttributeCache.setTitleForTesting(1, "Google Homepage");
-        SharedPreferencesManager.getInstance().writeBoolean(
+        ChromeSharedPreferences.getInstance().writeBoolean(
                 ChromePreferenceKeys.IS_LAST_VISITED_TAB_SRP, isSRP);
         StartSurfaceTestUtils.startMainActivityFromLauncher(mActivityTestRule);
         StartSurfaceTestUtils.startAndWaitNativeInitialization(mActivityTestRule);

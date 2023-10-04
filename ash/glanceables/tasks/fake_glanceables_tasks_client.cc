@@ -12,6 +12,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_forward.h"
+#include "base/notreached.h"
 #include "base/strings/string_util.h"
 
 namespace ash {
@@ -25,7 +26,16 @@ FakeGlanceablesTasksClient::FakeGlanceablesTasksClient(
 FakeGlanceablesTasksClient::~FakeGlanceablesTasksClient() = default;
 
 void FakeGlanceablesTasksClient::GetTaskLists(GetTaskListsCallback callback) {
-  std::move(callback).Run(task_lists_.get());
+  if (!paused_) {
+    std::move(callback).Run(task_lists_.get());
+  } else {
+    pending_get_task_lists_callbacks_.push_back(base::BindOnce(
+        [](ui::ListModel<ash::GlanceablesTaskList>* task_lists,
+           GetTaskListsCallback callback) {
+          std::move(callback).Run(task_lists);
+        },
+        task_lists_.get(), std::move(callback)));
+  }
 }
 
 void FakeGlanceablesTasksClient::GetTasks(const std::string& task_list_id,
@@ -46,13 +56,36 @@ void FakeGlanceablesTasksClient::GetTasks(const std::string& task_list_id,
 void FakeGlanceablesTasksClient::MarkAsCompleted(
     const std::string& task_list_id,
     const std::string& task_id,
-    MarkAsCompletedCallback callback) {
-  completed_tasks_.push_back(base::JoinString({task_list_id, task_id}, ":"));
-  std::move(callback).Run(/*success=*/true);
+    bool completed) {
+  if (completed) {
+    pending_completed_tasks_.push_back(
+        base::JoinString({task_list_id, task_id}, ":"));
+  } else {
+    pending_completed_tasks_.erase(std::find(
+        pending_completed_tasks_.begin(), pending_completed_tasks_.end(),
+        base::JoinString({task_list_id, task_id}, ":")));
+  }
 }
 
-void FakeGlanceablesTasksClient::OnGlanceablesBubbleClosed() {
+void FakeGlanceablesTasksClient::AddTask(const std::string& task_list_id,
+                                         const std::string& title) {
+  NOTIMPLEMENTED();
+}
+
+void FakeGlanceablesTasksClient::UpdateTask(
+    const std::string& task_list_id,
+    const std::string& task_id,
+    const std::string& title,
+    GlanceablesTasksClient::UpdateTaskCallback callback) {}
+
+void FakeGlanceablesTasksClient::OnGlanceablesBubbleClosed(
+    GlanceablesTasksClient::OnAllPendingCompletedTasksSavedCallback callback) {
   ++bubble_closed_count_;
+  RunPendingGetTaskListsCallbacks();
+  RunPendingGetTasksCallbacks();
+  completed_tasks_ += pending_completed_tasks_.size();
+  pending_completed_tasks_.clear();
+  std::move(callback).Run();
 }
 
 int FakeGlanceablesTasksClient::GetAndResetBubbleClosedCount() {
@@ -70,6 +103,15 @@ size_t FakeGlanceablesTasksClient::RunPendingGetTasksCallbacks() {
   return callbacks.size();
 }
 
+size_t FakeGlanceablesTasksClient::RunPendingGetTaskListsCallbacks() {
+  std::list<base::OnceClosure> callbacks;
+  pending_get_task_lists_callbacks_.swap(callbacks);
+  for (auto& callback : callbacks) {
+    std::move(callback).Run();
+  }
+  return callbacks.size();
+}
+
 void FakeGlanceablesTasksClient::PopulateTasks(base::Time tasks_due_time) {
   task_lists_ = std::make_unique<ui::ListModel<GlanceablesTaskList>>();
 
@@ -79,6 +121,15 @@ void FakeGlanceablesTasksClient::PopulateTasks(base::Time tasks_due_time) {
       "TaskListID2", "Task List 2 Title", /*updated=*/tasks_due_time));
   task_lists_->Add(std::make_unique<GlanceablesTaskList>(
       "TaskListID3", "Task List 3 Title (empty)",
+      /*updated=*/tasks_due_time));
+  task_lists_->Add(std::make_unique<GlanceablesTaskList>(
+      "TaskListID4", "Task List 4 Title (empty)",
+      /*updated=*/tasks_due_time));
+  task_lists_->Add(std::make_unique<GlanceablesTaskList>(
+      "TaskListID5", "Task List 5 Title (empty)",
+      /*updated=*/tasks_due_time));
+  task_lists_->Add(std::make_unique<GlanceablesTaskList>(
+      "TaskListID6", "Task List 6 Title (empty)",
       /*updated=*/tasks_due_time));
 }
 
@@ -111,6 +162,12 @@ void FakeGlanceablesTasksClient::PopulateTaskLists(base::Time tasks_due_time) {
   tasks_in_task_lists_.emplace("TaskListID2", std::move(task_list_2));
   tasks_in_task_lists_.emplace(
       "TaskListID3", std::make_unique<ui::ListModel<GlanceablesTask>>());
+  tasks_in_task_lists_.emplace(
+      "TaskListID4", std::make_unique<ui::ListModel<GlanceablesTask>>());
+  tasks_in_task_lists_.emplace(
+      "TaskListID5", std::make_unique<ui::ListModel<GlanceablesTask>>());
+  tasks_in_task_lists_.emplace(
+      "TaskListID6", std::make_unique<ui::ListModel<GlanceablesTask>>());
 }
 
 }  // namespace ash

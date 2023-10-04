@@ -7,8 +7,11 @@
 #include <string>
 #include <utility>
 
+#include "ash/accelerators/accelerator_capslock_state_machine.h"
 #include "ash/accelerators/accelerator_commands.h"
+#include "ash/accelerators/accelerator_launcher_state_machine.h"
 #include "ash/accelerators/accelerator_notifications.h"
+#include "ash/accelerators/accelerator_shift_disable_capslock_state_machine.h"
 #include "ash/accelerators/debug_commands.h"
 #include "ash/accessibility/accessibility_controller_impl.h"
 #include "ash/constants/ash_features.h"
@@ -27,6 +30,7 @@
 #include "ash/wm/window_state.h"
 #include "base/check.h"
 #include "base/containers/contains.h"
+#include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
@@ -39,6 +43,8 @@
 #include "ui/base/accelerators/accelerator_manager.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/events/ash/keyboard_layout_util.h"
+#include "ui/events/event_constants.h"
+#include "ui/ozone/public/ozone_platform.h"
 
 namespace ash {
 
@@ -191,17 +197,6 @@ void RecordNewTab(const ui::Accelerator& accelerator) {
     base::RecordAction(UserMetricsAction("Accel_NewTab_T"));
 }
 
-// Check if accelerator should trigger ToggleAssistant action.
-bool ShouldToggleAssistant(const ui::Accelerator& accelerator) {
-  // Search+A shortcut is disabled on device with an assistant key.
-  // Currently only Google branded device has the key. Some external keyboard
-  // may report it has the key but actually not.  This would cause keyboard
-  // shortcut stops working.  So we only check the key on these branded
-  // devices.
-  return !(accelerator.IsCmdDown() && accelerator.key_code() == ui::VKEY_A &&
-           IsGoogleBrandedDevice() && ui::DeviceKeyboardHasAssistantKey());
-}
-
 void HandleSwitchToLastUsedIme(const ui::Accelerator& accelerator) {
   base::RecordAction(UserMetricsAction("Accel_Previous_Ime"));
   if (accelerator.key_state() == ui::Accelerator::KeyState::PRESSED) {
@@ -225,12 +220,18 @@ void HandleSwitchIme(const ui::Accelerator& accelerator) {
 bool CanHandleToggleAppList(
     const ui::Accelerator& accelerator,
     const ui::Accelerator& previous_accelerator,
-    const std::set<ui::KeyboardCode>& currently_pressed_keys) {
+    const std::set<ui::KeyboardCode>& currently_pressed_keys,
+    const AcceleratorLauncherStateMachine* launcher_state_machine) {
   // Check if the accelerator pressed is a RWIN/LWIN, if so perform a
   // secondary check.
   if (accelerator.key_code() != ui::VKEY_LWIN &&
       accelerator.key_code() != ui::VKEY_RWIN) {
     return true;
+  }
+
+  if (base::FeatureList::IsEnabled(features::kShortcutStateMachines)) {
+    CHECK(launcher_state_machine);
+    return launcher_state_machine->CanHandleLauncher();
   }
 
   for (auto key : currently_pressed_keys) {
@@ -259,13 +260,21 @@ bool CanHandleToggleAppList(
     // When spoken feedback is enabled, we should neither toggle the list nor
     // consume the key since Search+Shift is one of the shortcuts the a11y
     // feature uses. crbug.com/132296
-    if (Shell::Get()->accessibility_controller()->spoken_feedback().enabled())
+    if (Shell::Get()->accessibility_controller()->spoken_feedback().enabled()) {
       return false;
+    }
   }
+
   return true;
 }
 
-bool CanHandleDisableCapsLock(const ui::Accelerator& previous_accelerator) {
+bool CanHandleDisableCapsLock(const ui::Accelerator& previous_accelerator,
+                              const AcceleratorShiftDisableCapslockStateMachine&
+                                  shift_disable_state_machine) {
+  if (base::FeatureList::IsEnabled(features::kShortcutStateMachines)) {
+    return shift_disable_state_machine.CanHandleCapsLock() &&
+           Shell::Get()->ime_controller()->IsCapsLockEnabled();
+  }
   ui::KeyboardCode previous_key_code = previous_accelerator.key_code();
   if (previous_accelerator.key_state() == ui::Accelerator::KeyState::RELEASED ||
       (previous_key_code != ui::VKEY_LSHIFT &&
@@ -275,19 +284,26 @@ bool CanHandleDisableCapsLock(const ui::Accelerator& previous_accelerator) {
     // and released, then ignore the release of the Shift key.
     return false;
   }
+
   return Shell::Get()->ime_controller()->IsCapsLockEnabled();
 }
 
 bool CanHandleToggleCapsLock(
     const ui::Accelerator& accelerator,
     const ui::Accelerator& previous_accelerator,
-    const std::set<ui::KeyboardCode>& currently_pressed_keys) {
+    const std::set<ui::KeyboardCode>& currently_pressed_keys,
+    const AcceleratorCapslockStateMachine& capslock_state_machine) {
+  if (base::FeatureList::IsEnabled(features::kShortcutStateMachines)) {
+    return capslock_state_machine.CanHandleCapsLock();
+  }
+
   // Iterate the set of pressed keys. If any redundant key is pressed, CapsLock
   // should not be triggered. Otherwise, CapsLock may be triggered accidentally.
   // See issue 789283 (https://crbug.com/789283)
   for (const auto& pressed_key : currently_pressed_keys) {
-    if (pressed_key != ui::VKEY_LWIN && pressed_key != ui::VKEY_MENU)
+    if (pressed_key != ui::VKEY_LWIN && pressed_key != ui::VKEY_MENU) {
       return false;
+    }
   }
 
   // This shortcut is set to be trigger on release. Either the current
@@ -343,14 +359,16 @@ void AcceleratorControllerImpl::TestApi::RegisterAccelerators(
   // Initializing accelerators will register them.
   controller_->accelerator_configuration()->Initialize(accelerators);
   // If customization is not available, register the accelerators manually.
-  if (!::features::IsShortcutCustomizationEnabled()) {
+  if (!Shell::Get()->accelerator_prefs()->IsCustomizationAllowed()) {
     controller_->RegisterAccelerators(accelerators);
   }
 }
 
 void AcceleratorControllerImpl::TestApi::ObserveAcceleratorUpdates() {
-  DCHECK(::features::IsShortcutCustomizationEnabled());
-  controller_->accelerator_configuration()->AddObserver(controller_);
+  CHECK(Shell::Get()->accelerator_prefs()->IsCustomizationAllowed());
+  if (!controller_->accelerator_configuration()->HasObserver(controller_)) {
+    controller_->accelerator_configuration()->AddObserver(controller_);
+  }
 }
 
 bool AcceleratorControllerImpl::TestApi::IsActionForAcceleratorEnabled(
@@ -395,6 +413,13 @@ AcceleratorControllerImpl::AcceleratorControllerImpl(
     AshAcceleratorConfiguration* config)
     : accelerator_manager_(std::make_unique<ui::AcceleratorManager>()),
       accelerator_history_(std::make_unique<AcceleratorHistoryImpl>()),
+      launcher_state_machine_(std::make_unique<AcceleratorLauncherStateMachine>(
+          ui::OzonePlatform::GetInstance()->GetInputController())),
+      capslock_state_machine_(std::make_unique<AcceleratorCapslockStateMachine>(
+          ui::OzonePlatform::GetInstance()->GetInputController())),
+      shift_disable_state_machine_(
+          std::make_unique<AcceleratorShiftDisableCapslockStateMachine>(
+              ui::OzonePlatform::GetInstance()->GetInputController())),
       accelerator_configuration_(config),
       output_volume_metric_delay_timer_(
           FROM_HERE,
@@ -410,8 +435,13 @@ AcceleratorControllerImpl::AcceleratorControllerImpl(
 
   Init();
 
-  if (::features::IsShortcutCustomizationEnabled()) {
+  if (Shell::Get()->accelerator_prefs()->IsCustomizationAllowed()) {
     accelerator_configuration_->AddObserver(this);
+  }
+
+  // Observe shortcut policy changes.
+  if (Shell::Get()->accelerator_prefs()->IsUserEnterpriseManaged()) {
+    Shell::Get()->accelerator_prefs()->AddObserver(this);
   }
 
   // Let AcceleratorHistory be a PreTargetHandler on aura::Env to ensure that it
@@ -420,18 +450,43 @@ AcceleratorControllerImpl::AcceleratorControllerImpl(
   // interferes with Accelerator processing. See https://crbug.com/1174603.
   aura::Env::GetInstance()->AddPreTargetHandler(
       accelerator_history_.get(), ui::EventTarget::Priority::kAccessibility);
+  if (base::FeatureList::IsEnabled(features::kShortcutStateMachines)) {
+    aura::Env::GetInstance()->AddPreTargetHandler(
+        launcher_state_machine_.get(),
+        ui::EventTarget::Priority::kAccessibility);
+    aura::Env::GetInstance()->AddPreTargetHandler(
+        capslock_state_machine_.get(),
+        ui::EventTarget::Priority::kAccessibility);
+    aura::Env::GetInstance()->AddPreTargetHandler(
+        shift_disable_state_machine_.get(),
+        ui::EventTarget::Priority::kAccessibility);
+  }
 }
 
 AcceleratorControllerImpl::~AcceleratorControllerImpl() {
   // |AcceleratorControllerImpl| is owned by the shell which always is
-  // deconstructed before |InputMethodManager|
+  // deconstructed before |InputMethodManager| and |AcceleratorPref|.
   if (::features::IsImprovedKeyboardShortcutsEnabled()) {
     InputMethodManager::Get()->RemoveObserver(this);
   }
-  if (::features::IsShortcutCustomizationEnabled()) {
+  if (Shell::HasInstance() &&
+      Shell::Get()->accelerator_prefs()->IsCustomizationAllowed()) {
     accelerator_configuration_->RemoveObserver(this);
   }
+  // In unit tests, the Shell instance may already be deleted at this point.
+  if (Shell::HasInstance() &&
+      Shell::Get()->accelerator_prefs()->IsUserEnterpriseManaged()) {
+    Shell::Get()->accelerator_prefs()->RemoveObserver(this);
+  }
   aura::Env::GetInstance()->RemovePreTargetHandler(accelerator_history_.get());
+  if (base::FeatureList::IsEnabled(features::kShortcutStateMachines)) {
+    aura::Env::GetInstance()->RemovePreTargetHandler(
+        launcher_state_machine_.get());
+    aura::Env::GetInstance()->RemovePreTargetHandler(
+        capslock_state_machine_.get());
+    aura::Env::GetInstance()->RemovePreTargetHandler(
+        shift_disable_state_machine_.get());
+  }
 }
 
 void AcceleratorControllerImpl::InputMethodChanged(InputMethodManager* manager,
@@ -450,12 +505,26 @@ void AcceleratorControllerImpl::InputMethodChanged(InputMethodManager* manager,
 }
 
 void AcceleratorControllerImpl::OnAcceleratorsUpdated() {
-  DCHECK(::features::IsShortcutCustomizationEnabled());
+  CHECK(Shell::Get()->accelerator_prefs()->IsCustomizationAllowed());
 
   // Accelerators have been updated, unregister all accelerators and re-register
   // them.
   UnregisterAll(this);
   RegisterAccelerators(accelerator_configuration_->GetAllAccelerators());
+}
+
+void AcceleratorControllerImpl::OnShortcutPolicyUpdated() {
+  // Remove accelerator_configuration_ observer when customization is disabled
+  // by policy.
+  if (!Shell::Get()->accelerator_prefs()->IsCustomizationAllowed()) {
+    accelerator_configuration_->RemoveObserver(this);
+  }
+  // If customization is allowed by policy and there is no existing
+  // observer, add the listener. This will be useful when the admin toggles
+  // on/off the policy.
+  else if (!accelerator_configuration_->HasObserver(this)) {
+    accelerator_configuration_->AddObserver(this);
+  }
 }
 
 void AcceleratorControllerImpl::Register(
@@ -687,11 +756,11 @@ bool AcceleratorControllerImpl::CanPerformAction(
     case AcceleratorAction::kDebugPrintViewHierarchy:
     case AcceleratorAction::kDebugPrintWindowHierarchy:
     case AcceleratorAction::kDebugShowToast:
+    case AcceleratorAction::kDebugShowSystemNudge:
     case AcceleratorAction::kDebugSystemUiStyleViewer:
     case AcceleratorAction::kDebugToggleDarkMode:
     case AcceleratorAction::kDebugToggleDynamicColor:
     case AcceleratorAction::kDebugClearUseKMeansPref:
-    case AcceleratorAction::kDebugToggleGlanceables:
     case AcceleratorAction::kDebugTogglePowerButtonMenu:
     case AcceleratorAction::kDebugToggleShowDebugBorders:
     case AcceleratorAction::kDebugToggleShowFpsCounter:
@@ -709,7 +778,8 @@ bool AcceleratorControllerImpl::CanPerformAction(
     case AcceleratorAction::kDevToggleUnifiedDesktop:
       return debug::DeveloperAcceleratorsEnabled();
     case AcceleratorAction::kDisableCapsLock:
-      return CanHandleDisableCapsLock(previous_accelerator);
+      return CanHandleDisableCapsLock(previous_accelerator,
+                                      *shift_disable_state_machine_);
     case AcceleratorAction::kLockScreen:
       return accelerators::CanLock();
     case AcceleratorAction::kMagnifierZoomIn:
@@ -751,13 +821,15 @@ bool AcceleratorControllerImpl::CanPerformAction(
     case AcceleratorAction::kToggleAppList:
       return CanHandleToggleAppList(
           accelerator, previous_accelerator,
-          accelerator_history_->currently_pressed_keys());
+          accelerator_history_->currently_pressed_keys(),
+          launcher_state_machine_.get());
     case AcceleratorAction::kToggleCalendar:
       return true;
     case AcceleratorAction::kToggleCapsLock:
       return CanHandleToggleCapsLock(
           accelerator, previous_accelerator,
-          accelerator_history_->currently_pressed_keys());
+          accelerator_history_->currently_pressed_keys(),
+          *capslock_state_machine_);
     case AcceleratorAction::kToggleClipboardHistory:
       return true;
     case AcceleratorAction::kEnableOrToggleDictation:
@@ -863,6 +935,7 @@ bool AcceleratorControllerImpl::CanPerformAction(
     case AcceleratorAction::kToggleWifi:
     case AcceleratorAction::kVolumeDown:
     case AcceleratorAction::kVolumeMute:
+    case AcceleratorAction::kVolumeMuteToggle:
     case AcceleratorAction::kVolumeUp:
     case AcceleratorAction::kWindowMinimize:
       return true;
@@ -967,10 +1040,10 @@ void AcceleratorControllerImpl::PerformAction(
     case AcceleratorAction::kDebugPrintViewHierarchy:
     case AcceleratorAction::kDebugPrintWindowHierarchy:
     case AcceleratorAction::kDebugShowToast:
+    case AcceleratorAction::kDebugShowSystemNudge:
     case AcceleratorAction::kDebugToggleDarkMode:
     case AcceleratorAction::kDebugToggleDynamicColor:
     case AcceleratorAction::kDebugClearUseKMeansPref:
-    case AcceleratorAction::kDebugToggleGlanceables:
     case AcceleratorAction::kDebugTogglePowerButtonMenu:
     case AcceleratorAction::kDebugToggleVideoConferenceCameraTrayIcon:
     case AcceleratorAction::kDebugSystemUiStyleViewer:
@@ -1241,11 +1314,8 @@ void AcceleratorControllerImpl::PerformAction(
       accelerators::ShowTaskManager();
       break;
     case AcceleratorAction::kStartAssistant:
-      // TODO(longbowei): Move this to CanToggleAssistant().
-      if (ShouldToggleAssistant(accelerator)) {
-        RecordToggleAssistant(accelerator);
-        accelerators::ToggleAssistant();
-      }
+      RecordToggleAssistant(accelerator);
+      accelerators::ToggleAssistant();
       break;
     case AcceleratorAction::kSuspend:
       base::RecordAction(UserMetricsAction("Accel_Suspend"));
@@ -1397,6 +1467,9 @@ void AcceleratorControllerImpl::PerformAction(
       if (accelerator.key_code() == ui::VKEY_VOLUME_MUTE)
         base::RecordAction(UserMetricsAction("Accel_VolumeMute_F8"));
       accelerators::VolumeMute();
+      break;
+    case AcceleratorAction::kVolumeMuteToggle:
+      accelerators::VolumeMuteToggle();
       break;
     case AcceleratorAction::kVolumeUp:
       base::RecordAction(UserMetricsAction("Accel_VolumeUp_F10"));

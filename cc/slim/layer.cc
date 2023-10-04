@@ -413,9 +413,24 @@ const gfx::RoundedCornersF& Layer::corner_radii() const {
   return cc_layer() ? cc_layer()->corner_radii() : rounded_corners_;
 }
 
-bool Layer::HasRoundedCorner() const {
-  return cc_layer() ? cc_layer()->HasRoundedCorner()
-                    : !rounded_corners_.IsEmpty();
+void Layer::SetGradientMask(const gfx::LinearGradient& gradient_mask) {
+  if (cc_layer()) {
+    cc_layer()->SetGradientMask(gradient_mask);
+    return;
+  }
+  if (gradient_mask_ == gradient_mask) {
+    return;
+  }
+  gradient_mask_ = gradient_mask;
+  NotifySubtreeChanged();
+}
+
+const gfx::LinearGradient& Layer::gradient_mask() const {
+  return cc_layer() ? cc_layer()->gradient_mask() : gradient_mask_;
+}
+
+bool Layer::HasNonTrivialMaskFilterInfo() const {
+  return !rounded_corners_.IsEmpty() || !gradient_mask_.IsEmpty();
 }
 
 bool Layer::masks_to_bounds() const {
@@ -519,7 +534,9 @@ viz::SharedQuadState* Layer::CreateAndAppendSharedQuadState(
   }
   quad_state->SetAll(transform_to_target, layer_rect, visible_rect,
                      data.mask_filter_info_in_target, clip_opt,
-                     contents_opaque(), opacity, SkBlendMode::kSrcOver, 0);
+                     contents_opaque(), opacity, SkBlendMode::kSrcOver,
+                     /*sorting_context=*/0,
+                     /*layer_id=*/0u, /*fast_rounded_corner=*/false);
   quad_state->is_fast_rounded_corner = true;
   return quad_state;
 }

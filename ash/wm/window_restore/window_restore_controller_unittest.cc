@@ -272,7 +272,7 @@ class WindowRestoreControllerTest : public AshTestBase,
 
   void TearDown() override {
     env_observation_.Reset();
-
+    WindowRestoreController::Get()->SetSaveWindowCallbackForTesting({});
     AshTestBase::TearDown();
   }
 
@@ -413,7 +413,7 @@ TEST_F(WindowRestoreControllerTest, WindowMovedDesks) {
   EXPECT_EQ(1, GetSaveWindowsCount(window.get()));
 }
 
-// Tests that data gets saved when assigning a window to all desks.
+// Tests that data gets saved correctly when assigning a window to all desks.
 TEST_F(WindowRestoreControllerTest, AssignToAllDesks) {
   auto* desks_controller = DesksController::Get();
   desks_controller->NewDesk(DesksCreationRemovalSource::kButton);
@@ -428,10 +428,22 @@ TEST_F(WindowRestoreControllerTest, AssignToAllDesks) {
                       aura::client::kWindowWorkspaceVisibleOnAllWorkspaces);
   EXPECT_EQ(1, GetSaveWindowsCount(window.get()));
 
+  // An all desks window should have a populated `desk_id` but not `desk_guid`.
+  app_restore::WindowInfo* window_info = GetWindowInfo(window.get());
+  ASSERT_TRUE(window_info);
+  EXPECT_EQ(aura::client::kWindowWorkspaceVisibleOnAllWorkspaces,
+            window_info->desk_id);
+  EXPECT_FALSE(window_info->desk_guid.is_valid());
+
   // Unassign |window| from all desks. This should trigger a save.
   window->SetProperty(aura::client::kWindowWorkspaceKey,
                       aura::client::kWindowWorkspaceUnassignedWorkspace);
   EXPECT_EQ(2, GetSaveWindowsCount(window.get()));
+
+  // A non-all desks window should not have a populated `desk_id`.
+  app_restore::WindowInfo* window_info2 = GetWindowInfo(window.get());
+  ASSERT_TRUE(window_info2);
+  EXPECT_FALSE(window_info2->desk_id);
 }
 
 // Tests that data gets saved when moving a window to another display using the
@@ -496,7 +508,7 @@ TEST_F(WindowRestoreControllerTest, TabletModeChange) {
 }
 
 TEST_F(WindowRestoreControllerTest, DisplayAddRemove) {
-  UpdateDisplay("800x700,801+0-800x700");
+  UpdateDisplay("800x700, 800x700");
 
   auto window = CreateAppWindow(gfx::Rect(800, 0, 400, 400), AppType::BROWSER);
   ResetSaveWindowsCount();
@@ -512,6 +524,7 @@ TEST_F(WindowRestoreControllerTest, DisplayAddRemove) {
   // window and activate it, resulting in a double save.
   std::vector<display::ManagedDisplayInfo> display_info_list;
   display_info_list.push_back(primary_info);
+  EXPECT_EQ(0, GetSaveWindowsCount(window.get()));
   display_manager()->OnNativeDisplaysChanged(display_info_list);
   EXPECT_EQ(2, GetSaveWindowsCount(window.get()));
 

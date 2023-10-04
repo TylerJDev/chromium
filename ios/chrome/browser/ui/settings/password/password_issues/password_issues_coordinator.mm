@@ -17,7 +17,7 @@
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
 #import "ios/chrome/browser/shared/ui/table_view/table_view_utils.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/ui/settings/password/password_details/password_details_coordinator.h"
 #import "ios/chrome/browser/ui/settings/password/password_details/password_details_coordinator_delegate.h"
 #import "ios/chrome/browser/ui/settings/password/password_issues/password_issue.h"
@@ -25,11 +25,14 @@
 #import "ios/chrome/browser/ui/settings/password/password_issues/password_issues_mediator.h"
 #import "ios/chrome/browser/ui/settings/password/password_issues/password_issues_presenter.h"
 #import "ios/chrome/browser/ui/settings/password/password_issues/password_issues_table_view_controller.h"
+#import "ios/chrome/browser/ui/settings/password/password_manager_ui_features.h"
+#import "ios/chrome/browser/ui/settings/password/reauthentication/reauthentication_coordinator.h"
 #import "ios/chrome/browser/ui/settings/utils/password_utils.h"
-#import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
+#import "ios/chrome/common/ui/reauthentication/reauthentication_protocol.h"
 #import "ui/base/l10n/l10n_util.h"
 
 using password_manager::WarningType;
+using password_manager::features::IsAuthOnEntryV2Enabled;
 
 namespace {
 
@@ -53,7 +56,8 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
 
 @interface PasswordIssuesCoordinator () <PasswordDetailsCoordinatorDelegate,
                                          PasswordIssuesCoordinatorDelegate,
-                                         PasswordIssuesPresenter> {
+                                         PasswordIssuesPresenter,
+                                         ReauthenticationCoordinatorDelegate> {
   // Password check manager to power mediator.
   IOSChromePasswordCheckManager* _manager;
 
@@ -71,6 +75,12 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
   // there are child coordinators, this flag is used to dismiss the view
   // controller after the children are dismissed.
   BOOL _shouldDismissAfterChildCoordinatorRemoved;
+
+  // Coordinator for blocking Password Issues until Local Authentication is
+  // passed. Used for requiring authentication when opening Password Issues
+  // from outside the Password Manager and when the app is
+  // backgrounded/foregrounded with Password Issues opened.
+  ReauthenticationCoordinator* _reauthCoordinator;
 }
 
 // Main view controller for this coordinator.
@@ -98,6 +108,7 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
     _baseNavigationController = navigationController;
     _dispatcher = HandlerForProtocol(self.browser->GetCommandDispatcher(),
                                      ApplicationCommands);
+    _skipAuthenticationOnStart = NO;
   }
   return self;
 }
@@ -132,8 +143,14 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
   self.mediator.consumer = self.viewController;
   self.viewController.presenter = self;
 
-  [self.baseNavigationController pushViewController:self.viewController
-                                           animated:YES];
+  // Disable animation when content will be blocked for reauth to prevent
+  // flickering in navigation bar.
+  [self.baseNavigationController
+      pushViewController:self.viewController
+                animated:_skipAuthenticationOnStart ||
+                         !IsAuthOnEntryV2Enabled()];
+
+  [self startReauthCoordinatorWithAuthOnStart:!_skipAuthenticationOnStart];
 }
 
 - (void)stop {
@@ -146,6 +163,7 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
   self.passwordDetails = nil;
 
   [self stopDismissedPasswordIssuesCoordinator];
+  [self stopReauthenticationCoordinator];
 }
 
 #pragma mark - PasswordIssuesPresenter
@@ -162,6 +180,9 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
 
 - (void)presentPasswordIssueDetails:(PasswordIssue*)password {
   DCHECK(!self.passwordDetails);
+
+  [self stopReauthCoordinatorBeforeStartingChildCoordinator];
+
   self.passwordDetails = [[PasswordDetailsCoordinator alloc]
       initWithBaseNavigationController:self.baseNavigationController
                                browser:self.browser
@@ -174,12 +195,18 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
 }
 
 - (void)presentDismissedCompromisedCredentials {
-  CHECK(!_dismissedPasswordIssuesCoordinator);
+  // TODO(crbug.com/1464966): Switch back to DCHECK if the number of reports is
+  // low.
+  DUMP_WILL_BE_CHECK(!_dismissedPasswordIssuesCoordinator);
+
+  [self stopReauthCoordinatorBeforeStartingChildCoordinator];
+
   _dismissedPasswordIssuesCoordinator = [[PasswordIssuesCoordinator alloc]
             initForWarningType:password_manager::WarningType::
                                    kDismissedWarningsWarning
       baseNavigationController:self.baseNavigationController
                        browser:self.browser];
+  _dismissedPasswordIssuesCoordinator.skipAuthenticationOnStart = YES;
   _dismissedPasswordIssuesCoordinator.reauthModule = self.reauthModule;
   _dismissedPasswordIssuesCoordinator.delegate = self;
   [_dismissedPasswordIssuesCoordinator start];
@@ -215,6 +242,17 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
   [self onChildCoordinatorDidRemove];
 }
 
+#pragma mark - ReauthenticationCoordinatorDelegate
+
+- (void)successfulReauthenticationWithCoordinator:
+    (ReauthenticationCoordinator*)coordinator {
+  // No-op.
+}
+
+- (void)willPushReauthenticationViewController {
+  // No-op.
+}
+
 #pragma mark - Private
 
 - (void)stopDismissedPasswordIssuesCoordinator {
@@ -222,6 +260,12 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
   _dismissedPasswordIssuesCoordinator.reauthModule = nil;
   _dismissedPasswordIssuesCoordinator.delegate = nil;
   _dismissedPasswordIssuesCoordinator = nil;
+}
+
+- (void)stopReauthenticationCoordinator {
+  [_reauthCoordinator stop];
+  _reauthCoordinator.delegate = nil;
+  _reauthCoordinator = nil;
 }
 
 // Called after the view controller of a child coordinator of `self` was removed
@@ -237,6 +281,59 @@ DetailsContext ComputeDetailsContextFromWarningType(WarningType warning_type) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self.baseNavigationController popViewControllerAnimated:NO];
     });
+  } else {
+    // Otherwise restart scene monitoring so authentication is required when the
+    // scene is backgrounded/foregrounded.
+    [self restartReauthCoordinator];
+  }
+}
+
+// Starts reauthCoordinator.
+// - authOnStart: Pass `YES` to cover Password Issues with an empty view
+// controller until successful Local Authentication when reauthCoordinator
+// starts.
+//
+// Local authentication is required every time the current
+// scene is backgrounded and foregrounded until reauthCoordinator is stopped.
+- (void)startReauthCoordinatorWithAuthOnStart:(BOOL)authOnStart {
+  // No-op if Auth on Entry is not enabled for the password manager.
+  if (!IsAuthOnEntryV2Enabled()) {
+    return;
+  }
+
+  DCHECK(!_reauthCoordinator);
+
+  _reauthCoordinator = [[ReauthenticationCoordinator alloc]
+      initWithBaseNavigationController:_baseNavigationController
+                               browser:self.browser
+                reauthenticationModule:_reauthModule
+                           authOnStart:authOnStart];
+
+  _reauthCoordinator.delegate = self;
+
+  [_reauthCoordinator start];
+}
+
+// Stop reauth coordinator when a child coordinator will be started.
+//
+// Needed so reauth coordinator doesn't block for reauth if the scene state
+// changes while the child coordinator is presenting its content. The child
+// coordinator will add its own reauth coordinator to block its content for
+// reauth.
+- (void)stopReauthCoordinatorBeforeStartingChildCoordinator {
+  // See PasswordsCoordinator
+  // stopReauthCoordinatorBeforeStartingChildCoordinator.
+  [_reauthCoordinator stopAndPopViewController];
+  _reauthCoordinator.delegate = nil;
+  _reauthCoordinator = nil;
+}
+
+// Starts reauthCoordinator after a child coordinator content was dismissed.
+- (void)restartReauthCoordinator {
+  // Restart reauth coordinator so it monitors scene state changes and requests
+  // local authentication after the scene goes to the background.
+  if (IsAuthOnEntryV2Enabled()) {
+    [self startReauthCoordinatorWithAuthOnStart:NO];
   }
 }
 

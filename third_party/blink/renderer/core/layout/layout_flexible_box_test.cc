@@ -54,7 +54,7 @@ static String CommonStyle() {
 static void CheckFlexBoxPhysicalGeometries(const LayoutBox* flex_box) {
   // 540 = border_left + padding_left + width + padding_right + border_right
   // 400 = border_top + padding_top + height + padding_bottom + border_bottom
-  EXPECT_EQ(LayoutRect(0, 0, 540, 400), flex_box->BorderBoxRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 540, 400), flex_box->PhysicalBorderBoxRect());
   if (!flex_box->ShouldPlaceVerticalScrollbarOnLeft()) {
     // This excludes borders and scrollbars from BorderBoxRect.
     EXPECT_EQ(PhysicalRect(50, 20, 445, 324),
@@ -141,9 +141,6 @@ void LayoutFlexibleBoxTest::ExpectSameAsRowVRL() {
 
   const auto* child = GetLayoutBoxByElementId("child");
   // 65 = border_right (30) + padding_right (20) + vertical_scrollbar_width (15)
-  if (!RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()) {
-    EXPECT_EQ(LayoutPoint(65, 30), child->Location());
-  }
   // -1525 = full_flex_box_width (540) - 65 - child_width (2000))
   EXPECT_EQ(PhysicalOffset(-1525, 30), child->PhysicalLocation());
 }
@@ -219,9 +216,6 @@ void LayoutFlexibleBoxTest::ExpectSameAsRowReverseVRL() {
 
   const auto* child = GetLayoutBoxByElementId("child");
   // 65 = border_right (30) + padding_right (20) + vertical_scrollbar_width (15)
-  if (!RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()) {
-    EXPECT_EQ(LayoutPoint(65, -686), child->Location());
-  }
   // -1525 = full_flex_box_width (540) - 65 - child_width (2000))
   EXPECT_EQ(PhysicalOffset(-1525, -686), child->PhysicalLocation());
 }
@@ -330,9 +324,6 @@ TEST_F(LayoutFlexibleBoxTest, GeometriesWithScrollbarsColumnReverseVRL) {
   EXPECT_EQ(gfx::PointF(), scrollable_area->ScrollPosition());
 
   const auto* child = GetLayoutBoxByElementId("child");
-  if (!RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()) {
-    EXPECT_EQ(LayoutPoint(-1550, 30), child->Location());
-  }
   EXPECT_EQ(PhysicalOffset(90, 30), child->PhysicalLocation());
 }
 
@@ -465,8 +456,7 @@ TEST_F(LayoutFlexibleBoxTest, ResizedFlexChildRequiresVisualOverflowRecalc) {
 
   UpdateAllLifecyclePhasesForTest();
 
-  EXPECT_EQ(child1_box->PhysicalVisualOverflowRect(),
-            PhysicalRect(0, 0, 105, 960));
+  EXPECT_EQ(child1_box->VisualOverflowRect(), PhysicalRect(0, 0, 105, 960));
 }
 
 TEST_F(LayoutFlexibleBoxTest, PercentDefiniteGapUseCounter) {

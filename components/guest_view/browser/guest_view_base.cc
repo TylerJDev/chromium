@@ -476,6 +476,9 @@ void GuestViewBase::AttachToOuterWebContentsFrame(
   std::unique_ptr<WebContents> owned_guest_contents =
       std::move(owned_guest_contents_);
   DCHECK_EQ(owned_guest_contents.get(), web_contents());
+  if (owned_guest_contents) {
+    owned_guest_contents->SetOwnerLocationForDebug(absl::nullopt);
+  }
 
   // Since this inner WebContents is created from the browser side we do
   // not have RemoteFrame mojo channels so we pass in
@@ -647,13 +650,6 @@ void GuestViewBase::UpdateTargetURL(WebContents* source, const GURL& url) {
       embedder_web_contents(), url);
 }
 
-bool GuestViewBase::ShouldResumeRequestsForCreatedWindow() {
-  // Delay so that the embedder page has a chance to call APIs such as
-  // webRequest in time to be applied to the initial navigation in the new guest
-  // contents. We resume during AttachToOuterWebContentsFrame.
-  return false;
-}
-
 void GuestViewBase::OnZoomControllerDestroyed(zoom::ZoomController* source) {
   DCHECK(zoom_controller_observations_.IsObservingSource(source));
   zoom_controller_observations_.RemoveObservation(source);
@@ -726,6 +722,9 @@ void GuestViewBase::TakeGuestContentsOwnership(
     std::unique_ptr<WebContents> guest_web_contents) {
   DCHECK(!owned_guest_contents_);
   owned_guest_contents_ = std::move(guest_web_contents);
+  if (owned_guest_contents_) {
+    owned_guest_contents_->SetOwnerLocationForDebug(FROM_HERE);
+  }
 }
 
 void GuestViewBase::ClearOwnedGuestContents() {
@@ -870,6 +869,10 @@ bool GuestViewBase::CanBeEmbeddedInsideCrossProcessFrames() const {
 
 bool GuestViewBase::RequiresSslInterstitials() const {
   return false;
+}
+
+bool GuestViewBase::IsPermissionRequestable(ContentSettingsType type) const {
+  return true;
 }
 
 content::RenderFrameHost* GuestViewBase::GetGuestMainFrame() const {

@@ -92,10 +92,6 @@ BASE_DECLARE_FEATURE(kEvaluateProtectedPasswordLengthMinimum);
 extern const base::FeatureParam<int>
     kEvaluateProtectedPasswordLengthMinimumValue;
 
-// Enables collection of signals related to extension activity and uploads
-// of telemetry reports to SB servers.
-BASE_DECLARE_FEATURE(kExtensionTelemetry);
-
 // Allows the Extension Telemetry Service to accept and use configurations
 // sent by the server.
 BASE_DECLARE_FEATURE(kExtensionTelemetryConfiguration);
@@ -124,16 +120,9 @@ extern const base::FeatureParam<int>
 extern const base::FeatureParam<int>
     kExtensionTelemetryFileDataStartupDelaySeconds;
 
-// Enables data collected by the kExtensionTelemetry to be written and read to
-// disk. This data will be uploaded for analysis.
-BASE_DECLARE_FEATURE(kExtensionTelemetryPersistence);
-
-// Specifies the upload interval for extension telemetry reports.
-extern const base::FeatureParam<int> kExtensionTelemetryUploadIntervalSeconds;
-
-// Specifies the number of writes the telemetry service will perform during
-// a full upload interval.
-extern const base::FeatureParam<int> kExtensionTelemetryWritesPerInterval;
+// Enables collection of telemetry signal whenever an extension invokes the
+// chrome.tabs API methods.
+BASE_DECLARE_FEATURE(kExtensionTelemetryTabsApiSignal);
 
 // Enables collection of telemetry signal whenever an extension invokes the
 // tabs.executeScript API call.
@@ -145,28 +134,18 @@ BASE_DECLARE_FEATURE(kExtensionTelemetryReportContactedHosts);
 // Enables reporting of remote hosts contacted by extensions via websockets;
 BASE_DECLARE_FEATURE(kExtensionTelemetryReportHostsContactedViaWebSocket);
 
+// Enables intercepting remote hosts contacted by extensions in renderer
+// throttles.
+BASE_DECLARE_FEATURE(
+    kExtensionTelemetryInterceptRemoteHostsContactedInRenderer);
+
 // Enables collection of potential password theft data and uploads
 // telemetry reports to SB servers.
 BASE_DECLARE_FEATURE(kExtensionTelemetryPotentialPasswordTheft);
 
-// Enables collection of arguments whenever an extension invokes the
-// cookies.getAll API call.
-BASE_DECLARE_FEATURE(kExtensionTelemetryCookiesGetAllSignal);
-
-// Enables collection of arguments whenever an extension invokes the
-// cookies.get API call.
-BASE_DECLARE_FEATURE(kExtensionTelemetryCookiesGetSignal);
-
-// Enables collection of DeclarativeNetRequest rules when an extension invokes
-// the updateDynamicRules()/updateSessionRules() APIs.
-BASE_DECLARE_FEATURE(kExtensionTelemetryDeclarativeNetRequestSignal);
-
-// Determines the tag to pass to Omaha to get a file type policy.
-BASE_DECLARE_FEATURE(kFileTypePoliciesTag);
-
-// The parameter name used for getting the tag value from
-// `kFileTypePoliciesTag`.
-const char kFileTypePoliciesTagParamName[] = "policy_omaha_tag";
+// Enables remotely disabling of malicious off-store extensions identified in
+// Extension Telemetry service reports.
+BASE_DECLARE_FEATURE(kExtensionTelemetryDisableOffstoreExtensions);
 
 // Enables the new text, layout, links, and icons on both the privacy guide
 // and on the security settings page for the enhanced protection security
@@ -222,6 +201,9 @@ BASE_DECLARE_FEATURE(kNestedArchives);
 // managed browsers.
 BASE_DECLARE_FEATURE(kRealTimeUrlFilteringForEnterprise);
 
+// Controls whether we are using red interstitial facelift updates.
+BASE_DECLARE_FEATURE(kRedInterstitialFacelift);
+
 // Enables modifying key parameters on the navigation event collection used to
 // populate referrer chains.
 BASE_DECLARE_FEATURE(kReferrerChainParameters);
@@ -264,6 +246,10 @@ BASE_DECLARE_FEATURE(kSafeBrowsingRemoveCookiesInAuthRequests);
 // Controls whether to skip Safe Browsing checks on images, CSS and font URLs in
 // renderer URL loader throttle.
 BASE_DECLARE_FEATURE(kSafeBrowsingSkipImageCssFont);
+
+// Controls whether to skip Safe Browsing checks on all subresource URLs in
+// renderer and browser URL loader throttles.
+BASE_DECLARE_FEATURE(kSafeBrowsingSkipSubresources);
 
 // Controls whether the new 7z evaluation is performed on downloads.
 BASE_DECLARE_FEATURE(kSevenZipEvaluationEnabled);
@@ -321,10 +307,6 @@ base::Value::List GetFeatureStatusList();
 // Returns the tag used for Client Side Phishing Detection models, as
 // computed from the current feature flags.
 std::string GetClientSideDetectionTag();
-
-// Returns the tag used for file type policies, as computed from the current
-// feature flag.
-std::string GetFileTypePoliciesTag();
 
 // Enables new ESB specific threshold fields in Visual TF Lite model files
 BASE_DECLARE_FEATURE(kSafeBrowsingPhishingClassificationESBThreshold);

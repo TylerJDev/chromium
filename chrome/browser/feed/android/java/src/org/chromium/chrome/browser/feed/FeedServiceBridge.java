@@ -8,17 +8,15 @@ import android.content.Context;
 import android.util.DisplayMetrics;
 
 import org.chromium.base.ContextUtils;
-import org.chromium.base.ResettersForTesting;
 import org.chromium.base.annotations.CalledByNative;
 import org.chromium.base.annotations.JNINamespace;
 import org.chromium.base.annotations.NativeClassQualifiedName;
 import org.chromium.base.annotations.NativeMethods;
-import org.chromium.chrome.browser.feed.hooks.FeedHooks;
-import org.chromium.chrome.browser.feed.hooks.FeedHooksImpl;
 import org.chromium.chrome.browser.feed.v2.ContentOrder;
 import org.chromium.chrome.browser.feed.v2.FeedUserActionType;
 import org.chromium.chrome.browser.xsurface.ImageCacheHelper;
 import org.chromium.chrome.browser.xsurface.ProcessScope;
+import org.chromium.chrome.browser.xsurface_provider.XSurfaceProcessScopeProvider;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.Locale;
@@ -30,7 +28,7 @@ import java.util.Locale;
 public final class FeedServiceBridge {
     // Access to JNI test hooks for other libraries. This can go away once more Feed code is
     // migrated to chrome/browser/feed.
-    public static org.chromium.base.JniStaticTestMocker<FeedServiceBridge.Natives>
+    public static org.jni_zero.JniStaticTestMocker<FeedServiceBridge.Natives>
     getTestHooksForTesting() {
         return FeedServiceBridgeJni.TEST_HOOKS;
     }
@@ -54,25 +52,8 @@ public final class FeedServiceBridge {
         return null;
     }
 
-    private static ProcessScope sXSurfaceProcessScope;
-
     public static ProcessScope xSurfaceProcessScope() {
-        if (sXSurfaceProcessScope != null) {
-            return sXSurfaceProcessScope;
-        }
-        FeedHooks feedHooks = FeedHooksImpl.getInstance();
-        if (!feedHooks.isEnabled()) {
-            return null;
-        }
-        sXSurfaceProcessScope = feedHooks.createProcessScope(
-                getDependencyProviderFactory().createProcessScopeDependencyProvider());
-        return sXSurfaceProcessScope;
-    }
-
-    public static void setProcessScopeForTesting(ProcessScope processScope) {
-        var oldValue = sXSurfaceProcessScope;
-        sXSurfaceProcessScope = processScope;
-        ResettersForTesting.register(() -> sXSurfaceProcessScope = oldValue);
+        return XSurfaceProcessScopeProvider.getProcessScope();
     }
 
     private static FeedServiceUtil sFeedServiceUtil;

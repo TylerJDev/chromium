@@ -4,6 +4,11 @@
 
 import {TestRunner} from 'test_runner';
 
+import * as Common from 'devtools/core/common/common.js';
+import * as Bindings from 'devtools/models/bindings/bindings.js';
+import * as TextUtils from 'devtools/models/text_utils/text_utils.js';
+import * as UI from 'devtools/ui/legacy/legacy.js';
+
 (async function() {
   TestRunner.addResult(`Tests that the changes sidebar contains the changed uisourcecodes.\n`);
   await TestRunner.loadLegacyModule('workspace_diff');
@@ -12,7 +17,7 @@ import {TestRunner} from 'test_runner';
   var fulfill = function() {};
   var workspace = new Workspace.Workspace();
   var project =
-      new Bindings.ContentProviderBasedProject(workspace, 'mockProject', Workspace.projectTypes.Network, '', false);
+      new Bindings.ContentProviderBasedProject.ContentProviderBasedProject(workspace, 'mockProject', Workspace.projectTypes.Network, '', false);
   var workspaceDiff = new WorkspaceDiff.WorkspaceDiff(workspace);
   TestRunner.addSniffer(
       WorkspaceDiff.WorkspaceDiff.prototype, 'uiSourceCodeProcessedForTest', modifiedStatusChanged, true);
@@ -22,7 +27,7 @@ import {TestRunner} from 'test_runner';
   var firstUISC = addUISourceCode('first.css', '.first {color: red}');
   var secondUISC = addUISourceCode('second.css', '.second {color: red}');
   var thirdUISC = addUISourceCode('third.css', '.third {color: red}');
-  uiSourceCodeList.show(UI.inspectorView.element);
+  uiSourceCodeList.show(UI.InspectorView.InspectorView.instance().element);
 
   TestRunner.runTestSuite([
     function initialState(next) {
@@ -65,6 +70,6 @@ import {TestRunner} from 'test_runner';
 
   function addUISourceCode(url, content) {
     return project.addContentProvider(
-        url, TextUtils.StaticContentProvider.fromString(url, Common.resourceTypes.Stylesheet, content));
+        url, TextUtils.StaticContentProvider.StaticContentProvider.fromString(url, Common.ResourceType.resourceTypes.Stylesheet, content));
   }
 })();

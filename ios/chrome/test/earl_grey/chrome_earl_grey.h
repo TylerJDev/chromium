@@ -248,9 +248,6 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration);
                      originator_client_item_id:
                          (const std::string&)originator_client_item_id;
 
-// Injects a typed URL to the sync FakeServer.
-- (void)addFakeSyncServerTypedURL:(const GURL&)URL;
-
 // Injects a HISTORY visit to the sync FakeServer.
 - (void)addFakeSyncServerHistoryVisit:(const GURL&)URL;
 
@@ -292,6 +289,9 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration);
 // Waits for sync invalidation field presence in the DeviceInfo data type on the
 // server.
 - (void)waitForSyncInvalidationFields;
+
+// Returns whether UserSelectableType::kHistory is among the selected types.
+- (BOOL)isSyncHistoryDataTypeSelected;
 
 #pragma mark - Tab Utilities (EG2)
 
@@ -354,6 +354,9 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration);
 
 // Returns the number of browsers.
 - (NSUInteger)browserCount [[nodiscard]];
+
+// Returns the number of the realized web states from the existing web states.
+- (NSInteger)realizedWebStatesCount [[nodiscard]];
 
 // Returns the index of active tab in normal (non-incognito) mode.
 - (NSUInteger)indexOfActiveNormalTab;
@@ -680,17 +683,14 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration);
 // Returns YES if UKM feature is enabled.
 - (BOOL)isUKMEnabled [[nodiscard]];
 
-// Returns YES if kSynthesizedRestoreSessionEnabled feature is enabled.
-- (BOOL)isSynthesizedRestoreSessionEnabled [[nodiscard]];
-
 // Returns YES if kTestFeature is enabled.
 - (BOOL)isTestFeatureEnabled;
 
 // Returns YES if DemographicMetricsReporting feature is enabled.
 - (BOOL)isDemographicMetricsReportingEnabled [[nodiscard]];
 
-// Returns YES if the SyncEnableHistoryDataType feature is enabled.
-- (BOOL)isSyncHistoryDataTypeEnabled [[nodiscard]];
+// Returns YES if the ReplaceSyncPromosWithSignInPromos feature is enabled.
+- (BOOL)isReplaceSyncWithSigninEnabled [[nodiscard]];
 
 // Returns YES if the `launchSwitch` is found in host app launch switches.
 - (BOOL)appHasLaunchSwitch:(const std::string&)launchSwitch;

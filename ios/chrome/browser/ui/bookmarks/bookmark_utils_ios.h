@@ -73,10 +73,6 @@ NodeSet FindNodesByNodeReferences(NodeReferenceSet references);
 const bookmarks::BookmarkNode* FindNodeById(bookmarks::BookmarkModel* model,
                                             int64_t id);
 
-// Finds bookmark node passed in `uuid`, in the `model`.
-const bookmarks::BookmarkNode* FindNodeByUuid(bookmarks::BookmarkModel* model,
-                                              const base::Uuid& uuid);
-
 // Finds bookmark node passed in `id`, in the `model`. Returns null if the
 // node is found but not a folder.
 const bookmarks::BookmarkNode* FindFolderById(bookmarks::BookmarkModel* model,
@@ -112,14 +108,6 @@ bookmarks::StorageType GetBookmarkModelType(
 // rewrite the function to be constant time.
 bookmarks::BookmarkModel* GetBookmarkModelForNode(
     const bookmarks::BookmarkNode* bookmark_node,
-    bookmarks::BookmarkModel* profile_model,
-    bookmarks::BookmarkModel* account_model);
-
-// Checks if `account_model` is available and returns true if all the available
-// bookmark models are loaded. Note that `profile_model` is always available.
-// `profile_model` must not be `nullptr`. `account_model` may be `nullptr` if
-// it is not available. Otherwise it must not be `nullptr`.
-bool AreAllAvailableBookmarkModelsLoaded(
     bookmarks::BookmarkModel* profile_model,
     bookmarks::BookmarkModel* account_model);
 

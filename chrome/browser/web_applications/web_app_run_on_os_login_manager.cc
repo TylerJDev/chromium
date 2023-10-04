@@ -22,6 +22,10 @@
 
 namespace web_app {
 
+namespace {
+bool g_skip_startup_for_testing_ = false;
+}
+
 WebAppRunOnOsLoginManager::WebAppRunOnOsLoginManager(Profile* profile)
     : profile_(profile) {}
 WebAppRunOnOsLoginManager::~WebAppRunOnOsLoginManager() = default;
@@ -32,7 +36,7 @@ void WebAppRunOnOsLoginManager::SetProvider(base::PassKey<WebAppProvider>,
 }
 
 void WebAppRunOnOsLoginManager::Start() {
-  if (skip_startup_for_testing_) {
+  if (g_skip_startup_for_testing_) {
     return;
   }
 
@@ -50,7 +54,7 @@ void WebAppRunOnOsLoginManager::Start() {
 void WebAppRunOnOsLoginManager::RunAppsOnOsLogin(AllAppsLock& lock) {
   std::vector<std::string> app_names;
 
-  for (const AppId& app_id : lock.registrar().GetAppIds()) {
+  for (const webapps::AppId& app_id : lock.registrar().GetAppIds()) {
     if (!IsRunOnOsLoginModeEnabledForAutostart(
             lock.registrar().GetAppRunOnOsLoginMode(app_id).value)) {
       continue;
@@ -94,8 +98,9 @@ WebAppRunOnOsLoginManager::GetWeakPtr() {
   return weak_ptr_factory_.GetWeakPtr();
 }
 
-void WebAppRunOnOsLoginManager::SetSkipStartupForTesting(bool skip_startup) {
-  skip_startup_for_testing_ = skip_startup;  // IN-TEST
+// static
+base::AutoReset<bool> WebAppRunOnOsLoginManager::SkipStartupForTesting() {
+  return {&g_skip_startup_for_testing_, true};
 }
 
 void WebAppRunOnOsLoginManager::RunAppsOnOsLoginForTesting() {

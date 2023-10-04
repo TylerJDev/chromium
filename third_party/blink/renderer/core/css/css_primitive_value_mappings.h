@@ -41,7 +41,6 @@
 #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/core/css_value_keywords.h"
-#include "third_party/blink/renderer/core/scroll/scroll_customization.h"
 #include "third_party/blink/renderer/core/scroll/scrollable_area.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/platform/fonts/font_description.h"
@@ -1157,34 +1156,6 @@ inline TouchAction CSSIdentifierValue::ConvertTo() const {
 }
 
 template <>
-inline scroll_customization::ScrollDirection CSSIdentifierValue::ConvertTo()
-    const {
-  switch (value_id_) {
-    case CSSValueID::kNone:
-      return scroll_customization::kScrollDirectionNone;
-    case CSSValueID::kAuto:
-      return scroll_customization::kScrollDirectionAuto;
-    case CSSValueID::kPanLeft:
-      return scroll_customization::kScrollDirectionPanLeft;
-    case CSSValueID::kPanRight:
-      return scroll_customization::kScrollDirectionPanRight;
-    case CSSValueID::kPanX:
-      return scroll_customization::kScrollDirectionPanX;
-    case CSSValueID::kPanUp:
-      return scroll_customization::kScrollDirectionPanUp;
-    case CSSValueID::kPanDown:
-      return scroll_customization::kScrollDirectionPanDown;
-    case CSSValueID::kPanY:
-      return scroll_customization::kScrollDirectionPanY;
-    default:
-      break;
-  }
-
-  NOTREACHED();
-  return scroll_customization::kScrollDirectionNone;
-}
-
-template <>
 inline CSSIdentifierValue::CSSIdentifierValue(CSSBoxType css_box)
     : CSSValue(kIdentifierClass) {
   switch (css_box) {
@@ -1634,6 +1605,8 @@ inline EContainerType CSSIdentifierValue::ConvertTo() const {
       return kContainerTypeSize;
     case CSSValueID::kSticky:
       return kContainerTypeSticky;
+    case CSSValueID::kSnap:
+      return kContainerTypeSnap;
     default:
       break;
   }

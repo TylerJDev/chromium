@@ -111,6 +111,14 @@ bool IsSearchImageInCompanionSidePanelSupported(const Browser* browser) {
          ShouldEnableOpenCompanionForImageSearch();
 }
 
+bool IsNewBadgeEnabledForSearchMenuItem(const Browser* browser) {
+  if (!browser) {
+    return false;
+  }
+  return base::FeatureList::IsEnabled(
+      features::kCompanionEnableNewBadgesInContextMenu);
+}
+
 void UpdateCompanionDefaultPinnedToToolbarState(PrefService* pref_service) {
   absl::optional<bool> should_force_pin =
       switches::ShouldForceOverrideCompanionPinState();

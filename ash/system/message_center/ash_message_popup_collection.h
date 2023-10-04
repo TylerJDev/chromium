@@ -6,6 +6,7 @@
 #define ASH_SYSTEM_MESSAGE_CENTER_ASH_MESSAGE_POPUP_COLLECTION_H_
 
 #include <stdint.h>
+#include <memory>
 
 #include "ash/ash_export.h"
 #include "ash/public/cpp/shelf_types.h"
@@ -44,15 +45,27 @@ class ASH_EXPORT AshMessagePopupCollection
     : public display::DisplayObserver,
       public message_center::MessagePopupCollection,
       public message_center::MessageView::Observer,
-      public ShelfObserver,
-      public SystemTrayObserver,
-      public TabletModeObserver,
       public views::WidgetObserver {
  public:
   // The name that will set for the message popup widget in
   // ConfigureWidgetInitParamsForContainer(), and that can be used to identify a
   // message popup widget.
   static const char kMessagePopupWidgetName[];
+
+  // All the types of surfaces that can make popup collection shift up. Used
+  // inside of `NotifierCollisionHandler` for metrics collection. Make sure to
+  // keep this in sync with `NotifierCollisionSurfaceType` in
+  // tools/metrics/histograms/enums.xml.
+  enum class NotifierCollisionSurfaceType {
+    // Default value. Ideally this should never be recorded in the metrics.
+    kNone = 0,
+
+    kShelfPodBubble = 1,
+    kSliderBubble = 2,
+    kExtendedHotseat = 3,
+    kSliderBubbleAndExtendedHotseat = 4,
+    kMaxValue = kSliderBubbleAndExtendedHotseat
+  };
 
   explicit AshMessagePopupCollection(Shelf* shelf);
 
@@ -64,10 +77,6 @@ class ASH_EXPORT AshMessagePopupCollection
 
   // Start observing the system.
   void StartObserving(display::Screen* screen, const display::Display& display);
-
-  // Sets an offset from the baseline so that notification popups can shift up
-  // without overlapping with slider bubbles.
-  void SetBaselineOffset(int baseline_offset);
 
   // message_center::MessagePopupCollection:
   int GetPopupOriginX(const gfx::Rect& popup_bounds) const override;
@@ -91,25 +100,12 @@ class ASH_EXPORT AshMessagePopupCollection
       const message_center::Notification& notification) override;
   void ClosePopupItem(const PopupItem& item) override;
 
-  // TabletModeObserver:
-  void OnTabletModeStarted() override;
-  void OnTabletModeEnded() override;
-
-  // SystemTrayObserver:
-  void OnFocusLeavingSystemTray(bool reverse) override {}
-  void OnStatusAreaAnchoredBubbleVisibilityChanged(TrayBubbleView* tray_bubble,
-                                                   bool visible) override;
-  void OnTrayBubbleBoundsChanged(TrayBubbleView* tray_bubble) override;
-
   // Returns true if `widget` is a popup widget belongs to this popup
   // collection.
   bool IsWidgetAPopupNotification(views::Widget* widget);
 
   // Sets `animation_idle_closure_`.
   void SetAnimationIdleClosureForTest(base::OnceClosure closure);
-
-  // Returns the current baseline offset.
-  int baseline_offset_for_test() const { return baseline_offset_; }
 
   int popups_animating_for_test() const { return popups_animating_; }
 
@@ -118,42 +114,90 @@ class ASH_EXPORT AshMessagePopupCollection
   friend class NotificationGroupingControllerTest;
   friend class TrayEventFilterTest;
 
+  // Handles the collision of popup notifications with corner anchored shelf pod
+  // bubbles, sliders, shelf, and the extended hotseat by updating the popup
+  // baseline.
+  class NotifierCollisionHandler : public ShelfObserver,
+                                   public SystemTrayObserver,
+                                   public TabletModeObserver {
+   public:
+    explicit NotifierCollisionHandler(
+        AshMessagePopupCollection* popup_collection);
+
+    NotifierCollisionHandler(const NotifierCollisionHandler&) = delete;
+    NotifierCollisionHandler& operator=(const NotifierCollisionHandler&) =
+        delete;
+
+    ~NotifierCollisionHandler() override;
+
+    // Triggered whenever the height of the popup collection changes.
+    void OnPopupCollectionHeightChanged();
+
+    // Calculates the offset that is applied to the popup collection's baseline.
+    // It considers the extended hotseat, corner anchored shelf pod bubbles and
+    // slider bubbles.
+    int CalculateBaselineOffset();
+
+    // SystemTrayObserver:
+    void OnFocusLeavingSystemTray(bool reverse) override {}
+    void OnStatusAreaAnchoredBubbleVisibilityChanged(
+        TrayBubbleView* tray_bubble,
+        bool visible) override;
+    void OnTrayBubbleBoundsChanged(TrayBubbleView* tray_bubble) override;
+
+   private:
+    // Handles bubble visibility or bounds changes.
+    void HandleBubbleVisibilityOrBoundsChanged();
+
+    // Calculates the baseline offset applied when the hotseat is extended in
+    // tablet mode and a corner anchored shelf pod bubble is not open.
+    int CalculateExtendedHotseatOffset() const;
+
+    // Calculates the baseline offset applied when a slider is visible and a
+    // corner anchored shelf pod bubble is not open.
+    int CalculateSliderOffset() const;
+
+    // Records metrics for the count of popups when it is put on top of a
+    // surface.
+    void RecordOnTopOfSurfacesPopupCount();
+
+    // Records surface type when there are popup(s) on top of that surface.
+    void RecordSurfaceType();
+
+    // TabletModeObserver:
+    void OnTabletModeStarted() override;
+    void OnTabletModeEnded() override;
+
+    // ShelfObserver:
+    void OnBackgroundTypeChanged(ShelfBackgroundType background_type,
+                                 AnimationChangeType change_type) override;
+    void OnShelfWorkAreaInsetsChanged() override;
+    void OnHotseatStateChanged(HotseatState old_state,
+                               HotseatState new_state) override;
+
+    raw_ptr<AshMessagePopupCollection> const popup_collection_;
+
+    // Keeps track of the current baseline offset and surface type for metrics
+    // collection purpose.
+    int baseline_offset_ = 0;
+    NotifierCollisionSurfaceType surface_type_ =
+        NotifierCollisionSurfaceType::kNone;
+  };
+
   // message_center::MessageView::Observer:
   void OnSlideOut(const std::string& notification_id) override;
   void OnCloseButtonPressed(const std::string& notification_id) override;
   void OnSettingsButtonPressed(const std::string& notification_id) override;
   void OnSnoozeButtonPressed(const std::string& notification_id) override;
 
-  // Get the current alignment of the shelf.
+  // Gets the current alignment of the shelf.
   ShelfAlignment GetAlignment() const;
 
   // Utility function to get the display which should be care about.
   display::Display GetCurrentDisplay() const;
 
-  // Compute the new work area.
+  // Computes the new work area.
   void UpdateWorkArea();
-
-  // Makes changes to the baseline based on the visibility/bounds change of
-  // the current open bubble. Note that this function is only called by a change
-  // in the bubble (bubble size or visibility changed).
-  void AdjustBaselineBasedOnBubbleChange(TrayBubbleView* tray_bubble,
-                                         bool bubble_visible);
-
-  // Makes changes to the baseline based on the visibility/bounds change of
-  // the current open shelf pod bubble. `triggered_by_bubble_change` is true if
-  // this function is triggered by a change in the bubble (bubble size or
-  // visibility changed).
-  void AdjustBaselineBasedOnShelfPodBubble(bool triggered_by_bubble_change);
-
-  // Helper functions for `AdjustBaselineBaseOnBubble()`. Applied to secondary
-  // bubble.
-  void AdjustBaselineBasedOnSecondaryBubble(TrayBubbleView* tray_bubble,
-                                            bool visible);
-
-  // ShelfObserver:
-  void OnShelfWorkAreaInsetsChanged() override;
-  void OnHotseatStateChanged(HotseatState old_state,
-                             HotseatState new_state) override;
 
   // display::DisplayObserver:
   void OnDisplayMetricsChanged(const display::Display& display,
@@ -163,19 +207,13 @@ class ASH_EXPORT AshMessagePopupCollection
   void OnWidgetClosing(views::Widget* widget) override;
   void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
 
-  // Update the state of enabling expand/collapse behavior for each popup. We
-  // use `available_space_above_popups`, which is the space left on the screen
-  // above the popups, to make this decision. `available_space_above_popups`
-  // will only be meaningful if `shelf_bubble_open` is true.
-  void UpdateExpandCollapseEnabledForPopups(bool shelf_bubble_open,
-                                            int available_space_above_popups);
+  std::unique_ptr<NotifierCollisionHandler> notifier_collision_handler_;
 
   absl::optional<display::ScopedDisplayObserver> display_observer_;
 
   raw_ptr<display::Screen, ExperimentalAsh> screen_;
   gfx::Rect work_area_;
   raw_ptr<Shelf, ExperimentalAsh> shelf_;
-  int baseline_offset_ = 0;
 
   std::set<views::Widget*> tracked_widgets_;
 

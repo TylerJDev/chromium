@@ -101,15 +101,16 @@ bool TestBrowserAutofillManager::IsAutofillProfileEnabled() const {
   return autofill_profile_enabled_;
 }
 
-bool TestBrowserAutofillManager::IsAutofillCreditCardEnabled() const {
-  return autofill_credit_card_enabled_;
+bool TestBrowserAutofillManager::IsAutofillPaymentMethodsEnabled() const {
+  return autofill_payment_methods_enabled_;
 }
 
 void TestBrowserAutofillManager::UploadVotesAndLogQuality(
     std::unique_ptr<FormStructure> submitted_form,
     base::TimeTicks interaction_time,
     base::TimeTicks submission_time,
-    bool observed_submission) {
+    bool observed_submission,
+    const ukm::SourceId source_id) {
   submitted_form_signature_ = submitted_form->FormSignatureAsStr();
 
   if (observed_submission) {
@@ -142,7 +143,7 @@ void TestBrowserAutofillManager::UploadVotesAndLogQuality(
 
   BrowserAutofillManager::UploadVotesAndLogQuality(
       std::move(submitted_form), interaction_time, submission_time,
-      observed_submission);
+      observed_submission, source_id);
 }
 
 void TestBrowserAutofillManager::StoreUploadVotesAndLogQualityCallback(
@@ -160,8 +161,8 @@ const gfx::Image& TestBrowserAutofillManager::GetCardImage(
 
 void TestBrowserAutofillManager::ScheduleRefill(
     const FormData& form,
-    const AutofillTriggerSource trigger_source) {
-  test_api(*this).TriggerRefill(form, trigger_source);
+    const AutofillTriggerDetails& trigger_details) {
+  test_api(*this).TriggerRefill(form, trigger_details);
 }
 
 bool TestBrowserAutofillManager::MaybeStartVoteUploadProcess(
@@ -185,17 +186,17 @@ void TestBrowserAutofillManager::AddSeenForm(
     const std::vector<ServerFieldType>& heuristic_types,
     const std::vector<ServerFieldType>& server_types,
     bool preserve_values_in_form_structure) {
-  std::vector<std::vector<std::pair<PatternSource, ServerFieldType>>>
+  std::vector<std::vector<std::pair<HeuristicSource, ServerFieldType>>>
       all_heuristic_types;
   for (ServerFieldType type : heuristic_types)
-    all_heuristic_types.push_back({{GetActivePatternSource(), type}});
+    all_heuristic_types.push_back({{GetActiveHeuristicSource(), type}});
   AddSeenForm(form, all_heuristic_types, server_types,
               preserve_values_in_form_structure);
 }
 
 void TestBrowserAutofillManager::AddSeenForm(
     const FormData& form,
-    const std::vector<std::vector<std::pair<PatternSource, ServerFieldType>>>&
+    const std::vector<std::vector<std::pair<HeuristicSource, ServerFieldType>>>&
         heuristic_types,
     const std::vector<ServerFieldType>& server_types,
     bool preserve_values_in_form_structure) {
@@ -243,11 +244,11 @@ void TestBrowserAutofillManager::SetAutofillProfileEnabled(
   }
 }
 
-void TestBrowserAutofillManager::SetAutofillCreditCardEnabled(
+void TestBrowserAutofillManager::SetAutofillPaymentMethodsEnabled(
     TestAutofillClient& client,
-    bool autofill_credit_card_enabled) {
-  autofill_credit_card_enabled_ = autofill_credit_card_enabled;
-  if (!autofill_credit_card_enabled_) {
+    bool autofill_payment_methods_enabled) {
+  autofill_payment_methods_enabled_ = autofill_payment_methods_enabled;
+  if (!autofill_payment_methods_enabled) {
     // Credit card data is refreshed when this pref is changed.
     client.GetPersonalDataManager()->ClearCreditCards();
   }

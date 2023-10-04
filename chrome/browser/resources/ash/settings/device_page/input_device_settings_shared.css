@@ -13,6 +13,7 @@
 
 .subsection {
   margin-bottom: 16px;
+  margin-top: 8px;
   padding-inline-start: var(--cr-section-indent-width);
 }
 
@@ -49,4 +50,29 @@
 
 #keyLabel {
   padding-inline: 6px;
+}
+
+cr-dialog [slot='button-container'] {
+  padding: 0 32px 28px 32px;
+  display: flex;
+  gap: 8px;
+}
+
+cr-dialog [slot='body'] {
+  padding: 24px 32px;
+}
+
+cr-dialog [slot='title'] {
+  padding: 32px 32px 0 32px;
+}
+
+cr-dialog #cancelButton {
+  background-color: var(--cros-bg-color);
+  border: solid 1px var(--cros-button-stroke-color-secondary);
+}
+
+.subpage-description {
+  color: var(--cros-text-color-secondary);
+  font: var(--cros-body-2-font);
+  padding: 12px 20px;
 }

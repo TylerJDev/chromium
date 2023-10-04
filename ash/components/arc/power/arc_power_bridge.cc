@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <utility>
 
-#include "ash/components/arc/arc_browser_context_keyed_service_factory_base.h"
 #include "ash/components/arc/arc_util.h"
 #include "ash/components/arc/session/arc_bridge_service.h"
 #include "ash/shell.h"
@@ -15,7 +14,6 @@
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
-#include "base/memory/singleton.h"
 #include "base/metrics/histogram_functions.h"
 #include "chromeos/ash/components/dbus/patchpanel/patchpanel_client.h"
 #include "chromeos/dbus/power/power_policy_controller.h"
@@ -33,26 +31,12 @@ namespace {
 // order to prevent spammy brightness updates.
 constexpr base::TimeDelta kNotifyBrightnessDelay = base::Milliseconds(200);
 
-// Singleton factory for ArcPowerBridge.
-class ArcPowerBridgeFactory
-    : public internal::ArcBrowserContextKeyedServiceFactoryBase<
-          ArcPowerBridge,
-          ArcPowerBridgeFactory> {
- public:
-  // Factory name used by ArcBrowserContextKeyedServiceFactoryBase.
-  static constexpr const char* kName = "ArcPowerBridgeFactory";
-
-  static ArcPowerBridgeFactory* GetInstance() {
-    return base::Singleton<ArcPowerBridgeFactory>::get();
-  }
-
- private:
-  friend base::DefaultSingletonTraits<ArcPowerBridgeFactory>;
-  ArcPowerBridgeFactory() = default;
-  ~ArcPowerBridgeFactory() override = default;
-};
-
 }  // namespace
+
+// static
+ArcPowerBridgeFactory* ArcPowerBridgeFactory::GetInstance() {
+  return base::Singleton<ArcPowerBridgeFactory>::get();
+}
 
 // WakeLockRequestor requests a wake lock from the device service in response
 // to wake lock requests of a given type from Android. A count is kept of
@@ -138,6 +122,9 @@ ArcPowerBridge::ArcPowerBridge(content::BrowserContext* context,
 }
 
 ArcPowerBridge::~ArcPowerBridge() {
+  for (auto& observer : observer_list_) {
+    observer.OnWillDestroyArcPowerBridge();
+  }
   arc_bridge_service_->power()->RemoveObserver(this);
   arc_bridge_service_->power()->SetHost(nullptr);
 }
@@ -177,7 +164,8 @@ void ArcPowerBridge::OnConnectionReady() {
     // Whether display is on is the same signal as whether Android is interactive
     // or not.
     IsDisplayOn(base::BindOnce(&ArcPowerBridge::NotifyAndroidInteractiveState,
-                              arc_bridge_service_));
+                               weak_ptr_factory_.GetWeakPtr(),
+                               arc_bridge_service_));
   }
   chromeos::PowerManagerClient::Get()->AddObserver(this);
   chromeos::PowerManagerClient::Get()->GetScreenBrightnessPercent(
@@ -198,14 +186,18 @@ void ArcPowerBridge::SuspendImminent(
   is_suspending_ = true;
   mojom::PowerInstance* power_instance =
       ARC_GET_INSTANCE_FOR_METHOD(arc_bridge_service_->power(), Suspend);
-  if (!power_instance)
+  if (!power_instance) {
+    LOG(WARNING) << "ArcPower: ignoring request due to no bridge.";
     return;
+  }
 
+  VLOG(1) << "ArcPower: will request android suspend.";
   auto token = base::UnguessableToken::Create();
   chromeos::PowerManagerClient::Get()->BlockSuspend(token, "ArcPowerBridge");
   power_instance->Suspend(base::BindOnce(&ArcPowerBridge::OnAndroidSuspendReady,
                                          weak_ptr_factory_.GetWeakPtr(),
                                          token));
+  ash::PatchPanelClient::Get()->NotifyAndroidInteractiveState(false);
 }
 
 void ArcPowerBridge::OnAndroidSuspendReady(base::UnguessableToken token) {
@@ -238,6 +230,7 @@ void ArcPowerBridge::OnConciergeSuspendVmResponse(
 }
 
 void ArcPowerBridge::SuspendDone(base::TimeDelta sleep_duration) {
+  VLOG(1) << "ArcPower: Host waking up.";
   is_suspending_ = false;
   if (arc::IsArcVmEnabled()) {
     vm_tools::concierge::ResumeVmRequest request;
@@ -261,6 +254,9 @@ void ArcPowerBridge::OnConciergeResumeVmResponse(
     LOG(ERROR) << "Failed to resume arcvm: " << reply.value().failure_reason();
     return;
   }
+  for (auto& observer : observer_list_) {
+    observer.OnVmResumed();
+  }
   DispatchAndroidResume();
 }
 
@@ -270,8 +266,11 @@ void ArcPowerBridge::DispatchAndroidResume() {
 
   mojom::PowerInstance* power_instance =
       ARC_GET_INSTANCE_FOR_METHOD(arc_bridge_service_->power(), Resume);
-  if (!power_instance)
+  if (!power_instance) {
+    LOG(WARNING) << "ArcPower: Ignoring ARC resume due to no bridge.";
     return;
+  }
+  VLOG(1) << "ArcPower: Requesting Android resume.";
   power_instance->Resume();
 }
 
@@ -329,10 +328,17 @@ void ArcPowerBridge::NotifyAndroidInteractiveState(ArcBridgeService* bridge,
   if (!bridge) {
     return;
   }
+  if (!enabled && is_suspending_) {
+    LOG(WARNING) << "Suspend is in progress, avoiding display disable";
+    return;
+  }
   mojom::PowerInstance* power_instance =
       ARC_GET_INSTANCE_FOR_METHOD(bridge->power(), SetInteractive);
-  if (!power_instance)
+  if (!power_instance) {
+    LOG(WARNING) << "ArcPower: Avoiding display change due to no bridge.";
     return;
+  }
+  VLOG(1) << "ArcPower: SetInteractive to " << enabled;
   power_instance->SetInteractive(enabled);
   // Display power state is the same signal as Android interactive state. When
   // power state changes, notify Android interactive state change as well.

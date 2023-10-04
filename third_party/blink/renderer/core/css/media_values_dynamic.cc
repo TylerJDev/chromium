@@ -6,12 +6,14 @@
 
 #include "third_party/blink/public/common/css/forced_colors.h"
 #include "third_party/blink/public/common/css/navigation_controls.h"
+#include "third_party/blink/public/common/css/scripting.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
 #include "third_party/blink/renderer/core/css/css_resolution_units.h"
 #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
 #include "third_party/blink/renderer/core/css/media_values_cached.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "ui/base/ui_base_types.h"
 
 namespace blink {
 
@@ -219,6 +221,14 @@ blink::mojom::DisplayMode MediaValuesDynamic::DisplayMode() const {
   return CalculateDisplayMode(frame_);
 }
 
+ui::WindowShowState MediaValuesDynamic::WindowShowState() const {
+  return CalculateWindowShowState(frame_);
+}
+
+bool MediaValuesDynamic::Resizable() const {
+  return CalculateResizable(frame_);
+}
+
 bool MediaValuesDynamic::StrictMode() const {
   return CalculateStrictMode(frame_);
 }
@@ -268,6 +278,10 @@ int MediaValuesDynamic::GetVerticalViewportSegments() const {
 device::mojom::blink::DevicePostureType MediaValuesDynamic::GetDevicePosture()
     const {
   return CalculateDevicePosture(frame_);
+}
+
+Scripting MediaValuesDynamic::GetScripting() const {
+  return CalculateScripting(frame_);
 }
 
 Document* MediaValuesDynamic::GetDocument() const {

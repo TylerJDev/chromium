@@ -9,10 +9,10 @@
 #import "base/ios/ios_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "ios/chrome/app/application_delegate/app_state.h"
-#import "ios/chrome/browser/crash_report/crash_report_helper.h"
+#import "ios/chrome/browser/crash_report/model/crash_report_helper.h"
 #import "ios/chrome/browser/device_sharing/device_sharing_browser_agent.h"
 #import "ios/chrome/browser/sessions/session_restoration_browser_agent.h"
-#import "ios/chrome/browser/settings/sync/utils/sync_presenter.h"
+#import "ios/chrome/browser/settings/model/sync/utils/sync_presenter.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state_browser_agent.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
@@ -25,7 +25,7 @@
 #import "ios/chrome/browser/shared/public/commands/application_commands.h"
 #import "ios/chrome/browser/shared/public/commands/browsing_data_commands.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
-#import "ios/chrome/browser/snapshots/snapshot_browser_agent.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_browser_agent.h"
 #import "ios/chrome/browser/tabs/inactive_tabs/features.h"
 #import "ios/chrome/browser/tabs/inactive_tabs/utils.h"
 #import "ios/chrome/browser/ui/browser_view/browser_coordinator.h"
@@ -75,6 +75,9 @@ NSString* kInactiveSessionIDSuffix = @"-Inactive";
 
 // Sets up an existing browser.
 - (void)setupBrowser:(Browser*)browser;
+
+// Cleanup `browser` and associated state before destroying it.
+- (void)cleanupBrowser:(Browser*)browser;
 
 // Creates the correct BrowserCoordinator for the corresponding browser state
 // and Browser.
@@ -261,60 +264,50 @@ NSString* kInactiveSessionIDSuffix = @"-Inactive";
 }
 
 - (void)clearMainBrowser {
-  if (_mainBrowser.get()) {
-    WebStateList* webStateList = self.mainBrowser->GetWebStateList();
-    crash_report_helper::StopMonitoringTabStateForWebStateList(webStateList);
-    crash_report_helper::StopMonitoringURLsForWebStateList(webStateList);
-    // Close all webstates in `webStateList`. Do this in an @autoreleasepool as
-    // WebStateList observers will be notified (they are unregistered later). As
-    // some of them may be implemented in Objective-C and unregister themselves
-    // in their -dealloc method, ensure the -autorelease introduced by ARC are
-    // processed before the WebStateList destructor is called.
-    @autoreleasepool {
-      webStateList->CloseAllWebStates(WebStateList::CLOSE_NO_FLAGS);
-    }
+  if (!_mainBrowser) {
+    return;
   }
 
-  _mainBrowser = nullptr;
+  [self cleanupBrowser:_mainBrowser.get()];
+  _mainBrowser.reset();
 }
 
 - (void)clearInactiveBrowser {
-  // No-op if the main Browser or the inactive Browser have not been created
-  // yet.
   Browser* inactiveBrowser =
       _mainBrowser ? _mainBrowser->GetInactiveBrowser() : nullptr;
-  if (inactiveBrowser) {
-    WebStateList* webStateList = inactiveBrowser->GetWebStateList();
-    crash_report_helper::StopMonitoringTabStateForWebStateList(webStateList);
-    crash_report_helper::StopMonitoringURLsForWebStateList(webStateList);
-    // Close all webstates in `webStateList`. Do this in an @autoreleasepool as
-    // WebStateList observers will be notified (they are unregistered later). As
-    // some of them may be implemented in Objective-C and unregister themselves
-    // in their -dealloc method, ensure the -autorelease introduced by ARC are
-    // processed before the WebStateList destructor is called.
-    @autoreleasepool {
-      webStateList->CloseAllWebStates(WebStateList::CLOSE_NO_FLAGS);
-    }
-
-    _mainBrowser->DestroyInactiveBrowser();
+  if (!inactiveBrowser) {
+    return;
   }
+
+  [self cleanupBrowser:inactiveBrowser];
+  _mainBrowser->DestroyInactiveBrowser();
 }
 
 - (void)setOtrBrowser:(std::unique_ptr<Browser>)otrBrowser {
   if (_otrBrowser.get()) {
-    WebStateList* webStateList = self.otrBrowser->GetWebStateList();
-    crash_report_helper::StopMonitoringTabStateForWebStateList(webStateList);
-    // Close all webstates in `webStateList`. Do this in an @autoreleasepool as
-    // WebStateList observers will be notified (they are unregistered later). As
-    // some of them may be implemented in Objective-C and unregister themselves
-    // in their -dealloc method, ensure the -autorelease introduced by ARC are
-    // processed before the WebStateList destructor is called.
-    @autoreleasepool {
-      webStateList->CloseAllWebStates(WebStateList::CLOSE_NO_FLAGS);
-    }
+    [self cleanupBrowser:_otrBrowser.get()];
   }
 
   _otrBrowser = std::move(otrBrowser);
+}
+
+- (void)cleanupBrowser:(Browser*)browser {
+  DCHECK(browser);
+
+  WebStateList* webStateList = browser->GetWebStateList();
+  crash_report_helper::StopMonitoringTabStateForWebStateList(webStateList);
+  if (!browser->GetBrowserState()->IsOffTheRecord()) {
+    crash_report_helper::StopMonitoringURLsForWebStateList(webStateList);
+  }
+
+  // Close all webstates in `webStateList`. Do this in an @autoreleasepool as
+  // WebStateList observers will be notified (they are unregistered later). As
+  // some of them may be implemented in Objective-C and unregister themselves
+  // in their -dealloc method, ensure the -autorelease introduced by ARC are
+  // processed before the WebStateList destructor is called.
+  @autoreleasepool {
+    webStateList->CloseAllWebStates(WebStateList::CLOSE_NO_FLAGS);
+  }
 }
 
 #pragma mark - Other public methods

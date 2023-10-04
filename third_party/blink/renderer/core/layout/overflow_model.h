@@ -25,6 +25,7 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/platform/geometry/layout_rect.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -119,40 +120,33 @@ class BoxLayoutOverflowModel {
 
 class BoxVisualOverflowModel {
  public:
-  BoxVisualOverflowModel(const LayoutRect& self_visual_overflow_rect)
+  explicit BoxVisualOverflowModel(const PhysicalRect& self_visual_overflow_rect)
       : self_visual_overflow_(self_visual_overflow_rect) {}
   BoxVisualOverflowModel(const BoxVisualOverflowModel&) = delete;
   BoxVisualOverflowModel& operator=(const BoxVisualOverflowModel&) = delete;
 
-  void SetSelfVisualOverflow(const LayoutRect& rect) {
+  void SetSelfVisualOverflow(const PhysicalRect& rect) {
     self_visual_overflow_ = rect;
   }
 
-  // The resultant rectangle is in the physical coordinate system if
-  // 'LayoutNGNoLocation' flag is enabled.
-  // It's in the flipped block-flow physical coordinate system otherwise.
-  // TODO(crbug.com/1353190): Change the return type to PhysicalRect.
-  const LayoutRect& SelfVisualOverflowRect() const {
+  const PhysicalRect& SelfVisualOverflowRect() const {
     return self_visual_overflow_;
   }
-  void AddSelfVisualOverflow(const LayoutRect& rect) {
+  void AddSelfVisualOverflow(const PhysicalRect& rect) {
     self_visual_overflow_.Unite(rect);
   }
 
-  // The resultant rectangle is in the physical coordinate system if
-  // 'LayoutNGNoLocation' flag is enabled.
-  // It's in the flipped block-flow physical coordinate system otherwise.
-  // TODO(crbug.com/1353190): Change the return type to PhysicalRect.
-  const LayoutRect& ContentsVisualOverflowRect() const {
+  const PhysicalRect& ContentsVisualOverflowRect() const {
     return contents_visual_overflow_;
   }
-  void AddContentsVisualOverflow(const LayoutRect& rect) {
+  void AddContentsVisualOverflow(const PhysicalRect& rect) {
     contents_visual_overflow_.Unite(rect);
   }
 
   void Move(LayoutUnit dx, LayoutUnit dy) {
-    self_visual_overflow_.Move(dx, dy);
-    contents_visual_overflow_.Move(dx, dy);
+    PhysicalOffset offset(dx, dy);
+    self_visual_overflow_.Move(offset);
+    contents_visual_overflow_.Move(offset);
   }
 
   void SetHasSubpixelVisualEffectOutsets(bool b) {
@@ -163,12 +157,12 @@ class BoxVisualOverflowModel {
   }
 
  private:
-  LayoutRect self_visual_overflow_;
-  LayoutRect contents_visual_overflow_;
+  PhysicalRect self_visual_overflow_;
+  PhysicalRect contents_visual_overflow_;
   bool has_subpixel_visual_effect_outsets_ = false;
 };
 
-struct BoxOverflowModel {
+struct BoxOverflowModel : public GarbageCollected<BoxOverflowModel> {
   absl::optional<BoxLayoutOverflowModel> layout_overflow;
   absl::optional<BoxVisualOverflowModel> visual_overflow;
 
@@ -176,12 +170,12 @@ struct BoxOverflowModel {
   // last paint invalidation.
   struct PreviousOverflowData {
     PhysicalRect previous_physical_layout_overflow_rect;
-    PhysicalRect previous_physical_visual_overflow_rect;
-    PhysicalRect previous_physical_self_visual_overflow_rect;
+    PhysicalRect previous_visual_overflow_rect;
+    PhysicalRect previous_self_visual_overflow_rect;
   };
   absl::optional<PreviousOverflowData> previous_overflow_data;
 
-  USING_FAST_MALLOC(BoxOverflowModel);
+  void Trace(Visitor*) const {}
 };
 
 }  // namespace blink

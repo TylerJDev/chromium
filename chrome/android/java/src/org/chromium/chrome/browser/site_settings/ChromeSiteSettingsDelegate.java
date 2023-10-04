@@ -88,7 +88,7 @@ public class ChromeSiteSettingsDelegate implements SiteSettingsDelegate {
     @Override
     public ManagedPreferenceDelegate getManagedPreferenceDelegate() {
         if (mManagedPreferenceDelegate == null) {
-            mManagedPreferenceDelegate = new ChromeManagedPreferenceDelegate() {
+            mManagedPreferenceDelegate = new ChromeManagedPreferenceDelegate(mProfile) {
                 @Override
                 public boolean isPreferenceControlledByPolicy(Preference preference) {
                     return false;
@@ -97,12 +97,6 @@ public class ChromeSiteSettingsDelegate implements SiteSettingsDelegate {
         }
         return mManagedPreferenceDelegate;
     }
-
-    @Override
-    public void resetZoomLevel(String host) {
-        // TODO(crbug.com/1459631): Add delete logic here.
-    }
-
     @Override
     public void getFaviconImageForURL(GURL faviconUrl, Callback<Drawable> callback) {
         if (mLargeIconBridge == null) {

@@ -29,6 +29,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
@@ -130,8 +131,9 @@ void SetInputFieldsData(Element* element, ContextMenuData& data) {
 
   // Uses heuristics (finding 'password' and its short versions and translations
   // in field name and id etc.) to recognize a field intended for password input
-  // of plain text HTML field type, and it is used to set the field
-  // is_password_type_by_heuristics.
+  // of plain text HTML field type or `HasBeenPasswordField` which returns true
+  // due to either server predictions or user's masking of input values. It is
+  // used to set the field is_password_type_by_heuristics.
   if (auto* input = DynamicTo<HTMLInputElement>(element)) {
     const AtomicString& id = input->GetIdAttribute();
     const AtomicString& name = input->GetNameAttribute();
@@ -144,7 +146,8 @@ void SetInputFieldsData(Element* element, ContextMenuData& data) {
         (data.input_field_type ==
          mojom::blink::ContextMenuDataInputFieldType::kPlainText) &&
         (passwordRegexp->Match(id.GetString()) >= 0 ||
-         passwordRegexp->Match(name.GetString()) >= 0);
+         passwordRegexp->Match(name.GetString()) >= 0 ||
+         input->HasBeenPasswordField());
   }
 }
 
@@ -182,8 +185,12 @@ uint32_t EnumToBitmask(enumType outcome) {
 absl::optional<uint64_t> GetFormRendererId(HitTestResult& result) {
   if (auto* text_control_element =
           DynamicTo<TextControlElement>(result.InnerNode())) {
-    if (text_control_element->Form() != nullptr)
-      return text_control_element->Form()->UniqueRendererFormId();
+    if (text_control_element->Form() != nullptr) {
+      return (base::FeatureList::IsEnabled(
+                 features::kAutofillUseDomNodeIdForRendererId))
+                 ? text_control_element->Form()->GetDomNodeId()
+                 : text_control_element->Form()->UniqueRendererFormId();
+    }
   }
   return absl::nullopt;
 }
@@ -191,7 +198,10 @@ absl::optional<uint64_t> GetFormRendererId(HitTestResult& result) {
 absl::optional<uint64_t> GetFieldRendererId(HitTestResult& result) {
   if (auto* text_control_element =
           DynamicTo<TextControlElement>(result.InnerNode())) {
-    return text_control_element->UniqueRendererFormControlId();
+    return (base::FeatureList::IsEnabled(
+               features::kAutofillUseDomNodeIdForRendererId))
+               ? text_control_element->GetDomNodeId()
+               : text_control_element->UniqueRendererFormControlId();
   }
   return absl::nullopt;
 }

@@ -827,6 +827,7 @@ html element link
     property sizes
     property target
     property type
+html element listbox
 html element listing
     property width
 html element main
@@ -989,12 +990,14 @@ html element select
     property selectedIndex
     property selectedOptions
     property setCustomValidity
+    property showPicker
     property size
     property type
     property validationMessage
     property validity
     property value
     property willValidate
+html element selectedoption
 html element selectlist
     property checkValidity
     property disabled
@@ -1652,13 +1655,6 @@ svg element circle
     property transform
 svg element clipPath
     property clipPathUnits
-    property farthestViewportElement
-    property getBBox
-    property getCTM
-    property getScreenCTM
-    property nearestViewportElement
-    property requiredExtensions
-    property systemLanguage
     property transform
 svg element defs
     property farthestViewportElement
@@ -2010,6 +2006,7 @@ svg element g
     property systemLanguage
     property transform
 svg element image
+    property crossOrigin
     property decode
     property decoding
     property farthestViewportElement

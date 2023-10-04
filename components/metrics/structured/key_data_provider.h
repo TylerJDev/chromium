@@ -5,8 +5,12 @@
 #ifndef COMPONENTS_METRICS_STRUCTURED_KEY_DATA_PROVIDER_H_
 #define COMPONENTS_METRICS_STRUCTURED_KEY_DATA_PROVIDER_H_
 
+#include "base/functional/callback_forward.h"
 #include "components/metrics/structured/key_data.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+
+namespace base {
+class FilePath;
+}
 
 namespace metrics::structured {
 

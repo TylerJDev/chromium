@@ -5,6 +5,7 @@
 module blink.mojom;
 
 import "cc/mojom/browser_controls_state.mojom";
+import "mojo/public/mojom/base/shared_memory.mojom";
 import "mojo/public/mojom/base/string16.mojom";
 import "mojo/public/mojom/base/text_direction.mojom";
 import "mojo/public/mojom/base/time.mojom";
@@ -18,6 +19,7 @@ import "services/network/public/mojom/network_types.mojom";
 import "services/network/public/mojom/source_location.mojom";
 import "services/network/public/mojom/url_loader_completion_status.mojom";
 import "services/network/public/mojom/attribution.mojom";
+import "skia/public/mojom/bitmap.mojom";
 import "skia/public/mojom/skcolor.mojom";
 import "skia/public/mojom/skcolor4f.mojom";
 import "third_party/blink/public/mojom/blob/blob.mojom";
@@ -29,6 +31,7 @@ import "third_party/blink/public/mojom/css/preferred_color_scheme.mojom";
 import "third_party/blink/public/mojom/devtools/console_message.mojom";
 import "third_party/blink/public/mojom/devtools/devtools_agent.mojom";
 import "third_party/blink/public/mojom/devtools/inspector_issue.mojom";
+import "third_party/blink/public/mojom/drag/drag.mojom";
 import "third_party/blink/public/mojom/favicon/favicon_url.mojom";
 import "third_party/blink/public/mojom/fenced_frame/fenced_frame.mojom";
 import "third_party/blink/public/mojom/fenced_frame/fenced_frame_config.mojom";
@@ -190,6 +193,8 @@ struct IframeAttributes {
   bool credentialless;
   // 'browsingtopics' attribute of the iframe.
   bool browsing_topics;
+  // 'sharedstoragewritable' attribute of the iframe.
+  bool shared_storage_writable;
   // 'id' attribute of the iframe. This can be optional because id might not be set.
   string? id;
   // 'name' attribute of the iframe. This is different from window.name, which is
@@ -757,6 +762,17 @@ interface LocalFrameHost {
   // See https://github.com/WICG/view-transitions/blob/main/explainer.md#declarative-opt-in-to-transitions.
   OnViewTransitionOptInChanged(
     ViewTransitionSameOriginOptIn view_transition_opt_in);
+
+  // Used to tell the browser the user started dragging in the content area.
+  // |drag_data| contains contextual information about the pieces of the page
+  // the user dragged. The browser uses this notification to initiate a drag
+  // session at the OS level.
+  StartDragging(DragData drag_data,
+                AllowedDragOperations operations_allowed,
+                skia.mojom.BitmapN32? image,
+                gfx.mojom.Vector2d cursor_offset_in_dip,
+                gfx.mojom.Rect drag_obj_rect_in_dip,
+                DragEventSourceInfo event_info);
 };
 
 // Implemented in Browser, this interface defines frame-specific methods
@@ -1191,6 +1207,11 @@ interface LocalMainFrame {
   UpdateBrowserControlsState(cc.mojom.BrowserControlsState constraints,
                              cc.mojom.BrowserControlsState current,
                              bool animate);
+
+  // Transmits data to V8CrowdsourcedCompileHintsConsumer in the renderer. The
+  // data is a Bloom filter describing which JavaScript functions on the page
+  // should be eagerly parsed & compiled by the JS engine.
+  SetV8CompileHints(mojo_base.mojom.ReadOnlySharedMemoryRegion data);
 };
 
 // Implemented in Browser, this interface defines local-main-frame-specific

@@ -13,6 +13,7 @@ import org.chromium.base.annotations.JNINamespace;
 import org.chromium.base.annotations.NativeMethods;
 import org.chromium.blink.mojom.AuthenticatorStatus;
 import org.chromium.content_public.browser.GlobalRenderFrameHostId;
+import org.chromium.content_public.browser.JavaScriptCallback;
 import org.chromium.content_public.browser.LifecycleState;
 import org.chromium.content_public.browser.PermissionsPolicyFeature;
 import org.chromium.content_public.browser.RenderFrameHost;
@@ -147,6 +148,12 @@ public class RenderFrameHostImpl implements RenderFrameHost {
     }
 
     @Override
+    public boolean isCloseWatcherActive() {
+        return RenderFrameHostImplJni.get().isCloseWatcherActive(
+                mNativeRenderFrameHostAndroid, RenderFrameHostImpl.this);
+    }
+
+    @Override
     public boolean signalCloseWatcherIfActive() {
         return RenderFrameHostImplJni.get().signalCloseWatcherIfActive(
                 mNativeRenderFrameHostAndroid, RenderFrameHostImpl.this);
@@ -213,6 +220,11 @@ public class RenderFrameHostImpl implements RenderFrameHost {
         return new WebAuthSecurityChecksResults(securityCheckResult, isCrossOrigin);
     }
 
+    @CalledByNative
+    private static void onEvaluateJavaScriptResult(String jsonResult, JavaScriptCallback callback) {
+        callback.handleJavaScriptResult(jsonResult);
+    }
+
     @Override
     public int performMakeCredentialWebAuthSecurityChecks(
             String relyingPartyId, Origin effectiveOrigin, boolean isPaymentCredentialCreation) {
@@ -244,6 +256,13 @@ public class RenderFrameHostImpl implements RenderFrameHost {
                 mNativeRenderFrameHostAndroid, callback);
     }
 
+    @Override
+    public void executeJavaScriptInIsolatedWorld(
+            String script, int worldId, @Nullable JavaScriptCallback callback) {
+        RenderFrameHostImplJni.get().executeJavaScriptInIsolatedWorld(
+                mNativeRenderFrameHostAndroid, script, worldId, callback);
+    }
+
     @NativeMethods
     interface Natives {
         GURL getLastCommittedURL(long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
@@ -260,6 +279,7 @@ public class RenderFrameHostImpl implements RenderFrameHost {
         void notifyUserActivation(long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
         void notifyWebAuthnAssertionRequestSucceeded(
                 long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
+        boolean isCloseWatcherActive(long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
         boolean signalCloseWatcherIfActive(
                 long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
         boolean isRenderFrameLive(long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
@@ -278,5 +298,7 @@ public class RenderFrameHostImpl implements RenderFrameHost {
         int getLifecycleState(long nativeRenderFrameHostAndroid, RenderFrameHostImpl caller);
         void insertVisualStateCallback(
                 long nativeRenderFrameHostAndroid, Callback<Boolean> callback);
+        void executeJavaScriptInIsolatedWorld(long nativeRenderFrameHostAndroid, String stript,
+                int isolatedWorldId, JavaScriptCallback callback);
     }
 }

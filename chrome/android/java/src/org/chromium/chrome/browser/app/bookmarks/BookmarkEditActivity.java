@@ -33,8 +33,9 @@ import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowProperties;
 import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowProperties.ImageVisibility;
 import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowViewBinder;
 import org.chromium.chrome.browser.commerce.ShoppingServiceFactory;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.sync.SyncServiceFactory;
 import org.chromium.components.bookmarks.BookmarkId;
 import org.chromium.components.bookmarks.BookmarkItem;
 import org.chromium.components.browser_ui.widget.TintedDrawable;
@@ -147,7 +148,7 @@ public class BookmarkEditActivity extends SynchronousInitializationActivity {
             mUrlEditText.setVisibility(isFolder ? View.GONE : View.VISIBLE);
             getSupportActionBar().setTitle(
                     isFolder ? R.string.edit_folder : R.string.edit_bookmark);
-            mBookmarkUiPrefs = new BookmarkUiPrefs(SharedPreferencesManager.getInstance());
+            mBookmarkUiPrefs = new BookmarkUiPrefs(ChromeSharedPreferences.getInstance());
             mBookmarkUiPrefs.addObserver(mBookmarkUiPrefsObserver);
 
             Resources res = getResources();
@@ -160,8 +161,8 @@ public class BookmarkEditActivity extends SynchronousInitializationActivity {
                             BookmarkUtils.getRoundedIconGenerator(
                                     this, BookmarkRowDisplayPref.VISUAL),
                             BookmarkUtils.getImageIconSize(res, BookmarkRowDisplayPref.VISUAL),
-                            BookmarkUtils.getFaviconDisplaySize(
-                                    res, BookmarkRowDisplayPref.VISUAL)),
+                            BookmarkUtils.getFaviconDisplaySize(res, BookmarkRowDisplayPref.VISUAL),
+                            SyncServiceFactory.getForProfile(profile)),
                     mModel, mBookmarkUiPrefs, ShoppingServiceFactory.getForProfile(profile));
 
             mFolderPickerRowContainer = findViewById(R.id.improved_folder_row_container);

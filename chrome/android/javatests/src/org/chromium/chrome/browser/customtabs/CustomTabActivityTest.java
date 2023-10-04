@@ -94,6 +94,8 @@ import org.chromium.base.ContextUtils;
 import org.chromium.base.IntentUtils;
 import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
+import org.chromium.base.supplier.ObservableSupplierImpl;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.base.test.util.ApplicationTestUtils;
@@ -105,6 +107,7 @@ import org.chromium.base.test.util.CriteriaNotSatisfiedException;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.MinAndroidSdkLevel;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.AppHooks;
@@ -115,6 +118,7 @@ import org.chromium.chrome.browser.IntentHandler;
 import org.chromium.chrome.browser.LaunchIntentDispatcher;
 import org.chromium.chrome.browser.TabsOpenedFromExternalAppTest;
 import org.chromium.chrome.browser.WarmupManager;
+import org.chromium.chrome.browser.back_press.BackPressManager;
 import org.chromium.chrome.browser.browserservices.SessionDataHolder;
 import org.chromium.chrome.browser.browserservices.intents.BrowserServicesIntentDataProvider;
 import org.chromium.chrome.browser.browserservices.verification.ChromeOriginVerifier;
@@ -137,7 +141,7 @@ import org.chromium.chrome.browser.history.TestBrowsingHistoryObserver;
 import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
 import org.chromium.chrome.browser.page_load_metrics.PageLoadMetrics;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.EmptyTabObserver;
 import org.chromium.chrome.browser.tab.Tab;
@@ -161,6 +165,7 @@ import org.chromium.chrome.test.util.browser.Features.DisableFeatures;
 import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.chrome.test.util.browser.contextmenu.ContextMenuUtils;
 import org.chromium.components.browser_ui.widget.CoordinatorLayoutForPointer;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
 import org.chromium.components.content_settings.CookieControlsMode;
 import org.chromium.components.embedder_support.util.Origin;
 import org.chromium.components.prefs.PrefService;
@@ -174,9 +179,6 @@ import org.chromium.content_public.browser.test.util.TestThreadUtils;
 import org.chromium.content_public.common.ContentSwitches;
 import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.net.test.util.TestWebServer;
-import org.chromium.ui.modaldialog.ModalDialogManager;
-import org.chromium.ui.modaldialog.ModalDialogProperties;
-import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.mojom.WindowOpenDisposition;
 import org.chromium.ui.test.util.BlankUiTestActivity;
 import org.chromium.ui.test.util.DeviceRestriction;
@@ -272,14 +274,14 @@ public class CustomTabActivityTest {
     @After
     public void tearDown() {
         TestThreadUtils.runOnUiThreadBlocking(() -> FirstRunStatus.setFirstRunFlowComplete(false));
-        SharedPreferencesManager pref = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager pref = ChromeSharedPreferences.getInstance();
         pref.removeKey(ChromePreferenceKeys.CUSTOM_TABS_LAST_TASK_ID);
         pref.removeKey(ChromePreferenceKeys.CUSTOM_TABS_LAST_URL);
         pref.removeKey(ChromePreferenceKeys.CUSTOM_TABS_LAST_CLIENT_PACKAGE);
 
-        SharedPreferencesManager.getInstance().removeKey(
+        ChromeSharedPreferences.getInstance().removeKey(
                 ChromePreferenceKeys.CUSTOM_TABS_LAST_CLOSE_TAB_INTERACTION);
-        SharedPreferencesManager.getInstance().removeKey(
+        ChromeSharedPreferences.getInstance().removeKey(
                 ChromePreferenceKeys.CUSTOM_TABS_LAST_CLOSE_TIMESTAMP);
 
         // finish() is called on a non-UI thread by the testing harness. Must hide the menu
@@ -697,7 +699,7 @@ public class CustomTabActivityTest {
         Activity emptyActivity = startBlankUiTestActivity();
 
         // Write shared pref as it there's a previous CCT launch with sessions.
-        SharedPreferencesManager pref = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager pref = ChromeSharedPreferences.getInstance();
         pref.writeString(ChromePreferenceKeys.CUSTOM_TABS_LAST_URL, mTestPage);
         pref.writeString(ChromePreferenceKeys.CUSTOM_TABS_LAST_CLIENT_PACKAGE, TEST_PACKAGE);
         pref.writeInt(ChromePreferenceKeys.CUSTOM_TABS_LAST_TASK_ID, emptyActivity.getTaskId());
@@ -746,7 +748,7 @@ public class CustomTabActivityTest {
         ApplicationTestUtils.waitForActivityState(activity, Stage.DESTROYED);
 
         // Write shared prefs as it the last CCT session has saw tab interactions.
-        SharedPreferencesManager pref = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager pref = ChromeSharedPreferences.getInstance();
         pref.writeBoolean(ChromePreferenceKeys.CUSTOM_TABS_LAST_CLOSE_TAB_INTERACTION, true);
 
         // Start another CCT with same intent right away.
@@ -1452,10 +1454,10 @@ public class CustomTabActivityTest {
         CriteriaHelper.pollUiThread(() -> getActivity().isDestroyed());
 
         Assert.assertTrue("CUSTOM_TABS_LAST_CLOSE_TAB_INTERACTION not recorded.",
-                SharedPreferencesManager.getInstance().contains(
+                ChromeSharedPreferences.getInstance().contains(
                         ChromePreferenceKeys.CUSTOM_TABS_LAST_CLOSE_TAB_INTERACTION));
         Assert.assertTrue("CUSTOM_TABS_LAST_CLOSE_TIMESTAMP not recorded.",
-                SharedPreferencesManager.getInstance().contains(
+                ChromeSharedPreferences.getInstance().contains(
                         ChromePreferenceKeys.CUSTOM_TABS_LAST_CLOSE_TIMESTAMP));
         Assert.assertEquals(1,
                 RecordHistogram.getHistogramTotalCountForTesting(
@@ -1779,6 +1781,7 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
     @EnableFeatures({ChromeFeatureList.CCT_RESIZABLE_FOR_THIRD_PARTIES})
     @DisableFeatures({ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET})
     public void testLaunchPartialCustomTabActivity_BottomSheet() throws Exception {
@@ -1794,6 +1797,7 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
     @EnableFeatures({ChromeFeatureList.CCT_RESIZABLE_FOR_THIRD_PARTIES,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET_FOR_THIRD_PARTIES})
@@ -1856,6 +1860,7 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
     @EnableFeatures({ChromeFeatureList.CCT_RESIZABLE_FOR_THIRD_PARTIES,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET_FOR_THIRD_PARTIES})
@@ -1964,6 +1969,7 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
     @EnableFeatures({ChromeFeatureList.CCT_RESIZABLE_FOR_THIRD_PARTIES,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET_FOR_THIRD_PARTIES})
@@ -1998,6 +2004,7 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
     @EnableFeatures({ChromeFeatureList.CCT_RESIZABLE_FOR_THIRD_PARTIES,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET,
             ChromeFeatureList.CCT_RESIZABLE_SIDE_SHEET_FOR_THIRD_PARTIES})
@@ -2040,7 +2047,7 @@ public class CustomTabActivityTest {
         assertTrue(isTranslucent);
     }
 
-    private void doOpaqueOriginTest(boolean enabled, boolean prefetch) throws Exception {
+    private void doOpaqueOriginTest(boolean prefetch) throws Exception {
         TestWebServer webServer = TestWebServer.start();
         String url = webServer.setResponse("/ok.html", "<html>ok</html>", null);
         CustomTabsConnection connection = CustomTabsTestUtils.warmUpAndWait();
@@ -2062,36 +2069,20 @@ public class CustomTabActivityTest {
             mCustomTabActivityTestRule.startCustomTabActivityWithIntent(intent);
         }
         String actualHeader = webServer.getLastRequest("/ok.html").headerValue("Sec-Fetch-Site");
-        assertEquals(enabled ? "cross-site" : "none", actualHeader);
+        assertEquals("cross-site", actualHeader);
         webServer.shutdown();
     }
 
     @Test
     @LargeTest
-    @EnableFeatures(ChromeFeatureList.OPAQUE_ORIGIN_FOR_INCOMING_INTENTS)
     public void testOpaqueOriginFromPrefetch_Enabled() throws Exception {
-        doOpaqueOriginTest(true, true);
+        doOpaqueOriginTest(true);
     }
 
     @Test
     @LargeTest
-    @DisableFeatures(ChromeFeatureList.OPAQUE_ORIGIN_FOR_INCOMING_INTENTS)
-    public void testOpaqueOriginFromPrefetch_Disabled() throws Exception {
-        doOpaqueOriginTest(false, true);
-    }
-
-    @Test
-    @LargeTest
-    @EnableFeatures(ChromeFeatureList.OPAQUE_ORIGIN_FOR_INCOMING_INTENTS)
     public void testOpaqueOriginFromIntent_Enabled() throws Exception {
-        doOpaqueOriginTest(true, false);
-    }
-
-    @Test
-    @LargeTest
-    @DisableFeatures(ChromeFeatureList.OPAQUE_ORIGIN_FOR_INCOMING_INTENTS)
-    public void testOpaqueOriginFromIntent_Disabled() throws Exception {
-        doOpaqueOriginTest(false, false);
+        doOpaqueOriginTest(false);
     }
 
     /** Asserts that the Overlay Panel is set to allow or not allow ever hiding the Toolbar. */
@@ -2261,7 +2252,8 @@ public class CustomTabActivityTest {
         // lifetime.
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             final CustomTabActivity activity = mCustomTabActivityTestRule.getActivity();
-            activity.getComponent().resolveNavigationController().navigate("about:blank");
+            activity.getComponent().resolveNavigationController().navigate(
+                    new LoadUrlParams("about:blank"), intent);
         });
 
         if (allowMetrics) {
@@ -2342,7 +2334,7 @@ public class CustomTabActivityTest {
 
     private void assertLastLaunchedClientAppRecorded(String histogramSuffix, String clientPackage,
             String url, int taskId, boolean umaRecorded) {
-        SharedPreferencesManager pref = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager pref = ChromeSharedPreferences.getInstance();
         String histogramName = "CustomTabs.RetainableSessionsV2.TimeBetweenLaunch" + histogramSuffix;
 
         Assert.assertEquals("Client package name in shared pref is different.", clientPackage,
@@ -2441,108 +2433,82 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
-    public void testNavigationDismissTabModalDialog() {
+    @EnableFeatures(ChromeFeatureList.BACK_GESTURE_REFACTOR)
+    public void testBackPressNavigationFailure_WithRecover() {
         Context context = getInstrumentation().getTargetContext().getApplicationContext();
         Intent intent = CustomTabsIntentTestUtils.createMinimalCustomTabIntent(context, mTestPage);
         mCustomTabActivityTestRule.startCustomTabActivityWithIntent(intent);
-        final Tab tab = mCustomTabActivityTestRule.getActivity().getActivityTab();
-
-        ModalDialogManager dialogManager =
-                mCustomTabActivityTestRule.getActivity().getModalDialogManagerSupplier().get();
-        TestThreadUtils.runOnUiThreadBlocking(() -> {
-            PropertyModel dialog =
-                    new PropertyModel.Builder(ModalDialogProperties.ALL_KEYS)
-                            .with(ModalDialogProperties.TITLE, "test")
-                            .with(ModalDialogProperties.POSITIVE_BUTTON_TEXT,
-                                    context.getString(R.string.delete))
-                            .with(ModalDialogProperties.NEGATIVE_BUTTON_TEXT,
-                                    context.getString(R.string.cancel))
-                            .with(ModalDialogProperties.CONTROLLER,
-                                    new ModalDialogProperties.Controller() {
-                                        @Override
-                                        public void onClick(PropertyModel model, int buttonType) {}
-
-                                        @Override
-                                        public void onDismiss(
-                                                PropertyModel model, int dismissalCause) {}
-                                    })
-                            .build();
-
-            dialogManager.showDialog(dialog, ModalDialogManager.ModalDialogType.TAB);
-        });
-
-        CriteriaHelper.pollUiThread(() -> dialogManager.isShowing());
+        final Tab tab = getActivity().getActivityTab();
+        BackPressManager.TAB_HISTORY_RECOVER.setForTesting(true);
 
         TestThreadUtils.runOnUiThreadBlocking(
                 (Runnable) () -> tab.loadUrl(new LoadUrlParams(mTestPage2)));
         ChromeTabUtils.waitForTabPageLoaded(tab, mTestPage2);
 
-        Assert.assertTrue(tab.canGoBack());
-        Assert.assertFalse(tab.canGoForward());
-
-        CriteriaHelper.pollUiThread(() -> !dialogManager.isShowing());
-    }
-
-    @Test
-    @SmallTest
-    @DisableFeatures(ChromeFeatureList.BACK_GESTURE_REFACTOR)
-    public void testBackPressDismissTabModalDialog() {
-        Context context = getInstrumentation().getTargetContext().getApplicationContext();
-        Intent intent = CustomTabsIntentTestUtils.createMinimalCustomTabIntent(context, mTestPage);
-        mCustomTabActivityTestRule.startCustomTabActivityWithIntent(intent);
-        final Tab tab = mCustomTabActivityTestRule.getActivity().getActivityTab();
-
-        ModalDialogManager dialogManager =
-                mCustomTabActivityTestRule.getActivity().getModalDialogManagerSupplier().get();
-
-        TestThreadUtils.runOnUiThreadBlocking(
-                (Runnable) () -> tab.loadUrl(new LoadUrlParams(mTestPage2)));
-        ChromeTabUtils.waitForTabPageLoaded(tab, mTestPage2);
-
+        BackPressHandler navigationHandler =
+                getActivity()
+                        .getBackPressManagerForTesting()
+                        .getHandlersForTesting()[BackPressHandler.Type.TAB_HISTORY];
+        ObservableSupplierImpl<Boolean> handleBackPressChangedSupplier =
+                (ObservableSupplierImpl<Boolean>) (navigationHandler
+                                                           .getHandleBackPressChangedSupplier());
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher("Android.BackPress.Failure",
+                        BackPressManager.getHistogramValueForTesting(
+                                BackPressHandler.Type.MINIMIZE_APP_AND_CLOSE_TAB));
         TestThreadUtils.runOnUiThreadBlocking(() -> {
-            PropertyModel dialog =
-                    new PropertyModel.Builder(ModalDialogProperties.ALL_KEYS)
-                            .with(ModalDialogProperties.TITLE, "test")
-                            .with(ModalDialogProperties.POSITIVE_BUTTON_TEXT,
-                                    context.getString(R.string.delete))
-                            .with(ModalDialogProperties.NEGATIVE_BUTTON_TEXT,
-                                    context.getString(R.string.cancel))
-                            .with(ModalDialogProperties.CONTROLLER,
-                                    new ModalDialogProperties.Controller() {
-                                        @Override
-                                        public void onClick(PropertyModel model, int buttonType) {}
-
-                                        @Override
-                                        public void onDismiss(
-                                                PropertyModel model, int dismissalCause) {}
-                                    })
-                            .build();
-
-            dialogManager.showDialog(dialog, ModalDialogManager.ModalDialogType.TAB);
-        });
-        CriteriaHelper.pollUiThread(() -> dialogManager.isShowing(), "Dialog should be displayed");
-
-        TestThreadUtils.runOnUiThreadBlocking(() -> {
-            mCustomTabActivityTestRule.getActivity().getOnBackPressedDispatcher().onBackPressed();
+            handleBackPressChangedSupplier.set(false);
+            try {
+                getActivity().getOnBackPressedDispatcher().onBackPressed();
+            } catch (AssertionError ignored) {
+                if (!ignored.getMessage().contains("-1")) throw ignored;
+            }
         });
 
-        Assert.assertTrue("Should be able to navigate back after navigation", tab.canGoBack());
-        Assert.assertFalse("Should be unable to navigate forward", tab.canGoForward());
+        histogramWatcher.assertExpected("Failure should be recorded");
         CriteriaHelper.pollInstrumentationThread(() -> {
-            Criteria.checkThat("Tab should not be navigated when dialog is dismissed",
+            Criteria.checkThat("Tab should be navigated when tab handler fails",
                     ChromeTabUtils.getUrlStringOnUiThread(getActivity().getActivityTab()),
-                    is(mTestPage2));
+                    is(mTestPage));
         });
-
-        CriteriaHelper.pollUiThread(
-                () -> !dialogManager.isShowing(), "Dialog should be dismissed by back press");
+        BackPressManager.TAB_HISTORY_RECOVER.setForTesting(false);
     }
 
     @Test
     @SmallTest
     @EnableFeatures(ChromeFeatureList.BACK_GESTURE_REFACTOR)
-    public void testBackPressDismissTabModalDialog_BackGestureRefactor() {
-        testBackPressDismissTabModalDialog();
+    public void testBackPressNavigationFailure_WithoutRecover() {
+        Context context = getInstrumentation().getTargetContext().getApplicationContext();
+        Intent intent = CustomTabsIntentTestUtils.createMinimalCustomTabIntent(context, mTestPage);
+        mCustomTabActivityTestRule.startCustomTabActivityWithIntent(intent);
+        final Tab tab = getActivity().getActivityTab();
+        BackPressManager.TAB_HISTORY_RECOVER.setForTesting(false);
+
+        TestThreadUtils.runOnUiThreadBlocking(
+                (Runnable) () -> tab.loadUrl(new LoadUrlParams(mTestPage2)));
+        ChromeTabUtils.waitForTabPageLoaded(tab, mTestPage2);
+
+        BackPressHandler navigationHandler =
+                getActivity()
+                        .getBackPressManagerForTesting()
+                        .getHandlersForTesting()[BackPressHandler.Type.TAB_HISTORY];
+        ObservableSupplierImpl<Boolean> handleBackPressChangedSupplier =
+                (ObservableSupplierImpl<Boolean>) (navigationHandler
+                                                           .getHandleBackPressChangedSupplier());
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            handleBackPressChangedSupplier.set(false);
+            try {
+                getActivity().getOnBackPressedDispatcher().onBackPressed();
+            } catch (AssertionError ignored) {
+                if (!ignored.getMessage().contains("-1")) throw ignored;
+            }
+        });
+
+        CriteriaHelper.pollInstrumentationThread(() -> {
+            Criteria.checkThat("Tab should not be navigated when tab handler fails without recover",
+                    ChromeTabUtils.getUrlStringOnUiThread(getActivity().getActivityTab()),
+                    is(mTestPage2));
+        });
     }
 
     private void rotateCustomTabActivity(CustomTabActivity activity, int orientation) {

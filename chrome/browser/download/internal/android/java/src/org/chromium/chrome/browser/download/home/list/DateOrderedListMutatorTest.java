@@ -4,8 +4,6 @@
 
 package org.chromium.chrome.browser.download.home.list;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,7 +20,6 @@ import org.mockito.junit.MockitoRule;
 import org.robolectric.annotation.Config;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
-import org.chromium.base.test.util.JniMocker;
 import org.chromium.chrome.browser.download.home.DownloadManagerUiConfig;
 import org.chromium.chrome.browser.download.home.JustNowProvider;
 import org.chromium.chrome.browser.download.home.StableIds;
@@ -41,9 +38,7 @@ import org.chromium.components.offline_items_collection.OfflineItemFilter;
 import org.chromium.components.offline_items_collection.OfflineItemState;
 import org.chromium.components.url_formatter.SchemeDisplay;
 import org.chromium.components.url_formatter.UrlFormatter;
-import org.chromium.components.url_formatter.UrlFormatterJni;
 import org.chromium.ui.modelutil.ListObservable.ListObserver;
-import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
 
 import java.util.ArrayList;
@@ -62,10 +57,6 @@ public class DateOrderedListMutatorTest {
 
     @Mock
     private ListObserver<Void> mObserver;
-    @Rule
-    public JniMocker mJniMocker = new JniMocker();
-    @Mock
-    private UrlFormatter.Natives mUrlFormatterJniMock;
 
     private ListItemModel mModel;
 
@@ -79,10 +70,6 @@ public class DateOrderedListMutatorTest {
     @Before
     public void setUp() {
         mModel = new ListItemModel();
-        mJniMocker.mock(UrlFormatterJni.TEST_HOOKS, mUrlFormatterJniMock);
-        when(mUrlFormatterJniMock.formatUrlForSecurityDisplay(
-                     any(), eq(SchemeDisplay.OMIT_HTTP_AND_HTTPS)))
-                .then(inv -> ((GURL) (inv.getArgument(0))).getSpec());
     }
 
     @After
@@ -1058,7 +1045,9 @@ public class DateOrderedListMutatorTest {
 
         Assert.assertEquals(10, mModel.size());
         assertDivider(mModel.get(0), ListItem.CardDividerListItem.Position.TOP);
-        assertCardHeader(mModel.get(1), buildCalendar(2018, 1, 4, 0), JUnitTestGURLs.EXAMPLE_URL);
+        assertCardHeader(mModel.get(1), buildCalendar(2018, 1, 4, 0),
+                UrlFormatter.formatUrlForSecurityDisplay(
+                        JUnitTestGURLs.EXAMPLE_URL, SchemeDisplay.OMIT_HTTP_AND_HTTPS));
         assertOfflineItem(mModel.get(2), buildCalendar(2018, 1, 4, 4), item4);
         assertDivider(mModel.get(3), ListItem.CardDividerListItem.Position.MIDDLE);
         assertOfflineItem(mModel.get(4), buildCalendar(2018, 1, 4, 3), item3);
@@ -1164,7 +1153,7 @@ public class DateOrderedListMutatorTest {
         item.isSuggested = true;
         item.creationTimeMs = calendar.getTimeInMillis();
         item.filter = filter;
-        item.url = JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL);
+        item.url = JUnitTestGURLs.EXAMPLE_URL;
         return item;
     }
 

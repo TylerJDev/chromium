@@ -7,11 +7,12 @@ import {ElementsTestRunner} from 'elements_test_runner';
 import {NetworkTestRunner} from 'network_test_runner';
 
 import * as Common from 'devtools/core/common/common.js';
+import * as Network from 'devtools/panels/network/network.js';
+import * as ElementsModule from 'devtools/panels/elements/elements.js';
+import * as SourcesModule from 'devtools/panels/sources/sources.js';
 
 (async function() {
   TestRunner.addResult(`Tests object revelation in the UI.\n`);
-  await TestRunner.loadLegacyModule('elements');
-  await TestRunner.loadLegacyModule('sources');
   await TestRunner.loadLegacyModule('resources');
   await TestRunner.showPanel('elements');
   await TestRunner.showPanel('sources');
@@ -127,10 +128,10 @@ import * as Common from 'devtools/core/common/common.js';
   ]);
 
   function installHooks() {
-    TestRunner.addSniffer(Elements.ElementsPanel.prototype, 'revealAndSelectNode', nodeRevealed, true);
-    TestRunner.addSniffer(Sources.SourcesPanel.prototype, 'showUILocation', uiLocationRevealed, true);
+    TestRunner.addSniffer(ElementsModule.ElementsPanel.ElementsPanel.prototype, 'revealAndSelectNode', nodeRevealed, true);
+    TestRunner.addSniffer(SourcesModule.SourcesPanel.SourcesPanel.prototype, 'showUILocation', uiLocationRevealed, true);
     TestRunner.addSniffer(Resources.ApplicationPanelSidebar.prototype, 'showResource', resourceRevealed, true);
-    TestRunner.addSniffer(Network.NetworkPanel.prototype, 'revealAndHighlightRequest', revealed, true);
+    TestRunner.addSniffer(Network.NetworkPanel.NetworkPanel.prototype, 'revealAndHighlightRequest', revealed, true);
   }
 
   function nodeRevealed(node) {

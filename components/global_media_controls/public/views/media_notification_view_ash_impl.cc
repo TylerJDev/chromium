@@ -46,8 +46,8 @@ constexpr int kPlayPauseContainerSpacing = 12;
 constexpr int kChevronIconSize = 15;
 constexpr int kPlayPauseIconSize = 26;
 constexpr int kControlsIconSize = 20;
-constexpr int kBackgroundCornerRadius = 12;
-constexpr int kArtworkCornerRadius = 10;
+constexpr int kBackgroundCornerRadius = 16;
+constexpr int kArtworkCornerRadius = 12;
 constexpr int kSourceLineHeight = 18;
 constexpr int kTitleArtistLineHeight = 20;
 constexpr int kNotMediaActionButtonId = -1;
@@ -66,6 +66,7 @@ const views::Label::CustomFont kTextFont = {
 
 class MediaButton : public views::ImageButton {
  public:
+  METADATA_HEADER(MediaButton);
   MediaButton(PressedCallback callback,
               int button_id,
               const gfx::VectorIcon& vector_icon,
@@ -77,7 +78,6 @@ class MediaButton : public views::ImageButton {
         icon_size_(button_id == static_cast<int>(MediaSessionAction::kPlay)
                        ? kPlayPauseIconSize
                        : kControlsIconSize),
-        foreground_color_id_(foreground_color_id),
         foreground_disabled_color_id_(foreground_disabled_color_id) {
     views::ConfigureVectorImageButton(this);
     SetFlipCanvasOnPaintForRTLUI(false);
@@ -93,18 +93,19 @@ class MediaButton : public views::ImageButton {
     SetFocusBehavior(views::View::FocusBehavior::ALWAYS);
     views::FocusRing::Get(this)->SetColorId(focus_ring_color_id);
 
-    Update(button_id, vector_icon, tooltip_text_id);
+    Update(button_id, vector_icon, tooltip_text_id, foreground_color_id);
   }
 
   void Update(int button_id,
               const gfx::VectorIcon& vector_icon,
-              int tooltip_text_id) {
+              int tooltip_text_id,
+              ui::ColorId foreground_color_id) {
     if (button_id != kNotMediaActionButtonId) {
       SetID(button_id);
     }
     SetTooltipText(l10n_util::GetStringUTF16(tooltip_text_id));
     views::SetImageFromVectorIconWithColorId(
-        this, vector_icon, foreground_color_id_, foreground_disabled_color_id_,
+        this, vector_icon, foreground_color_id, foreground_disabled_color_id_,
         icon_size_);
   }
 
@@ -114,9 +115,11 @@ class MediaButton : public views::ImageButton {
 
  private:
   const int icon_size_;
-  const ui::ColorId foreground_color_id_;
   const ui::ColorId foreground_disabled_color_id_;
 };
+
+BEGIN_METADATA(MediaButton, views::ImageButton)
+END_METADATA
 
 // If the image does not fit the square view, scale the image to fill the view
 // even if part of the image is cropped.
@@ -240,7 +243,8 @@ MediaNotificationViewAshImpl::MediaNotificationViewAshImpl(
       media_message_center::kPlayArrowIcon,
       IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_PLAY);
   play_pause_button_->SetBackground(views::CreateThemedRoundedRectBackground(
-      theme_.system_container_color_id, kPlayPauseButtonSize.height() / 2));
+      theme_.play_button_container_color_id,
+      kPlayPauseButtonSize.height() / 2));
 
   // |controls_row| holds all the available media action buttons and the
   // progress view.
@@ -258,8 +262,11 @@ MediaNotificationViewAshImpl::MediaNotificationViewAshImpl(
   // Create the squiggly progress view.
   squiggly_progress_view_ = controls_row->AddChildView(
       std::make_unique<media_message_center::MediaSquigglyProgressView>(
-          theme_.primary_container_color_id,
-          theme_.secondary_container_color_id, theme_.focus_ring_color_id,
+          theme_.playing_progress_foreground_color_id,
+          theme_.playing_progress_background_color_id,
+          theme_.paused_progress_foreground_color_id,
+          theme_.paused_progress_background_color_id,
+          theme_.focus_ring_color_id,
           base::BindRepeating(&MediaNotificationViewAshImpl::OnProgressDragging,
                               base::Unretained(this)),
           base::BindRepeating(&MediaNotificationViewAshImpl::SeekTo,
@@ -281,6 +288,7 @@ MediaNotificationViewAshImpl::MediaNotificationViewAshImpl(
     start_casting_button_->SetCallback(base::BindRepeating(
         &MediaNotificationViewAshImpl::StartCastingButtonPressed,
         base::Unretained(this)));
+    start_casting_button_->SetVisible(false);
   }
 
   // Create the picture-in-picture button.
@@ -294,9 +302,6 @@ MediaNotificationViewAshImpl::MediaNotificationViewAshImpl(
   // is being casted to another device.
   if (footer_view) {
     footer_view_ = controls_row->AddChildView(std::move(footer_view));
-    if (start_casting_button_) {
-      start_casting_button_->SetVisible(false);
-    }
     picture_in_picture_button_->SetVisible(false);
   }
 
@@ -340,12 +345,20 @@ void MediaNotificationViewAshImpl::UpdateWithMediaSessionInfo(
     play_pause_button_->Update(
         static_cast<int>(MediaSessionAction::kPause),
         media_message_center::kPauseIcon,
-        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_PAUSE);
+        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_PAUSE,
+        theme_.pause_button_foreground_color_id);
+    play_pause_button_->SetBackground(views::CreateThemedRoundedRectBackground(
+        theme_.pause_button_container_color_id,
+        kPlayPauseButtonSize.height() / 2));
   } else {
     play_pause_button_->Update(
         static_cast<int>(MediaSessionAction::kPlay),
         media_message_center::kPlayArrowIcon,
-        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_PLAY);
+        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_PLAY,
+        theme_.play_button_foreground_color_id);
+    play_pause_button_->SetBackground(views::CreateThemedRoundedRectBackground(
+        theme_.play_button_container_color_id,
+        kPlayPauseButtonSize.height() / 2));
   }
 
   in_picture_in_picture_ =
@@ -356,12 +369,14 @@ void MediaNotificationViewAshImpl::UpdateWithMediaSessionInfo(
     picture_in_picture_button_->Update(
         static_cast<int>(MediaSessionAction::kExitPictureInPicture),
         media_message_center::kMediaExitPipIcon,
-        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_EXIT_PIP);
+        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_EXIT_PIP,
+        theme_.primary_foreground_color_id);
   } else {
     picture_in_picture_button_->Update(
         static_cast<int>(MediaSessionAction::kEnterPictureInPicture),
         media_message_center::kMediaEnterPipIcon,
-        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_ENTER_PIP);
+        IDS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_ACTION_ENTER_PIP,
+        theme_.primary_foreground_color_id);
   }
 
   UpdateActionButtonsVisibility();
@@ -412,6 +427,18 @@ void MediaNotificationViewAshImpl::UpdateWithMediaArtwork(
   SchedulePaint();
 }
 
+void MediaNotificationViewAshImpl::UpdateDeviceSelectorAvailability(
+    bool has_devices) {
+  CHECK(start_casting_button_);
+  // Do not show the start casting button if this media item is being casted to
+  // another device and has a footer view of stop casting button.
+  bool visible = has_devices && !footer_view_;
+  if (visible != start_casting_button_->GetVisible()) {
+    start_casting_button_->SetVisible(visible);
+    UpdateCastingState();
+  }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // views::View implementations:
 
@@ -442,9 +469,7 @@ MediaButton* MediaNotificationViewAshImpl::CreateMediaButton(
   auto button = std::make_unique<MediaButton>(
       views::Button::PressedCallback(), button_id, vector_icon, tooltip_text_id,
       theme_.primary_foreground_color_id, theme_.secondary_foreground_color_id,
-      button_id == static_cast<int>(MediaSessionAction::kPlay)
-          ? theme_.primary_container_color_id
-          : theme_.focus_ring_color_id);
+      theme_.focus_ring_color_id);
   auto* button_ptr = parent->AddChildView(std::move(button));
 
   if (button_id != kNotMediaActionButtonId) {
@@ -554,6 +579,13 @@ void MediaNotificationViewAshImpl::UpdateCastingState() {
   CHECK(device_selector_view_);
   CHECK(device_selector_view_separator_);
 
+  if (!start_casting_button_->GetVisible()) {
+    device_selector_view_->SetVisible(false);
+    device_selector_view_separator_->SetVisible(false);
+    return;
+  }
+
+  device_selector_view_->SetVisible(true);
   bool is_expanded = device_selector_view_->IsDeviceSelectorExpanded();
   if (is_expanded) {
     // Use the ink drop color as the button background if user clicks the button
@@ -600,6 +632,11 @@ views::Button* MediaNotificationViewAshImpl::GetActionButtonForTesting(
   const auto i = base::ranges::find(action_buttons_, static_cast<int>(action),
                                     &views::View::GetID);
   return (i == action_buttons_.end()) ? nullptr : *i;
+}
+
+media_session::MediaPosition
+MediaNotificationViewAshImpl::GetPositionForTesting() {
+  return position_;
 }
 
 views::Button* MediaNotificationViewAshImpl::GetStartCastingButtonForTesting() {

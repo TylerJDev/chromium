@@ -62,7 +62,10 @@ int GetIconIdAndroid(RequestType type) {
       return IDR_ANDROID_INFOBAR_PROTECTED_MEDIA_IDENTIFIER;
     case RequestType::kStorageAccess:
     case RequestType::kTopLevelStorageAccess:
-      return IDR_ANDROID_INFOBAR_PERMISSION_COOKIE;
+      return base::FeatureList::IsEnabled(
+                 permissions::features::kPermissionStorageAccessAPI)
+                 ? IDR_ANDROID_STORAGE_ACCESS
+                 : IDR_ANDROID_INFOBAR_PERMISSION_COOKIE;
   }
   NOTREACHED();
   return 0;
@@ -122,7 +125,12 @@ const gfx::VectorIcon& GetIconIdDesktop(RequestType type) {
       return vector_icons::kProtocolHandlerIcon;
     case RequestType::kStorageAccess:
     case RequestType::kTopLevelStorageAccess:
-      return vector_icons::kStorageAccessIcon;
+      if (base::FeatureList::IsEnabled(
+              permissions::features::kPermissionStorageAccessAPI)) {
+        return vector_icons::kStorageAccessIcon;
+      }
+      return cr23 ? vector_icons::kCookieChromeRefreshIcon
+                  : vector_icons::kCookieIcon;
     case RequestType::kWindowManagement:
       return cr23 ? vector_icons::kSelectWindowChromeRefreshIcon
                   : vector_icons::kSelectWindowIcon;
@@ -170,6 +178,12 @@ const gfx::VectorIcon& GetBlockedIconIdDesktop(RequestType type) {
   return gfx::kNoneIcon;
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+}  // namespace
+
+bool IsRequestablePermissionType(ContentSettingsType content_settings_type) {
+  return !!ContentSettingsTypeToRequestTypeIfExists(content_settings_type);
+}
 
 absl::optional<RequestType> ContentSettingsTypeToRequestTypeIfExists(
     ContentSettingsType content_settings_type) {
@@ -227,12 +241,6 @@ absl::optional<RequestType> ContentSettingsTypeToRequestTypeIfExists(
     default:
       return absl::nullopt;
   }
-}
-
-}  // namespace
-
-bool IsRequestablePermissionType(ContentSettingsType content_settings_type) {
-  return !!ContentSettingsTypeToRequestTypeIfExists(content_settings_type);
 }
 
 RequestType ContentSettingsTypeToRequestType(
@@ -391,10 +399,10 @@ const char* PermissionKeyForRequestType(permissions::RequestType request_type) {
 #if !BUILDFLAG(IS_ANDROID)
     case permissions::RequestType::kWindowManagement:
       if (base::FeatureList::IsEnabled(
-              features::kWindowManagementPermissionAlias)) {
-        return "window_management";
-      } else {
+              features::kWindowPlacementPermissionAlias)) {
         return "window_placement";
+      } else {
+        return "window_management";
       }
 #endif
   }

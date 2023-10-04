@@ -4,6 +4,7 @@
 
 #include "components/segmentation_platform/internal/selection/result_refresh_manager.h"
 
+#include "components/segmentation_platform/internal/selection/selection_utils.h"
 #include "components/segmentation_platform/internal/stats.h"
 #include "components/segmentation_platform/public/config.h"
 
@@ -16,8 +17,20 @@ bool SupportMultiOutput(SegmentResultProvider::SegmentResult* result) {
 }
 
 // Collects training data after model execution.
-void CollectTrainingData(const Config* config,
-                         ExecutionService* execution_service) {
+void CollectTrainingDataIfNeeded(
+    const Config* config,
+    ExecutionService* execution_service,
+    SegmentResultProvider::ResultState result_state) {
+  bool is_model_executed =
+      (result_state ==
+       SegmentResultProvider::ResultState::kServerModelExecutionScoreUsed) ||
+      (result_state ==
+       SegmentResultProvider::ResultState::kDefaultModelExecutionScoreUsed);
+
+  // Collect training data only if model was executed.
+  if (!is_model_executed) {
+    return;
+  }
   // The execution service and training data collector might be null in testing.
   if (execution_service && execution_service->training_data_collector()) {
     for (const auto& segment : config->segments) {
@@ -98,18 +111,10 @@ void ResultRefreshManager::OnGetCachedResultOrRunModel(
 
   // If the model result is available either from database or running the
   // model, update prefs if expired.
-  bool unexpired_score_from_db =
-      (result_state ==
-       SegmentResultProvider::ResultState::kSuccessFromDatabase);
-  bool expired_score_and_run_model =
-      ((result_state ==
-        SegmentResultProvider::ResultState::kTfliteModelScoreUsed) ||
-       (result_state ==
-        SegmentResultProvider::ResultState::kDefaultModelScoreUsed));
+  PredictionStatus status =
+      selection_utils::ResultStateToPredictionStatus(result_state);
 
-  bool success = (unexpired_score_from_db || expired_score_and_run_model);
-
-  if (!success) {
+  if (status != PredictionStatus::kSucceeded) {
     stats::RecordSegmentSelectionFailure(
         *config, stats::GetSuccessOrFailureReason(result_state));
     return;
@@ -122,6 +127,10 @@ void ResultRefreshManager::OnGetCachedResultOrRunModel(
     return;
   }
 
+  // Recording this even for success case.
+  stats::RecordSegmentSelectionFailure(
+      *config, stats::GetSuccessOrFailureReason(result_state));
+
   proto::PredictionResult pred_result = result->result;
   stats::RecordClassificationResultComputed(*config, pred_result);
 
@@ -131,7 +140,7 @@ void ResultRefreshManager::OnGetCachedResultOrRunModel(
   cached_result_writer_->UpdatePrefsIfExpired(config, client_result,
                                               platform_options_);
 
-  CollectTrainingData(config, execution_service);
+  CollectTrainingDataIfNeeded(config, execution_service, result_state);
 }
 
 }  // namespace segmentation_platform

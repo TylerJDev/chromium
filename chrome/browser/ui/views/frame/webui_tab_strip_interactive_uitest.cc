@@ -178,10 +178,6 @@ IN_PROC_BROWSER_TEST_F(WebUITabStripInteractiveTest, CanUseInImmersiveMode) {
   WebUITabStripContainerView* const container = browser_view->webui_tab_strip();
   ASSERT_NE(nullptr, container);
 
-  // IPH may cause a reveal. Stop it.
-  auto lock =
-      browser_view->GetFeaturePromoController()->BlockPromosForTesting();
-
   EXPECT_FALSE(immersive_mode_controller->IsRevealed());
 
   // Try opening the tab strip.
@@ -330,7 +326,7 @@ IN_PROC_BROWSER_TEST_P(WebUITabStripDragInteractiveTest,
       AddInstrumentedTab(kSecondTabElementId, GURL("about:blank")),
       // Click the counter button and then wait for the WebUI tabstrip to
       // appear.
-      PressButton(kTabCounterButtonElementId),
+      PressButton(kToolbarTabCounterButtonElementId),
       InstrumentNonTabWebView(kWebUiTabStripElementId, get_tabstrip_webview),
       // Verify there are two tabs.
       CheckResult(get_tab_count, 2),

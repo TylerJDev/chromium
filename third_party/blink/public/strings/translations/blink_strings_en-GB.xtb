@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Switched to mirroring</translation>
 <translation id="2031987842108996681">Red channel</translation>
 <translation id="2060505056492490888">'<ph name="DOT" />' is used at a wrong position in '<ph name="INVALIDDOMAIN" />'.</translation>
+<translation id="2068711044993563745">Minimum value (<ph name="MINIMUM" />) must be less than the maximum value (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Today</translation>
 <translation id="2226276347425096477">Please shorten this text to <ph name="MAX_CHARACTERS" /> characters or less (you are currently using <ph name="CURRENT_LENGTH" /> characters).</translation>
 <translation id="2247351761944213033">Week <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Please tick this box if you want to proceed.</translation>
 <translation id="2908441821576996758">Please enter a comma-separated list of email addresses.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">show audio descriptions menu</translation>
 <translation id="3075154866155599887">Please enter a valid value. The field is incomplete or has an invalid date.</translation>
 <translation id="310520048233152454">Please enter a URL.</translation>
 <translation id="3220661731597678625">current step</translation>

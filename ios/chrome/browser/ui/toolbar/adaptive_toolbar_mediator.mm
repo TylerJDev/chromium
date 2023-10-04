@@ -4,6 +4,7 @@
 
 #import "ios/chrome/browser/ui/toolbar/adaptive_toolbar_mediator.h"
 
+#import "base/containers/contains.h"
 #import "base/memory/ptr_util.h"
 #import "base/metrics/user_metrics.h"
 #import "base/metrics/user_metrics_action.h"
@@ -171,7 +172,7 @@
       break;
     case WebStateListChange::Type::kDetach: {
       if (webStateList->IsBatchInProgress()) {
-        return;
+        break;
       }
 
       [self.consumer setTabCount:_webStateList->count() addedInBackground:NO];
@@ -185,7 +186,7 @@
       break;
     case WebStateListChange::Type::kInsert: {
       if (webStateList->IsBatchInProgress()) {
-        return;
+        break;
       }
 
       [self.consumer setTabCount:_webStateList->count()
@@ -267,12 +268,10 @@
     _webStateList->RemoveObserver(_webStateListObserver.get());
   }
 
-  // TODO(crbug.com/727427):Add support for DCHECK(webStateList).
   _webStateList = webStateList;
-  self.webState = nil;
 
   if (_webStateList) {
-    self.webState = self.webStateList->GetActiveWebState();
+    self.webState = _webStateList->GetActiveWebState();
     _webStateList->AddObserver(_webStateListObserver.get());
 
     if (self.consumer) {
@@ -280,6 +279,7 @@
     }
   } else {
     // Clear the web navigation browser agent if the webStateList is nil.
+    self.webState = nil;
     self.navigationBrowserAgent = nil;
   }
 }
@@ -323,7 +323,7 @@
         setLoadingProgressFraction:self.webState->GetLoadingProgress()];
   }
   [self updateShareMenuForWebState:self.webState];
-  if (base::FeatureList::IsEnabled(kThemeColorInToolbar)) {
+  if (base::FeatureList::IsEnabled(kThemeColorInTopToolbar)) {
     [self.consumer setPageThemeColor:self.webState->GetThemeColor()];
   }
 }
@@ -475,14 +475,14 @@
         clipboardContentType.value();
 
     if (search_engines::SupportsSearchByImage(self.templateURLService) &&
-        clipboardContentTypeValues.find(ClipboardContentType::Image) !=
-            clipboardContentTypeValues.end()) {
+        base::Contains(clipboardContentTypeValues,
+                       ClipboardContentType::Image)) {
       return [self.actionFactory actionToSearchCopiedImage];
-    } else if (clipboardContentTypeValues.find(ClipboardContentType::URL) !=
-               clipboardContentTypeValues.end()) {
+    } else if (base::Contains(clipboardContentTypeValues,
+                              ClipboardContentType::URL)) {
       return [self.actionFactory actionToSearchCopiedURL];
-    } else if (clipboardContentTypeValues.find(ClipboardContentType::Text) !=
-               clipboardContentTypeValues.end()) {
+    } else if (base::Contains(clipboardContentTypeValues,
+                              ClipboardContentType::Text)) {
       return [self.actionFactory actionToSearchCopiedText];
     }
   }

@@ -4,21 +4,24 @@
 
 #import "ios/chrome/browser/web/annotations/annotations_tab_helper.h"
 
+#import "base/apple/foundation_util.h"
 #import "base/containers/contains.h"
 #import "base/metrics/histogram_functions.h"
 #import "base/metrics/user_metrics.h"
-#import "base/rand_util.h"
 #import "base/strings/string_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/strings/utf_string_conversions.h"
 #import "base/task/thread_pool.h"
+#import "base/uuid.h"
 #import "base/values.h"
 #import "components/ukm/ios/ukm_url_recorder.h"
 #import "ios/chrome/browser/mailto_handler/mailto_handler_service.h"
 #import "ios/chrome/browser/mailto_handler/mailto_handler_service_factory.h"
+#import "ios/chrome/browser/parcel_tracking/parcel_tracking_util.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
-#import "ios/chrome/browser/text_selection/text_classifier_model_service.h"
-#import "ios/chrome/browser/text_selection/text_classifier_model_service_factory.h"
+#import "ios/chrome/browser/shared/public/commands/parcel_tracking_opt_in_commands.h"
+#import "ios/chrome/browser/text_selection/model/text_classifier_model_service.h"
+#import "ios/chrome/browser/text_selection/model/text_classifier_model_service_factory.h"
 #import "ios/public/provider/chrome/browser/context_menu/context_menu_api.h"
 #import "ios/web/common/annotations_utils.h"
 #import "ios/web/common/url_scheme_util.h"
@@ -27,18 +30,10 @@
 #import "ios/web/public/js_messaging/web_frame.h"
 #import "ios/web/public/js_messaging/web_frames_manager.h"
 #import "ios/web/public/navigation/navigation_context.h"
-#import "ios/web/public/ui/crw_context_menu_item.h"
+#import "ios/web/public/thread/web_task_traits.h"
+#import "ios/web/public/thread/web_thread.h"
 #import "ios/web/public/ui/crw_web_view_proxy.h"
 #import "ios/web/public/web_state.h"
-#import "services/metrics/public/cpp/ukm_builders.h"
-
-namespace {
-
-// A subset of GCRTextClassifierTrackingCarrier enum types for the carriers
-// included in the feature.
-static const int kCGRTextClassifierTrackingCarriers[3] = {1, 2, 4};
-
-}  // namespace
 
 AnnotationsTabHelper::AnnotationsTabHelper(web::WebState* web_state)
     : web_state_(web_state) {
@@ -65,6 +60,16 @@ void AnnotationsTabHelper::SetMiniMapCommands(
   mini_map_handler_ = mini_map_handler;
 }
 
+void AnnotationsTabHelper::SetParcelTrackingOptInCommands(
+    id<ParcelTrackingOptInCommands> parcel_tracking_handler) {
+  parcel_tracking_handler_ = parcel_tracking_handler;
+}
+
+void AnnotationsTabHelper::SetUnitConversionCommands(
+    id<UnitConversionCommands> unit_conversion_handler) {
+  unit_conversion_handler_ = unit_conversion_handler;
+}
+
 #pragma mark - WebStateObserver methods.
 
 void AnnotationsTabHelper::WebStateDestroyed(web::WebState* web_state) {
@@ -74,13 +79,33 @@ void AnnotationsTabHelper::WebStateDestroyed(web::WebState* web_state) {
   web_state_ = nullptr;
 }
 
+void AnnotationsTabHelper::PageLoaded(
+    web::WebState* web_state,
+    web::PageLoadCompletionStatus load_completion_status) {
+  DCHECK_EQ(web_state_, web_state);
+  if (load_completion_status == web::PageLoadCompletionStatus::SUCCESS) {
+    match_cache_.clear();
+  }
+}
+
 #pragma mark - AnnotationsTextObserver methods.
 
 void AnnotationsTabHelper::OnTextExtracted(web::WebState* web_state,
                                            const std::string& text,
-                                           int seq_id) {
+                                           int seq_id,
+                                           const base::Value::Dict& metadata) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(web_state_, web_state);
+
+  // Check if this page requested "nointentdetection".
+  absl::optional<bool> has_no_intent_detection =
+      metadata.FindBool("hasNoIntentDetection");
+  if (!has_no_intent_detection || has_no_intent_detection.value()) {
+    return;
+  }
+
+  // Keep latest copy.
+  metadata_ = std::make_unique<base::Value::Dict>(metadata.Clone());
 
   TextClassifierModelService* service =
       TextClassifierModelServiceFactory::GetForBrowserState(
@@ -92,8 +117,10 @@ void AnnotationsTabHelper::OnTextExtracted(web::WebState* web_state,
       FROM_HERE,
       {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
        base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
-      base::BindOnce(&ios::provider::ExtractDataElementsFromText, text,
+      base::BindOnce(&ios::provider::ExtractDataElementsFromText,
+                     metadata.Clone(), text,
                      ios::provider::GetHandledIntentTypesForOneTap(web_state),
+                     ukm::GetSourceIdForWebStateDocument(web_state),
                      std::move(model_path)),
       base::BindOnce(&AnnotationsTabHelper::ApplyDeferredProcessing,
                      weak_factory_.GetWeakPtr(), seq_id));
@@ -114,8 +141,11 @@ void AnnotationsTabHelper::OnClick(web::WebState* web_state,
                                    CGRect rect,
                                    const std::string& data) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  NSTextCheckingResult* match =
-      web::DecodeNSTextCheckingResultData(base::SysUTF8ToNSString(data));
+  if (match_cache_.find(data) == match_cache_.end()) {
+    return;
+  }
+  NSTextCheckingResult* match = web::DecodeNSTextCheckingResultData(
+      base::SysUTF8ToNSString(match_cache_.at(data)));
   if (!match) {
     return;
   }
@@ -125,17 +155,10 @@ void AnnotationsTabHelper::OnClick(web::WebState* web_state,
   }
 
   NSString* ns_text = base::SysUTF8ToNSString(text);
-  if (!ios::provider::HandleIntentTypesForOneTap(web_state, match, ns_text,
-                                                 base_view_controller_,
-                                                 mini_map_handler_)) {
-    NSArray<CRWContextMenuItem*>* items =
-        ios::provider::GetContextMenuElementsToAdd(web_state, match, ns_text,
-                                                   base_view_controller_,
-                                                   mini_map_handler_);
-    if (items.count) {
-      [web_state_->GetWebViewProxy() showMenuWithItems:items rect:rect];
-    }
-  }
+  const BOOL success = ios::provider::HandleIntentTypesForOneTap(
+      web_state, match, ns_text, rect.origin, base_view_controller_,
+      mini_map_handler_, unit_conversion_handler_);
+  DCHECK(success);
 }
 
 #pragma mark - Private Methods
@@ -152,44 +175,66 @@ void AnnotationsTabHelper::ApplyDeferredProcessing(
   if (main_frame && deferred) {
     auto* manager = web::AnnotationsTextManager::FromWebState(web_state_);
     DCHECK(manager);
-
-    // (TODO:crbug.com/1464624): Remove after investigation is complete.
-    const base::Value::List& annotations_list = deferred.value().GetList();
-    for (size_t i = 0; i < annotations_list.size(); ++i) {
-      const base::Value::Dict& annotation = annotations_list[i].GetDict();
-      const std::string* type = annotation.FindString("type");
-
-      if (type && *type == "TRACKING_NUMBER") {
-        const std::string* carrier_num =
-            annotation.FindString("TRACKING_NUMBER");
-        int carrier_val = annotation.FindInt("TRACKING_CARRIER").value();
-        CHECK(!carrier_num->empty());
-
-        // Only log UKM metric for detected parcel numbers with certain carrier
-        // values.
-        if (base::Contains(kCGRTextClassifierTrackingCarriers, carrier_val)) {
-          int randomValue = base::RandInt(0, 9);
-          // Values are in range 0-9, so > 1 covers 80%.
-          // Log random carrier value 80% of the time.
-          if (randomValue > 1) {
-            int randIndex = base::RandInt(
-                0, std::size(kCGRTextClassifierTrackingCarriers) - 1);
-            carrier_val = kCGRTextClassifierTrackingCarriers[randIndex];
-          }
-          ukm::SourceId source_id =
-              ukm::GetSourceIdForWebStateDocument(web_state_);
-          if (source_id != ukm::kInvalidSourceId) {
-            ukm::builders::IOS_ParcelTrackingNumberDetected(source_id)
-                .SetParcelCarrier(carrier_val)
-                .Record(ukm::UkmRecorder::Get());
-          }
-        }
-      }
-    }
-
     base::Value annotations(std::move(deferred.value()));
+    if (IsIOSParcelTrackingEnabled()) {
+      AnnotationsTabHelper::ProcessParcelTrackingNumbers(annotations.GetList());
+    }
+    BuildCache(annotations.GetList());
     manager->DecorateAnnotations(web_state_, annotations, seq_id);
   }
+}
+
+void AnnotationsTabHelper::BuildCache(base::Value::List& annotations_list) {
+  for (size_t i = 0; i < annotations_list.size(); i++) {
+    base::Value::Dict& entity = annotations_list[i].GetDict();
+    const std::string* data = entity.FindString("data");
+    if (!data) {
+      continue;
+    }
+    const std::string key = base::Uuid::GenerateRandomV4().AsLowercaseString();
+    match_cache_[key] = *data;
+    entity.Set("data", key);
+  }
+}
+
+void AnnotationsTabHelper::ProcessParcelTrackingNumbers(
+    base::Value::List& annotations_list) {
+  NSMutableArray<CustomTextCheckingResult*>* unique_parcels =
+      [[NSMutableArray alloc] init];
+  NSMutableSet* existing_parcel_numbers = [NSMutableSet set];
+  for (size_t i = 0; i < annotations_list.size();) {
+    const base::Value::Dict& entity = annotations_list[i].GetDict();
+    NSTextCheckingResult* match = web::DecodeNSTextCheckingResultData(
+        base::SysUTF8ToNSString(entity.FindString("data")->c_str()));
+    if (!match || match.resultType != TCTextCheckingTypeParcelTracking) {
+      i++;
+      continue;
+    }
+    CustomTextCheckingResult* parcel =
+        base::apple::ObjCCast<CustomTextCheckingResult>(match);
+    // Avoid adding duplicates to `unique_parcels`.
+    if (![existing_parcel_numbers containsObject:[parcel carrierNumber]]) {
+      [existing_parcel_numbers addObject:[parcel carrierNumber]];
+      [unique_parcels addObject:parcel];
+    }
+    // Remove the parcel from annotations_list to prevent decorating the
+    // tracking number.
+    annotations_list.EraseValue(annotations_list[i]);
+  }
+  // Show UI only if this is the currently active WebState.
+  if ([unique_parcels count] > 0 && web_state_->IsVisible()) {
+    // Call asynchronously to allow the rest of the annotations to be decorated
+    // first.
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&AnnotationsTabHelper::MaybeShowParcelTrackingUI,
+                       weak_factory_.GetWeakPtr(), unique_parcels));
+  }
+}
+
+void AnnotationsTabHelper::MaybeShowParcelTrackingUI(
+    NSArray<CustomTextCheckingResult*>* parcels) {
+  [parcel_tracking_handler_ showParcelTrackingUIWithParcels:parcels];
 }
 
 WEB_STATE_USER_DATA_KEY_IMPL(AnnotationsTabHelper)

@@ -14,6 +14,7 @@
 #include "build/chromeos_buildflags.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
@@ -53,8 +54,7 @@ class MESSAGE_CENTER_EXPORT MessageView
       public views::SlideOutControllerDelegate,
       public views::FocusChangeListener {
  public:
-  static const char kViewClassName[];
-
+  METADATA_HEADER(MessageView);
   class Observer : public base::CheckedObserver {
    public:
     virtual void OnSlideStarted(const std::string& notification_id) {}
@@ -146,12 +146,6 @@ class MESSAGE_CENTER_EXPORT MessageView
   virtual void OnSettingsButtonPressed(const ui::Event& event);
   virtual void OnSnoozeButtonPressed(const ui::Event& event);
 
-  // Enables/disables the notification expand collapse behavior. Used to
-  // indicate that expand/collapse notification is allowed/not allowed in a
-  // specific situation. Note that this is currently only used by chromeOS
-  // notification.
-  virtual void SetExpandCollapseEnabled(bool enabled) {}
-
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   // Gets the animation duration for a recent bounds change.
   virtual base::TimeDelta GetBoundsAnimationDuration(
@@ -171,7 +165,6 @@ class MESSAGE_CENTER_EXPORT MessageView
   void OnGestureEvent(ui::GestureEvent* event) override;
   void RemovedFromWidget() override;
   void AddedToWidget() override;
-  const char* GetClassName() const override;
   void OnThemeChanged() override;
 
   // views::SlideOutControllerDelegate:

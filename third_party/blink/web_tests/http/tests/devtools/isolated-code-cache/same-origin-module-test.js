@@ -5,13 +5,14 @@
 import {TestRunner} from 'test_runner';
 import {PerformanceTestRunner} from 'performance_test_runner';
 
+import * as TimelineModel from 'devtools/models/timeline_model/timeline_model.js';
+
 function waitUntilIdle() {
   return new Promise(resolve=>window.requestIdleCallback(resolve));
 }
 
 (async function() {
   TestRunner.addResult(`Tests V8 code cache for javascript resources\n`);
-  await TestRunner.loadLegacyModule('timeline');
   await TestRunner.showPanel('timeline');
 
   // Clear browser cache to avoid any existing entries for the fetched

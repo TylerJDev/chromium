@@ -46,11 +46,12 @@ public class LegacyBookmarkQueryHandler implements BookmarkQueryHandler {
     }
 
     @Override
-    public List<BookmarkListEntry> buildBookmarkListForParent(BookmarkId parentId) {
+    public List<BookmarkListEntry> buildBookmarkListForParent(
+            BookmarkId parentId, Set<PowerBookmarkType> powerFilter) {
         if (parentId.equals(mBookmarkModel.getRootFolderId())) {
             return buildBookmarkListForRootView();
         } else {
-            return mBasicBookmarkQueryHandler.buildBookmarkListForParent(parentId);
+            return mBasicBookmarkQueryHandler.buildBookmarkListForParent(parentId, powerFilter);
         }
     }
 
@@ -90,6 +91,6 @@ public class LegacyBookmarkQueryHandler implements BookmarkQueryHandler {
 
     private void populateTopLevelFoldersList() {
         mTopLevelFolders.clear();
-        mTopLevelFolders.addAll(BookmarkUtils.populateTopLevelFolders(mBookmarkModel));
+        mTopLevelFolders.addAll(mBookmarkModel.getTopLevelFolderIds());
     }
 }

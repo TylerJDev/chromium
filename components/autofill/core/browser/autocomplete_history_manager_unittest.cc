@@ -26,6 +26,7 @@
 #include "components/autofill/core/common/autofill_clock.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_prefs.h"
+#include "components/autofill/core/common/autofill_test_utils.h"
 #include "components/autofill/core/common/form_data.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/version_info/version_info.h"
@@ -33,15 +34,16 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/geometry/rect.h"
 
-using testing::_;
-using testing::Eq;
-using testing::Field;
-using testing::Return;
-using testing::UnorderedElementsAre;
-
 namespace autofill {
 
 namespace {
+
+using test::CreateTestFormField;
+using ::testing::_;
+using ::testing::Eq;
+using ::testing::Field;
+using ::testing::Return;
+using ::testing::UnorderedElementsAre;
 
 class MockSuggestionsHandler
     : public AutocompleteHistoryManager::SuggestionsHandler {
@@ -83,11 +85,10 @@ class AutocompleteHistoryManagerTest : public testing::Test {
     web_data_service_ = base::MakeRefCounted<MockAutofillWebDataService>();
     autocomplete_manager_ = std::make_unique<AutocompleteHistoryManager>();
     autocomplete_manager_->Init(web_data_service_, prefs_.get(), false);
-    test::CreateTestFormField(/*label=*/"", "Some Field Name", "SomePrefix",
-                              "Some Type", &test_field_);
-    test::CreateTestFormField(/*label=*/"", "Another Field Name",
-                              "AnotherPrefix", "Another Type",
-                              &second_test_field_);
+    test_field_ = CreateTestFormField(/*label=*/"", "Some Field Name",
+                                      "SomePrefix", "Some Type");
+    second_test_field_ = CreateTestFormField(/*label=*/"", "Another Field Name",
+                                             "AnotherPrefix", "Another Type");
   }
 
   void TearDown() override {
@@ -151,7 +152,7 @@ TEST_F(AutocompleteHistoryManagerTest, CreditCardNumberValue) {
   valid_cc.name = u"ccnum";
   valid_cc.value = u"4012888888881881";
   valid_cc.properties_mask |= kUserTyped;
-  valid_cc.form_control_type = "text";
+  valid_cc.form_control_type = FormControlType::kInputText;
   form.fields.push_back(valid_cc);
 
   EXPECT_CALL(*(web_data_service_.get()), AddFormFields(_)).Times(0);
@@ -175,7 +176,7 @@ TEST_F(AutocompleteHistoryManagerTest, NonCreditCardNumberValue) {
   invalid_cc.name = u"ccnum";
   invalid_cc.value = u"4580123456789012";
   invalid_cc.properties_mask |= kUserTyped;
-  invalid_cc.form_control_type = "text";
+  invalid_cc.form_control_type = FormControlType::kInputText;
   form.fields.push_back(invalid_cc);
 
   EXPECT_CALL(*(web_data_service_.get()), AddFormFields(_));
@@ -196,7 +197,7 @@ TEST_F(AutocompleteHistoryManagerTest, SSNValue) {
   ssn.name = u"ssn";
   ssn.value = u"078-05-1120";
   ssn.properties_mask |= kUserTyped;
-  ssn.form_control_type = "text";
+  ssn.form_control_type = FormControlType::kInputText;
   form.fields.push_back(ssn);
 
   EXPECT_CALL(*web_data_service_, AddFormFields(_)).Times(0);
@@ -218,7 +219,7 @@ TEST_F(AutocompleteHistoryManagerTest, SearchField) {
   search_field.name = u"search";
   search_field.value = u"my favorite query";
   search_field.properties_mask |= kUserTyped;
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   form.fields.push_back(search_field);
 
   EXPECT_CALL(*(web_data_service_.get()), AddFormFields(_));
@@ -239,7 +240,7 @@ TEST_F(AutocompleteHistoryManagerTest, AutocompleteFeatureOff) {
   search_field.name = u"search";
   search_field.value = u"my favorite query";
   search_field.properties_mask |= kUserTyped;
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   form.fields.push_back(search_field);
 
   EXPECT_CALL(*(web_data_service_.get()), AddFormFields(_)).Times(0);
@@ -263,7 +264,7 @@ TEST_F(AutocompleteHistoryManagerTest, InvalidValues) {
   search_field.name = u"search";
   search_field.value = u"";
   search_field.properties_mask |= kUserTyped;
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   form.fields.push_back(search_field);
 
   // Single whitespace.
@@ -271,7 +272,7 @@ TEST_F(AutocompleteHistoryManagerTest, InvalidValues) {
   search_field.name = u"other search";
   search_field.value = u" ";
   search_field.properties_mask |= kUserTyped;
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   form.fields.push_back(search_field);
 
   // Multiple whitespaces.
@@ -279,7 +280,7 @@ TEST_F(AutocompleteHistoryManagerTest, InvalidValues) {
   search_field.name = u"other search";
   search_field.value = u"      ";
   search_field.properties_mask |= kUserTyped;
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   form.fields.push_back(search_field);
 
   EXPECT_CALL(*(web_data_service_.get()), AddFormFields(_)).Times(0);
@@ -304,7 +305,7 @@ TEST_F(AutocompleteHistoryManagerTest, FieldWithAutocompleteOff) {
   field.name = u"esoterica";
   field.value = u"a truly esoteric value, I assure you";
   field.properties_mask |= kUserTyped;
-  field.form_control_type = "text";
+  field.form_control_type = FormControlType::kInputText;
   field.should_autocomplete = false;
   form.fields.push_back(field);
 
@@ -329,7 +330,7 @@ TEST_F(AutocompleteHistoryManagerTest, Incognito) {
   search_field.name = u"search";
   search_field.value = u"my favorite query";
   search_field.properties_mask |= kUserTyped;
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   form.fields.push_back(search_field);
 
   EXPECT_CALL(*web_data_service_, AddFormFields(_)).Times(0);
@@ -353,7 +354,7 @@ TEST_F(AutocompleteHistoryManagerTest, UserInputNotFocusable) {
   search_field.label = u"Search";
   search_field.name = u"search";
   search_field.value = u"my favorite query";
-  search_field.form_control_type = "search";
+  search_field.form_control_type = FormControlType::kInputSearch;
   search_field.properties_mask |= kUserTyped;
   search_field.is_focusable = false;
   form.fields.push_back(search_field);
@@ -379,7 +380,7 @@ TEST_F(AutocompleteHistoryManagerTest, PresentationField) {
   field.name = u"esoterica";
   field.value = u"a truly esoteric value, I assure you";
   field.properties_mask |= kUserTyped;
-  field.form_control_type = "text";
+  field.form_control_type = FormControlType::kInputText;
   field.role = FormFieldData::RoleAttribute::kPresentation;
   form.fields.push_back(field);
 
@@ -507,8 +508,8 @@ TEST_F(AutocompleteHistoryManagerTest,
 TEST_F(AutocompleteHistoryManagerTest,
        DoQuerySuggestionsForMeaninglessFieldNames_FilterSubStringName) {
   auto suggestions_handler = std::make_unique<MockSuggestionsHandler>();
-  test::CreateTestFormField(/*label=*/"", "payment_cvv_info", /*value=*/"",
-                            "Some Type", &test_field_);
+  test_field_ = CreateTestFormField(/*label=*/"", "payment_cvv_info",
+                                    /*value=*/"", "Some Type");
 
   // Only expect a call when the name is not filtered out.
   EXPECT_CALL(*web_data_service_,
@@ -537,8 +538,8 @@ TEST_F(AutocompleteHistoryManagerTest,
 TEST_F(AutocompleteHistoryManagerTest,
        DoQuerySuggestionsForMeaninglessFieldNames_FilterName) {
   auto suggestions_handler = std::make_unique<MockSuggestionsHandler>();
-  test::CreateTestFormField(/*label=*/"", "input_123", /*value=*/"",
-                            "Some Type", &test_field_);
+  test_field_ =
+      CreateTestFormField(/*label=*/"", "input_123", /*value=*/"", "Some Type");
 
   // Only expect a call when the name is not filtered out.
   EXPECT_CALL(*web_data_service_,
@@ -568,8 +569,8 @@ TEST_F(AutocompleteHistoryManagerTest,
        DoQuerySuggestionsForMeaninglessFieldNames_PassNameWithSubstring) {
   auto suggestions_handler = std::make_unique<MockSuggestionsHandler>();
   int mocked_db_query_id = 100;
-  test::CreateTestFormField(/*label=*/"", "foOTPace", /*value=*/"", "Some Type",
-                            &test_field_);
+  test_field_ =
+      CreateTestFormField(/*label=*/"", "foOTPace", /*value=*/"", "Some Type");
 
   std::vector<AutofillEntry> expected_values;
 
@@ -604,8 +605,8 @@ TEST_F(AutocompleteHistoryManagerTest,
        DoQuerySuggestionsForMeaninglessFieldNames_PassName) {
   auto suggestions_handler = std::make_unique<MockSuggestionsHandler>();
   int mocked_db_query_id = 100;
-  test::CreateTestFormField(/*label=*/"", "addressline_1", /*value=*/"",
-                            "Some Type", &test_field_);
+  test_field_ = CreateTestFormField(/*label=*/"", "addressline_1", /*value=*/"",
+                                    "Some Type");
 
   std::vector<AutofillEntry> expected_values;
 
@@ -1047,8 +1048,8 @@ TEST_F(AutocompleteHistoryManagerTest, NoAutocompleteSuggestionsForTextarea) {
   form.url = GURL("http://myform.com/form.html");
   form.action = GURL("http://myform.com/submit.html");
 
-  FormFieldData field;
-  test::CreateTestFormField("Address", "address", "", "textarea", &field);
+  FormFieldData field =
+      CreateTestFormField("Address", "address", "", "textarea");
 
   auto suggestions_handler = std::make_unique<MockSuggestionsHandler>();
   EXPECT_CALL(*suggestions_handler.get(),

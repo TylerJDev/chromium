@@ -14,6 +14,7 @@ import 'chrome://resources/cr_elements/cr_link_row/cr_link_row.js';
 import 'chrome://resources/cr_elements/cr_shared_vars.css.js';
 import 'chrome://resources/polymer/v3_0/iron-flex-layout/iron-flex-layout-classes.js';
 import 'chrome://resources/polymer/v3_0/iron-icon/iron-icon.js';
+import 'chrome://resources/polymer/v3_0/paper-spinner/paper-spinner-lite.js';
 import './add_input_methods_dialog.js';
 import './add_spellcheck_languages_dialog.js';
 import './os_edit_dictionary_page.js';
@@ -63,14 +64,6 @@ export class OsSettingsInputPageElement extends OsSettingsInputPageElementBase {
 
   static get properties() {
     return {
-      // TODO(b/265554350): Remove this property from properties() as it is
-      // already specified in PrefsMixin.
-      /* Preferences state. */
-      prefs: {
-        type: Object,
-        notify: true,
-      },
-
       /**
        * Read-only reference to the languages model provided by the
        * 'os-settings-languages' instance.
@@ -95,21 +88,6 @@ export class OsSettingsInputPageElement extends OsSettingsInputPageElementBase {
       showAddSpellcheckLanguagesDialog_: {
         type: Boolean,
         value: false,
-      },
-
-      // TODO(b/265554350): Remove this property from properties() as it is
-      // already specified in DeepLinkingMixin, and move the default value to
-      // the field initializer.
-      /**
-       * Used by DeepLinkingMixin to focus this page's deep links.
-       */
-      supportedSettingIds: {
-        type: Object,
-        value: () => new Set<Setting>([
-          Setting.kShowInputOptionsInShelf,
-          Setting.kAddInputMethod,
-          Setting.kSpellCheck,
-        ]),
       },
 
       languageSettingsJapaneseEnabled_: {
@@ -162,6 +140,14 @@ export class OsSettingsInputPageElement extends OsSettingsInputPageElementBase {
           return loadTimeData.getBoolean('onDeviceGrammarCheckEnabled');
         },
       },
+
+      languagePacksInSettingsEnabled_: Boolean,
+
+      allowEmojiSuggestion_: Boolean,
+
+      allowOrca_: Boolean,
+
+      allowSuggestionSection_: Boolean,
     };
   }
 
@@ -177,11 +163,15 @@ export class OsSettingsInputPageElement extends OsSettingsInputPageElementBase {
 
   // Internal properties for mixins.
   // From DeepLinkingMixin.
-  // override supportedSettingIds = new Set<Setting>([
-  //   Setting.kShowInputOptionsInShelf,
-  //   Setting.kAddInputMethod,
-  //   Setting.kSpellCheck,
-  // ]);
+  override supportedSettingIds = new Set([
+    Setting.kAddInputMethod,
+    Setting.kShowEmojiSuggestions,
+    Setting.kShowInputOptionsInShelf,
+    Setting.kShowOrca,
+    Setting.kSpellCheck,
+  ]);
+  // From RouteOriginMixin.
+  override route = routes.OS_LANGUAGES_INPUT;
 
   // Internal state.
   private showAddSpellcheckLanguagesDialog_: boolean;
@@ -191,19 +181,19 @@ export class OsSettingsInputPageElement extends OsSettingsInputPageElementBase {
   private onDeviceGrammarCheckEnabled_: boolean;
   private languageSettingsJapaneseEnabled_: boolean;
   private shouldShowLanguagePacksNotice_: boolean;
+  private languagePacksInSettingsEnabled_ =
+      loadTimeData.getBoolean('languagePacksInSettingsEnabled');
+  private readonly allowEmojiSuggestion_: boolean =
+      loadTimeData.getBoolean('allowEmojiSuggestion');
+  private readonly allowOrca_: boolean = loadTimeData.getBoolean('allowOrca');
+  private readonly allowSuggestionSection_: boolean =
+      this.allowOrca_ || this.allowEmojiSuggestion_;
 
   // Computed properties.
   private spellCheckLanguages_: SpellCheckLanguageState[]|undefined;
   private showLastUsedImeShortcutReminder_: boolean;
   private showNextImeShortcutReminder_: boolean;
   private shortcutReminderBody_: TrustedHTML[];
-
-  constructor() {
-    super();
-
-    /** RouteOriginMixin override */
-    this.route = routes.OS_LANGUAGES_INPUT;
-  }
 
   override ready(): void {
     super.ready();
@@ -638,6 +628,11 @@ export class OsSettingsInputPageElement extends OsSettingsInputPageElementBase {
     if (this.showNextImeShortcutReminder_) {
       this.setPrefValue('ash.shortcut_reminders.next_ime_dismissed', true);
     }
+  }
+
+  private shouldShowSpinner_(_item: chrome.languageSettingsPrivate.InputMethod):
+      boolean {
+    return this.languagePacksInSettingsEnabled_;
   }
 }
 

@@ -4,14 +4,20 @@
 
 #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 
+#include "base/feature_list.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "content/public/browser/media_session.h"
 #include "content/public/browser/media_session_service.h"
+#include "media/base/media_switches.h"
+#include "mojo/public/cpp/bindings/remote.h"
 
 namespace {
 
@@ -26,7 +32,9 @@ AutoPictureInPictureTabHelper::AutoPictureInPictureTabHelper(
     content::WebContents* web_contents)
     : content::WebContentsObserver(web_contents),
       content::WebContentsUserData<AutoPictureInPictureTabHelper>(
-          *web_contents) {
+          *web_contents),
+      host_content_settings_map_(HostContentSettingsMapFactory::GetForProfile(
+          Profile::FromBrowserContext(web_contents->GetBrowserContext()))) {
   // TODO(https://crbug.com/1465988): Instead of observing all tabstrips at all
   // times, only observe |web_contents()|'s current tabstrip and only while
   // kEnterAutoPictureInPicture is available.
@@ -47,6 +55,15 @@ AutoPictureInPictureTabHelper::AutoPictureInPictureTabHelper(
 }
 
 AutoPictureInPictureTabHelper::~AutoPictureInPictureTabHelper() = default;
+
+bool AutoPictureInPictureTabHelper::HasAutoPictureInPictureBeenRegistered()
+    const {
+  return has_ever_registered_for_auto_picture_in_picture_;
+}
+
+void AutoPictureInPictureTabHelper::PrimaryPageChanged(content::Page& page) {
+  has_ever_registered_for_auto_picture_in_picture_ = false;
+}
 
 void AutoPictureInPictureTabHelper::MediaPictureInPictureChanged(
     bool is_in_picture_in_picture) {
@@ -131,6 +148,10 @@ void AutoPictureInPictureTabHelper::MediaSessionActionsChanged(
       base::ranges::find(actions,
                          media_session::mojom::MediaSessionAction::
                              kEnterAutoPictureInPicture) != actions.end();
+
+  if (is_enter_auto_picture_in_picture_available_) {
+    has_ever_registered_for_auto_picture_in_picture_ = true;
+  }
 }
 
 void AutoPictureInPictureTabHelper::MaybeEnterAutoPictureInPicture() {
@@ -159,6 +180,12 @@ bool AutoPictureInPictureTabHelper::IsEligibleForAutoPictureInPicture() const {
 
   // The user may block autopip via a content setting.
   if (GetCurrentContentSetting() == CONTENT_SETTING_BLOCK) {
+    return false;
+  }
+
+  // Only https:// or file:// may autopip.
+  const GURL url = web_contents()->GetLastCommittedURL();
+  if (!url.SchemeIs(url::kHttpsScheme) && !url.SchemeIsFile()) {
     return false;
   }
 
@@ -193,7 +220,12 @@ TabStripModel* AutoPictureInPictureTabHelper::GetCurrentTabStripModel() const {
 }
 
 bool AutoPictureInPictureTabHelper::HasSufficientPlayback() const {
-  // TODO(https://crbug.com/1464251): Make sure that there is a video that is
+  if (!base::FeatureList::IsEnabled(
+          media::kAutoPictureInPictureForVideoPlayback)) {
+    return false;
+  }
+
+  // TODO(https://crbug.com/1464351): Make sure that there is a video that is
   // large enough and visible.
   return has_audio_focus_ && is_playing_;
 }
@@ -205,8 +237,13 @@ bool AutoPictureInPictureTabHelper::IsUsingCameraOrMicrophone() const {
 }
 
 ContentSetting AutoPictureInPictureTabHelper::GetCurrentContentSetting() const {
-  // TODO: use the actual content setting once it exists.
-  return CONTENT_SETTING_ALLOW;
+  GURL url = web_contents()->GetLastCommittedURL();
+  return host_content_settings_map_->GetContentSetting(
+      url, url, ContentSettingsType::AUTO_PICTURE_IN_PICTURE);
+}
+
+bool AutoPictureInPictureTabHelper::IsInAutoPictureInPicture() const {
+  return is_in_auto_picture_in_picture_;
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(AutoPictureInPictureTabHelper);

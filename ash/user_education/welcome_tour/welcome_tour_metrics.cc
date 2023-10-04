@@ -24,36 +24,16 @@ PrefService* GetLastActiveUserPrefService() {
   return Shell::Get()->session_controller()->GetLastActiveUserPrefService();
 }
 
-// These strings are persisted to logs. These string values should never be
-// changed or reused. Any values added to `Step` must be added here.
-std::string ToString(Step step) {
-  switch (step) {
-    case Step::kDialog:
-      return "Dialog";
-    case Step::kExploreApp:
-      return "ExploreApp";
-    case Step::kExploreAppWindow:
-      return "ExploreAppWindow";
-    case Step::kHomeButton:
-      return "HomeButton";
-    case Step::kSearch:
-      return "Search";
-    case Step::kSettingsApp:
-      return "SettingsApp";
-    case Step::kShelf:
-      return "Shelf";
-    case Step::kStatusArea:
-      return "StatusArea";
-  }
-  NOTREACHED_NORETURN();
-}
-
 }  // namespace
 
 void RecordInteraction(Interaction interaction) {
   CHECK(features::IsWelcomeTourEnabled());
 
+  // Some interactions, like `kQuickSettings`, can occur before user activation.
   auto* prefs = GetLastActiveUserPrefService();
+  if (!prefs) {
+    return;
+  }
 
   auto completed_time = welcome_tour_prefs::GetTimeOfFirstTourCompletion(prefs);
   auto prevented_time = welcome_tour_prefs::GetTimeOfFirstTourPrevention(prefs);
@@ -148,6 +128,8 @@ void RecordTourPrevented(PreventedReason reason) {
 // changed or reused. Any values added to `Interaction` must be added here.
 std::string ToString(Interaction interaction) {
   switch (interaction) {
+    case Interaction::kExploreApp:
+      return "ExploreApp";
     case Interaction::kFilesApp:
       return "FilesApp";
     case Interaction::kLauncher:
@@ -158,6 +140,30 @@ std::string ToString(Interaction interaction) {
       return "Search";
     case Interaction::kSettingsApp:
       return "SettingsApp";
+  }
+  NOTREACHED_NORETURN();
+}
+
+// These strings are persisted to logs. These string values should never be
+// changed or reused. Any values added to `Step` must be added here.
+std::string ToString(Step step) {
+  switch (step) {
+    case Step::kDialog:
+      return "Dialog";
+    case Step::kExploreApp:
+      return "ExploreApp";
+    case Step::kExploreAppWindow:
+      return "ExploreAppWindow";
+    case Step::kHomeButton:
+      return "HomeButton";
+    case Step::kSearch:
+      return "Search";
+    case Step::kSettingsApp:
+      return "SettingsApp";
+    case Step::kShelf:
+      return "Shelf";
+    case Step::kStatusArea:
+      return "StatusArea";
   }
   NOTREACHED_NORETURN();
 }

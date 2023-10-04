@@ -93,7 +93,7 @@ export class AppServiceInternalsElement extends PolymerElement {
     fileParts.push('Preferred Apps\n');
     fileParts.push('==============\n\n');
     for (const preferredApp of this.preferredAppList_) {
-      fileParts.push(preferredApp.name + '\n');
+      fileParts.push(preferredApp.name + ' (' + preferredApp.id + ')\n');
       fileParts.push('-----\n');
       fileParts.push(preferredApp.preferredFilters + '\n');
     }
@@ -112,6 +112,14 @@ export class AppServiceInternalsElement extends PolymerElement {
       fileParts.push(shortcut.name + '\n');
       fileParts.push('-----\n');
       fileParts.push(shortcut.debugInfo + '\n');
+    }
+
+    fileParts.push('Promise App List\n');
+    fileParts.push('================\n\n');
+    for (const promiseApp of this.promiseAppList_) {
+      fileParts.push(promiseApp.packageId + '\n');
+      fileParts.push('-----\n');
+      fileParts.push(promiseApp.debugInfo + '\n');
     }
 
     const file = new Blob(fileParts);

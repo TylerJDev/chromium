@@ -5,12 +5,9 @@
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 
-if (is_chromeos) {
-  import("//chromeos/components/sensors/buildflags.gni")
-}
-
 if (is_android) {
-  import("//build/config/android/rules.gni")  # For generate_jni().
+  import("//build/config/android/rules.gni")
+  import("//third_party/jni_zero/jni_zero.gni")
 }
 
 source_set("generic_sensor") {
@@ -39,8 +36,6 @@ source_set("generic_sensor") {
     "platform_sensor_fusion_algorithm.h",
     "platform_sensor_provider.cc",
     "platform_sensor_provider.h",
-    "platform_sensor_provider_base.cc",
-    "platform_sensor_provider_base.h",
     "platform_sensor_util.cc",
     "platform_sensor_util.h",
     "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer.cc",
@@ -90,10 +85,6 @@ source_set("generic_sensor") {
   }
 
   if (is_chromeos) {
-    deps += [ "//chromeos/components/sensors:buildflags" ]
-  }
-
-  if (is_chromeos && use_iioservice) {
     deps += [
       "//chromeos/components/sensors",
       "//chromeos/components/sensors/mojom",
@@ -107,7 +98,7 @@ source_set("generic_sensor") {
       "platform_sensor_provider_linux_base.cc",
       "platform_sensor_provider_linux_base.h",
     ]
-  } else if ((is_linux || is_chromeos) && use_udev) {
+  } else if (is_linux && use_udev) {
     deps += [
       "//device/base",
       "//device/udev_linux",

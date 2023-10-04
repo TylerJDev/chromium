@@ -11,6 +11,7 @@
 #include "ash/app_list/app_list_controller_impl.h"
 #include "ash/constants/ash_features.h"
 #include "ash/constants/notifier_catalogs.h"
+#include "ash/public/cpp/accessibility_controller.h"
 #include "ash/public/cpp/shelf_model.h"
 #include "ash/public/cpp/shelf_prefs.h"
 #include "ash/public/cpp/shelf_types.h"
@@ -95,6 +96,9 @@ constexpr char kMoveWindowFromActiveDeskHistogramName[] =
 constexpr char kCloseAllUndoHistogramName[] = "Ash.Desks.CloseAllUndo";
 constexpr char kCloseAllTotalHistogramName[] = "Ash.Desks.CloseAllTotal";
 constexpr char kRemoveDeskTypeHistogramName[] = "Ash.Desks.RemoveDeskType";
+constexpr char kDeskApiRemoveDeskTypeHistogramName[] =
+    "Ash.DeskApi.RemoveDeskType";
+constexpr char kDeskApiCloseAllUndoHistogramName[] = "Ash.DeskApi.CloseAllUndo";
 constexpr char kNumberOfWindowsClosed[] = "Ash.Desks.NumberOfWindowsClosed2";
 constexpr char kNumberOfWindowsClosedByButton[] =
     "Ash.Desks.NumberOfWindowsClosed2.Button";
@@ -172,7 +176,7 @@ void RemoveAllWindowsFromOverview() {
       Shell::Get()->overview_controller()->overview_session();
   for (const auto& grid : overview_session->grid_list()) {
     while (!grid->empty()) {
-      OverviewItem* overview_item = grid->window_list()[0].get();
+      OverviewItemBase* overview_item = grid->window_list()[0].get();
 
       // We want to restore the window here primarily because when we are
       // undoing the removal of an active desk outside of overview, we do not
@@ -595,6 +599,12 @@ void DesksController::NewDesk(DesksCreationRemovalSource source) {
   available_container_ids_.pop();
   Desk* new_desk = desks_.back().get();
 
+  // We should notify observers that the desk is added before possibly
+  // notifying observers that the name is set.
+  for (auto& observer : observers_) {
+    observer.OnDeskAdded(new_desk, /*from_undo=*/false);
+  }
+
   // The new desk should have an empty name when the user creates a desk with
   // a button. This is done to encourage them to rename their desks.
   const bool empty_name =
@@ -619,9 +629,6 @@ void DesksController::NewDesk(DesksCreationRemovalSource source) {
         l10n_util::GetStringFUTF8(IDS_ASH_VIRTUAL_DESKS_ALERT_NEW_DESK_CREATED,
                                   base::NumberToString16(desks_.size())));
   }
-
-  for (auto& observer : observers_)
-    observer.OnDeskAdded(new_desk, /*from_undo=*/false);
 
   if (!is_first_ever_desk) {
     if (features::IsDeskButtonEnabled()) {
@@ -933,7 +940,7 @@ bool DesksController::MoveWindowFromActiveDeskTo(
     auto* item = overview_session->GetOverviewItemForWindow(window);
     // `item` can be null when we are switching users.
     if (item) {
-      item->OnMovingWindowToAnotherDesk();
+      item->OnMovingItemToAnotherDesk();
       // The item no longer needs to be in the overview grid.
       overview_session->RemoveItem(item);
     } else if (visible_on_all_desks) {
@@ -1569,6 +1576,13 @@ void DesksController::OnWindowActivating(ActivationReason reason,
   if (AreDesksBeingModified())
     return;
 
+  // When there is no `current_account_id_`, it means no user has finished sign
+  // in (either no user, or a user is signing in). Do not change desks in this
+  // case.
+  if (!current_account_id_.is_valid()) {
+    return;
+  }
+
   // Browser session restore opens all restored windows, so it activates
   // every single window and activates the parent desk. Therefore, this check
   // prevents repetitive desk activation. Moreover, when Bento desks restore is
@@ -1656,6 +1670,12 @@ void DesksController::OnAnimationFinished(DeskAnimationBase* animation) {
   DCHECK_EQ(animation_.get(), animation);
   metrics_helper_->OnAnimationFinished(animation->visible_desk_changes());
   animation_.reset();
+
+  // If we just switched desks due to removing the active desk, we immediately
+  // highlight the undo button.
+  if (Shell::Get()->accessibility_controller()->spoken_feedback().enabled()) {
+    MaybeToggleA11yHighlightOnUndoDeskRemovalToast();
+  }
 }
 
 bool DesksController::HasDeskWithName(const std::u16string& desk_name) const {
@@ -1755,6 +1775,11 @@ void DesksController::RemoveDeskInternal(const Desk* desk,
                                          DesksCreationRemovalSource source,
                                          DeskCloseType close_type,
                                          bool desk_switched) {
+  // Removing a desk can cause transient raster scale updates during overview
+  // mode, if desks are combined. Pause raster scale updates until windows are
+  // in their final state.
+  ScopedPauseRasterScaleUpdates scoped_pause;
+
   MaybeCommitPendingDeskRemoval();
 
   DCHECK(CanRemoveDesks());
@@ -1960,14 +1985,23 @@ void DesksController::RemoveDeskInternal(const Desk* desk,
 
   UMA_HISTOGRAM_ENUMERATION(kRemoveDeskHistogramName, source);
   UMA_HISTOGRAM_ENUMERATION(kRemoveDeskTypeHistogramName, close_type);
+  if (source == DesksCreationRemovalSource::kApi) {
+    base::UmaHistogramEnumeration(kDeskApiRemoveDeskTypeHistogramName,
+                                  close_type);
+  }
 
   // We should only announce desks are being merged if we are combining desks.
+  // Otherwise, we tell the user that the desk has closed with its windows.
+  AccessibilityControllerImpl* accessibility_controller =
+      shell->accessibility_controller();
   if (close_type == DeskCloseType::kCombineDesks) {
-    Shell::Get()
-        ->accessibility_controller()
-        ->TriggerAccessibilityAlertWithMessage(l10n_util::GetStringFUTF8(
-            IDS_ASH_VIRTUAL_DESKS_ALERT_DESK_REMOVED, removed_desk->name(),
-            active_desk_->name()));
+    accessibility_controller->TriggerAccessibilityAlertWithMessage(
+        l10n_util::GetStringFUTF8(IDS_ASH_VIRTUAL_DESKS_ALERT_DESK_REMOVED,
+                                  removed_desk->name(), active_desk_->name()));
+  } else if (close_type == DeskCloseType::kCloseAllWindowsAndWait) {
+    accessibility_controller->TriggerAccessibilityAlertWithMessage(
+        l10n_util::GetStringUTF8(
+            IDS_ASH_VIRTUAL_DESKS_ALERT_DESK_CLOSED_WITH_WINDOWS));
   }
 
   desks_restore_util::UpdatePrimaryUserDeskNamesPrefs();
@@ -1996,6 +2030,10 @@ void DesksController::RemoveDeskInternal(const Desk* desk,
 void DesksController::UndoDeskRemoval() {
   DCHECK(temporary_removed_desk_);
   base::UmaHistogramBoolean(kCloseAllUndoHistogramName, true);
+  if (temporary_removed_desk_->desk_removal_source() ==
+      DesksCreationRemovalSource::kApi) {
+    base::UmaHistogramBoolean(kDeskApiCloseAllUndoHistogramName, true);
+  }
   Desk* readded_desk_ptr = temporary_removed_desk_->desk();
   auto readded_desk_data = std::move(temporary_removed_desk_);
   const int readded_desk_index = readded_desk_data->index();
@@ -2163,6 +2201,11 @@ void DesksController::MaybeCommitPendingDeskRemoval(
                            temporary_removed_desk_->toast_id() == toast_id)) {
     temporary_removed_desk_.reset();
   }
+}
+
+bool DesksController::IsUndoToastHighlighted() const {
+  return temporary_removed_desk_ && ToastManager::Get()->IsHighlighted(
+                                        temporary_removed_desk_->toast_id());
 }
 
 void DesksController::CleanUpClosedAppWindowsTask(

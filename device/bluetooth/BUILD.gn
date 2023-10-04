@@ -6,7 +6,8 @@ import("//build/config/features.gni")
 import("//device/bluetooth/cast_bluetooth.gni")
 
 if (is_android) {
-  import("//build/config/android/rules.gni")  # For generate_jni().
+  import("//build/config/android/rules.gni")
+  import("//third_party/jni_zero/jni_zero.gni")
 }
 
 config("bluetooth_config") {
@@ -586,7 +587,7 @@ component("bluetooth") {
         }
       }
       if (use_dbus) {
-        deps += [ "//dbus" ]
+        public_deps += [ "//dbus" ]
       }
     } else {  # !use_bluez
       defines += [ "LINUX_WITHOUT_DBUS" ]

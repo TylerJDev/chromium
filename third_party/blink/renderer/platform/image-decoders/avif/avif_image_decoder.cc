@@ -5,9 +5,9 @@
 #include "third_party/blink/renderer/platform/image-decoders/avif/avif_image_decoder.h"
 
 #include <stdint.h>
+#include <string.h>
 
 #include <algorithm>
-#include <cstring>
 #include <memory>
 #include <utility>
 
@@ -18,23 +18,17 @@
 #include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/numerics/checked_math.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/ranges/algorithm.h"
 #include "base/timer/elapsed_timer.h"
 #include "build/build_config.h"
 #include "cc/base/math_util.h"
 #include "media/base/video_color_space.h"
-#include "media/base/video_frame.h"
-#include "media/renderers/paint_canvas_video_renderer.h"
-#include "media/video/half_float_maker.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/features.h"
-#include "third_party/blink/renderer/platform/graphics/rw_buffer.h"
 #include "third_party/blink/renderer/platform/image-decoders/fast_shared_buffer_reader.h"
 #include "third_party/blink/renderer/platform/image-decoders/image_animation.h"
 #include "third_party/blink/renderer/platform/image-decoders/image_decoder.h"
-#include "third_party/blink/renderer/platform/instrumentation/histogram.h"
+#include "third_party/blink/renderer/platform/image-decoders/rw_buffer.h"
 #include "third_party/libavif/src/include/avif/avif.h"
 #include "third_party/libavifinfo/src/avifinfo.h"
 #include "third_party/libyuv/include/libyuv.h"
@@ -42,7 +36,6 @@
 #include "third_party/skia/include/core/SkTypes.h"
 #include "third_party/skia/include/private/SkXmp.h"
 #include "ui/gfx/color_space.h"
-#include "ui/gfx/half_float.h"
 #include "ui/gfx/icc_profile.h"
 
 #if defined(ARCH_CPU_BIG_ENDIAN)
@@ -119,64 +112,6 @@ gfx::ColorSpace GetColorSpace(const avifImage* image) {
   return gfx::ColorSpace::CreateREC709();
 }
 
-// Returns whether media::PaintCanvasVideoRenderer (PCVR) can convert the YUV
-// color space of |image| to RGB.
-// media::PaintCanvasVideoRenderer::ConvertVideoFrameToRGBPixels() uses libyuv
-// for the YUV-to-RGB conversion.
-bool IsColorSpaceSupportedByPCVR(const avifImage* image) {
-  SkYUVColorSpace yuv_color_space;
-  // libyuv supports the 8-bit and 10-bit YUVA pixel formats.
-  return GetColorSpace(image).ToSkYUVColorSpace(image->depth,
-                                                &yuv_color_space) &&
-         (!image->alphaPlane ||
-          ((image->depth == 8 || image->depth == 10) &&
-           (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420 ||
-            image->yuvFormat == AVIF_PIXEL_FORMAT_YUV422 ||
-            image->yuvFormat == AVIF_PIXEL_FORMAT_YUV444)));
-}
-
-media::VideoPixelFormat AvifToVideoPixelFormat(avifPixelFormat fmt,
-                                               bool has_alpha,
-                                               int depth) {
-  if (depth != 8 && depth != 10 && depth != 12) {
-    // Unsupported bit depth.
-    NOTREACHED();
-    return media::PIXEL_FORMAT_UNKNOWN;
-  }
-  int depth_index = (depth - 8) / 2;
-  // In these lookup tables, the first index is has_alpha and the second index
-  // is depth_index. Note that there are no media::VideoPixelFormat values for
-  // 12-bit YUVA.
-  static constexpr media::VideoPixelFormat kYUV420Formats[][3] = {
-      {media::PIXEL_FORMAT_I420, media::PIXEL_FORMAT_YUV420P10,
-       media::PIXEL_FORMAT_YUV420P12},
-      {media::PIXEL_FORMAT_I420A, media::PIXEL_FORMAT_YUV420AP10,
-       media::PIXEL_FORMAT_UNKNOWN}};
-  static constexpr media::VideoPixelFormat kYUV422Formats[][3] = {
-      {media::PIXEL_FORMAT_I422, media::PIXEL_FORMAT_YUV422P10,
-       media::PIXEL_FORMAT_YUV422P12},
-      {media::PIXEL_FORMAT_I422A, media::PIXEL_FORMAT_YUV422AP10,
-       media::PIXEL_FORMAT_UNKNOWN}};
-  static constexpr media::VideoPixelFormat kYUV444Formats[][3] = {
-      {media::PIXEL_FORMAT_I444, media::PIXEL_FORMAT_YUV444P10,
-       media::PIXEL_FORMAT_YUV444P12},
-      {media::PIXEL_FORMAT_I444A, media::PIXEL_FORMAT_YUV444AP10,
-       media::PIXEL_FORMAT_UNKNOWN}};
-  switch (fmt) {
-    case AVIF_PIXEL_FORMAT_YUV420:
-    case AVIF_PIXEL_FORMAT_YUV400:
-      return kYUV420Formats[has_alpha][depth_index];
-    case AVIF_PIXEL_FORMAT_YUV422:
-      return kYUV422Formats[has_alpha][depth_index];
-    case AVIF_PIXEL_FORMAT_YUV444:
-      return kYUV444Formats[has_alpha][depth_index];
-    case AVIF_PIXEL_FORMAT_NONE:
-    case AVIF_PIXEL_FORMAT_COUNT:
-      NOTREACHED();
-      return media::PIXEL_FORMAT_UNKNOWN;
-  }
-}
-
 // |y_size| is the width or height of the Y plane. Returns the width or height
 // of the U and V planes. |chroma_shift| represents the subsampling of the
 // chroma (U and V) planes in the x (for width) or y (for height) direction.
@@ -236,7 +171,7 @@ scoped_refptr<SegmentReader> CreateGainmapSegmentReader(
 
 // Stream object for use with libavifinfo.
 struct AvifInfoSegmentReaderStream {
-  const SegmentReader* reader = nullptr;
+  scoped_refptr<const SegmentReader> reader;
   size_t num_read_bytes = 0;
   uint8_t buffer[AVIFINFO_MAX_NUM_READ_BYTES];
 };
@@ -268,7 +203,7 @@ const uint8_t* AvifInfoSegmentReaderRead(void* void_stream, size_t num_bytes) {
         stream->reader->GetSomeData(data, /*position=*/stream->num_read_bytes);
     CHECK_NE(data_size, 0u);
     const size_t copy_size = std::min(data_size, num_bytes);
-    std::memcpy(stream->buffer + buffer_pos, data, copy_size);
+    memcpy(stream->buffer + buffer_pos, data, copy_size);
     buffer_pos += copy_size;
     stream->num_read_bytes += copy_size;
     num_bytes -= copy_size;
@@ -283,85 +218,10 @@ void AvifInfoSegmentReaderSkip(void* void_stream, size_t num_bytes) {
   stream->num_read_bytes += num_bytes;
 }
 
-// Choose one of the Blink.DecodedImage.AvifDensity.Count.* histograms based on
-// the image area, and add 1 to the bucket for the bits per pixel in the
-// histogram.
-void UpdateBppHistogram(gfx::Size size, size_t image_size_bytes) {
-#define DEFINE_BPP_HISTOGRAM(var, suffix) \
-  DEFINE_THREAD_SAFE_STATIC_LOCAL(        \
-      CustomCountHistogram, var,          \
-      ("Blink.DecodedImage.AvifDensity.Count." suffix, 1, 1000, 100))
-
-  // From 1 pixel to 1 MP, we have one histogram per 0.1 MP.
-  // From 2 MP to 13 MP, we have one histogram per 1 MP.
-  // Finally, we have one histogram for > 13 MP.
-  DEFINE_BPP_HISTOGRAM(avif_density_point_1_mp_histogram, "0.1MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_2_mp_histogram, "0.2MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_3_mp_histogram, "0.3MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_4_mp_histogram, "0.4MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_5_mp_histogram, "0.5MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_6_mp_histogram, "0.6MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_7_mp_histogram, "0.7MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_8_mp_histogram, "0.8MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_point_9_mp_histogram, "0.9MP");
-  static CustomCountHistogram* const density_histogram_small[9] = {
-      &avif_density_point_1_mp_histogram, &avif_density_point_2_mp_histogram,
-      &avif_density_point_3_mp_histogram, &avif_density_point_4_mp_histogram,
-      &avif_density_point_5_mp_histogram, &avif_density_point_6_mp_histogram,
-      &avif_density_point_7_mp_histogram, &avif_density_point_8_mp_histogram,
-      &avif_density_point_9_mp_histogram};
-
-  DEFINE_BPP_HISTOGRAM(avif_density_1_mp_histogram, "01MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_2_mp_histogram, "02MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_3_mp_histogram, "03MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_4_mp_histogram, "04MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_5_mp_histogram, "05MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_6_mp_histogram, "06MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_7_mp_histogram, "07MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_8_mp_histogram, "08MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_9_mp_histogram, "09MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_10_mp_histogram, "10MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_11_mp_histogram, "11MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_12_mp_histogram, "12MP");
-  DEFINE_BPP_HISTOGRAM(avif_density_13_mp_histogram, "13MP");
-  static CustomCountHistogram* const density_histogram_big[13] = {
-      &avif_density_1_mp_histogram,  &avif_density_2_mp_histogram,
-      &avif_density_3_mp_histogram,  &avif_density_4_mp_histogram,
-      &avif_density_5_mp_histogram,  &avif_density_6_mp_histogram,
-      &avif_density_7_mp_histogram,  &avif_density_8_mp_histogram,
-      &avif_density_9_mp_histogram,  &avif_density_10_mp_histogram,
-      &avif_density_11_mp_histogram, &avif_density_12_mp_histogram,
-      &avif_density_13_mp_histogram};
-
-  DEFINE_BPP_HISTOGRAM(avif_density_14plus_mp_histogram, "14+MP");
-
-#undef DEFINE_BPP_HISTOGRAM
-
-  uint64_t image_area = size.Area64();
-  CHECK_NE(image_area, 0u);
-  // The calculation of density_centi_bpp cannot overflow. SetSize() ensures
-  // that image_area won't overflow int32_t. And image_size_bytes must be much
-  // smaller than UINT64_MAX / (100 * 8), which is roughly 2^54, or 16 peta
-  // bytes.
-  base::CheckedNumeric<uint64_t> checked_image_size_bytes = image_size_bytes;
-  base::CheckedNumeric<uint64_t> density_centi_bpp =
-      (checked_image_size_bytes * 100 * 8 + image_area / 2) / image_area;
-
-  CustomCountHistogram* density_histogram;
-  if (image_area <= 900000) {
-    // One histogram per 0.1 MP.
-    int n = (static_cast<int>(image_area) + (100000 - 1)) / 100000;
-    density_histogram = density_histogram_small[n - 1];
-  } else if (image_area <= 13000000) {
-    // One histogram per 1 MP.
-    int n = (static_cast<int>(image_area) + (1000000 - 1)) / 1000000;
-    density_histogram = density_histogram_big[n - 1];
-  } else {
-    density_histogram = &avif_density_14plus_mp_histogram;
-  }
-
-  density_histogram->Count(base::saturated_cast<base::Histogram::Sample>(
-      density_centi_bpp.ValueOrDie()));
+inline float FractionToFloat(uint32_t numerator, uint32_t denominator) {
+  // First cast to double and not float because uint32_t->float conversion can
+  // cause precision loss.
+  return static_cast<double>(numerator) / denominator;
 }
 
 }  // namespace
@@ -389,10 +249,10 @@ bool AVIFImageDecoder::ImageIsHighBitDepth() {
   return bit_depth_ > 8;
 }
 
-void AVIFImageDecoder::OnSetData(SegmentReader* data) {
+void AVIFImageDecoder::OnSetData(scoped_refptr<SegmentReader> data) {
   have_parsed_current_data_ = false;
   const bool all_data_received = IsAllDataReceived();
-  avif_io_data_.reader = data_.get();
+  avif_io_data_.reader = data_;
   avif_io_data_.all_data_received = all_data_received;
   avif_io_.sizeHint = all_data_received ? data_->size() : kMaxAvifFileSize;
 
@@ -508,7 +368,7 @@ void AVIFImageDecoder::DecodeToYUV() {
     }
     return;
   }
-  const auto* image = decoded_image_;
+  const avifImage* image = decoded_image_;
 
   DCHECK(!image->alphaPlane);
   static_assert(cc::YUVIndex::kY == static_cast<cc::YUVIndex>(AVIF_CHAN_Y), "");
@@ -629,30 +489,7 @@ base::TimeDelta AVIFImageDecoder::FrameDurationAtIndex(wtf_size_t index) const {
 bool AVIFImageDecoder::ImageHasBothStillAndAnimatedSubImages() const {
   // Per MIAF, all animated AVIF files must have a still image, even if it's
   // just a pointer to the first frame of the animation.
-  if (decoded_frame_count_ > 1) {
-    return true;
-  }
-
-  constexpr wtf_size_t kMajorBrandOffset = 8;
-  constexpr wtf_size_t kMajorBrandSize = 4;
-  if (data_->size() < kMajorBrandOffset + kMajorBrandSize) {
-    return false;
-  }
-
-  // TODO(wtc): We should rely on libavif to tell us if the file has both an
-  // image and an animation track instead of just checking the major brand.
-  //
-  // An AVIF image begins with a file‐type box 'ftyp':
-  //   unsigned int(32) size;
-  //   unsigned int(32) type = boxtype;  // boxtype is 'ftyp'
-  //   unsigned int(32) major_brand;
-  //   ...
-  FastSharedBufferReader fast_reader(data_);
-  char buf[kMajorBrandSize];
-  const char* major_brand =
-      fast_reader.GetConsecutiveData(kMajorBrandOffset, kMajorBrandSize, buf);
-  // The brand 'avis' is an AVIF image sequence (animation) brand.
-  return memcmp(major_brand, "avis", kMajorBrandSize) == 0;
+  return decoder_ && decoder_->imageSequenceTrackPresent;
 }
 
 // static
@@ -755,7 +592,7 @@ void AVIFImageDecoder::Decode(wtf_size_t index) {
     SetFailed();
     return;
   }
-  const auto* image = decoded_image_;
+  const avifImage* image = decoded_image_;
 
   // ImageDecoder::SizeCalculationMayOverflow(), called by UpdateDemuxer()
   // before being here, made sure the image height fits in an int.
@@ -933,6 +770,11 @@ bool AVIFImageDecoder::UpdateDemuxer() {
     // crbug.com/1198455.
     decoder_->strictFlags &= ~AVIF_STRICT_PIXI_REQUIRED;
 
+    if (base::FeatureList::IsEnabled(features::kGainmapHdrImages) &&
+        base::FeatureList::IsEnabled(features::kAvifGainmapHdrImages)) {
+      decoder_->enableParsingGainMapMetadata = AVIF_TRUE;
+    }
+
     avif_io_.destroy = nullptr;
     avif_io_.read = ReadFromSegmentReader;
     avif_io_.write = nullptr;
@@ -1068,22 +910,22 @@ bool AVIFImageDecoder::UpdateDemuxer() {
     angle = container->irot.angle;
     CHECK_LT(angle, 4);
   }
-  // |mode| specifies how the mirroring is performed.
+  // |axis| specifies how the mirroring is performed.
   //   -1: No mirroring.
   //    0: The top and bottom parts of the image are exchanged.
   //    1: The left and right parts of the image are exchanged.
-  int mode = -1;
+  int axis = -1;
   if (container->transformFlags & AVIF_TRANSFORM_IMIR) {
-    mode = container->imir.mode;
-    CHECK_LT(mode, 2);
+    axis = container->imir.axis;
+    CHECK_LT(axis, 2);
   }
   // MIAF Section 7.3.6.7 (Clean aperture, rotation and mirror) says:
   //   These properties, if used, shall be indicated to be applied in the
   //   following order: clean aperture first, then rotation, then mirror.
   //
-  // In the kModeAngleToOrientation array, the first dimension is mode (with an
+  // In the kAxisAngleToOrientation array, the first dimension is axis (with an
   // offset of 1). The second dimension is angle.
-  constexpr ImageOrientationEnum kModeAngleToOrientation[3][4] = {
+  constexpr ImageOrientationEnum kAxisAngleToOrientation[3][4] = {
       // No mirroring.
       {ImageOrientationEnum::kOriginTopLeft,
        ImageOrientationEnum::kOriginLeftBottom,
@@ -1100,7 +942,7 @@ bool AVIFImageDecoder::UpdateDemuxer() {
        ImageOrientationEnum::kOriginBottomLeft,
        ImageOrientationEnum::kOriginLeftTop},
   };
-  orientation_ = kModeAngleToOrientation[mode + 1][angle];
+  orientation_ = kAxisAngleToOrientation[axis + 1][angle];
 
   // Determine whether the image can be decoded to YUV.
   // * Alpha channel is not supported.
@@ -1118,7 +960,8 @@ bool AVIFImageDecoder::UpdateDemuxer() {
   // alpha.
   if (container->depth == 8 && avif_yuv_format_ != AVIF_PIXEL_FORMAT_YUV400 &&
       !decoder_->alphaPresent && decoded_frame_count_ == 1) {
-    update_bpp_histogram_callback_ = base::BindOnce(&UpdateBppHistogram);
+    static constexpr char kType[] = "Avif";
+    update_bpp_histogram_callback_ = base::BindOnce(&UpdateBppHistogram<kType>);
   }
 
   unsigned width = container->width;
@@ -1194,7 +1037,7 @@ avifResult AVIFImageDecoder::DecodeImage(wtf_size_t index) {
   }
 
   if (ret == AVIF_RESULT_OK) {
-    if (IsAllDataReceived() && !update_bpp_histogram_callback_.is_null()) {
+    if (IsAllDataReceived() && update_bpp_histogram_callback_) {
       std::move(update_bpp_histogram_callback_).Run(Size(), data_->size());
     }
 
@@ -1227,13 +1070,10 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image,
                                    int from_row,
                                    int* to_row,
                                    ImageFrame* buffer) {
-  const gfx::ColorSpace frame_cs = GetColorSpace(image);
-  const bool premultiply_alpha = buffer->PremultiplyAlpha();
-
   DCHECK_LT(from_row, *to_row);
 
-  // media::PaintCanvasVideoRenderer::ConvertVideoFrameToRGBPixels() uses
-  // libyuv for the YUV 4:2:0 to RGB upsampling and conversion as follows:
+  // libavif uses libyuv for the YUV 4:2:0 to RGB upsampling and/or conversion
+  // as follows:
   //  - convert the top RGB row 0,
   //  - convert the RGB rows 1 and 2, then RGB rows 3 and 4 etc.,
   //  - convert the bottom (odd) RGB row if there is an even number of RGB rows.
@@ -1262,8 +1102,7 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image,
   //                                           6 (*to_row)
 
   const bool use_libyuv_bilinear_upsampling =
-      !decode_to_half_float_ && IsColorSpaceSupportedByPCVR(image) &&
-      image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420;
+      !decode_to_half_float_ && image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420;
   const bool save_top_row = use_libyuv_bilinear_upsampling && from_row > 0;
   const bool postpone_bottom_row =
       use_libyuv_bilinear_upsampling &&
@@ -1297,61 +1136,6 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image,
     image = view.get();
   }
 
-  // Call media::PaintCanvasVideoRenderer (PCVR) if the color space is
-  // supported.
-  if (!decode_to_half_float_ && IsColorSpaceSupportedByPCVR(image)) {
-    // Create temporary frame wrapping the YUVA planes.
-    const bool has_alpha = image->alphaPlane != nullptr;
-    auto pixel_format =
-        AvifToVideoPixelFormat(image->yuvFormat, has_alpha, image->depth);
-    if (pixel_format == media::PIXEL_FORMAT_UNKNOWN) {
-      return false;
-    }
-    auto size = gfx::Size(image->width, image->height);
-    scoped_refptr<media::VideoFrame> frame;
-    if (has_alpha) {
-      frame = media::VideoFrame::WrapExternalYuvaData(
-          pixel_format, size, gfx::Rect(size), size, image->yuvRowBytes[0],
-          image->yuvRowBytes[1], image->yuvRowBytes[2], image->alphaRowBytes,
-          image->yuvPlanes[0], image->yuvPlanes[1], image->yuvPlanes[2],
-          image->alphaPlane, base::TimeDelta());
-    } else {
-      frame = media::VideoFrame::WrapExternalYuvData(
-          pixel_format, size, gfx::Rect(size), size, image->yuvRowBytes[0],
-          image->yuvRowBytes[1], image->yuvRowBytes[2], image->yuvPlanes[0],
-          image->yuvPlanes[1], image->yuvPlanes[2], base::TimeDelta());
-    }
-    if (!frame) {
-      return false;
-    }
-    frame->set_color_space(frame_cs);
-    uint32_t* rgba_8888 = buffer->GetAddr(0, from_row);
-
-    if (save_top_row) {
-      previous_last_decoded_row_.resize(image->width);
-      std::copy(rgba_8888, rgba_8888 + image->width,
-                previous_last_decoded_row_.begin());
-    }
-
-    // Really only handles 709, 601, 2020, JPEG 8-bit conversions and uses
-    // libyuv under the hood, so is much faster than our manual path.
-    //
-    // Technically has support for 10-bit 4:2:0 and 4:2:2, but not to
-    // half-float and only has support for 4:4:4 and 12-bit by down-shifted
-    // copies.
-    //
-    // https://bugs.chromium.org/p/libyuv/issues/detail?id=845
-    media::PaintCanvasVideoRenderer::ConvertVideoFrameToRGBPixels(
-        frame.get(), rgba_8888, frame->visible_rect().width() * 4,
-        premultiply_alpha, media::PaintCanvasVideoRenderer::kFilterBilinear,
-        /*disable_threading=*/true);
-
-    if (save_top_row) {
-      base::ranges::copy(previous_last_decoded_row_, rgba_8888);
-    }
-    return true;
-  }
-
   avifRGBImage rgb_image;
   avifRGBImageSetDefaults(&rgb_image, image);
 
@@ -1361,26 +1145,38 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image,
     rgb_image.pixels =
         reinterpret_cast<uint8_t*>(buffer->GetAddrF16(0, from_row));
     rgb_image.rowBytes = image->width * sizeof(uint64_t);
+    // When decoding to half float, the pixel ordering is always RGBA on all
+    // platforms.
+    rgb_image.format = AVIF_RGB_FORMAT_RGBA;
   } else {
     rgb_image.depth = 8;
     rgb_image.pixels = reinterpret_cast<uint8_t*>(buffer->GetAddr(0, from_row));
     rgb_image.rowBytes = image->width * sizeof(uint32_t);
-  }
-  rgb_image.alphaPremultiplied = premultiply_alpha;
-
-  static_assert(SK_B32_SHIFT == 16 - SK_R32_SHIFT);
-  static_assert(SK_G32_SHIFT == 8);
-  static_assert(SK_A32_SHIFT == 24);
+    // When decoding to 8-bit, Android uses little-endian RGBA pixels. All other
+    // platforms use BGRA pixels.
+    static_assert(SK_B32_SHIFT == 16 - SK_R32_SHIFT);
+    static_assert(SK_G32_SHIFT == 8);
+    static_assert(SK_A32_SHIFT == 24);
 #if SK_B32_SHIFT
-  // Android uses little-endian RGBA pixels.
-  rgb_image.format = AVIF_RGB_FORMAT_RGBA;
+    rgb_image.format = AVIF_RGB_FORMAT_RGBA;
 #else
-  rgb_image.format = AVIF_RGB_FORMAT_BGRA;
+    rgb_image.format = AVIF_RGB_FORMAT_BGRA;
 #endif
-
+  }
+  rgb_image.alphaPremultiplied = buffer->PremultiplyAlpha();
   rgb_image.maxThreads = decoder_->maxThreads;
 
-  return avifImageYUVToRGB(image, &rgb_image) == AVIF_RESULT_OK;
+  if (save_top_row) {
+    previous_last_decoded_row_.resize(rgb_image.rowBytes);
+    memcpy(previous_last_decoded_row_.data(), rgb_image.pixels,
+           rgb_image.rowBytes);
+  }
+  const avifResult result = avifImageYUVToRGB(image, &rgb_image);
+  if (save_top_row) {
+    memcpy(rgb_image.pixels, previous_last_decoded_row_.data(),
+           rgb_image.rowBytes);
+  }
+  return result == AVIF_RESULT_OK;
 }
 
 void AVIFImageDecoder::ColorCorrectImage(int from_row,
@@ -1426,7 +1222,7 @@ bool AVIFImageDecoder::GetGainmapInfoAndData(
   // We already know that the file is an AVIF file so there is no need to
   // call AvifInfoIdentify(). Get the features directly.
   AvifInfoSegmentReaderStream stream;
-  stream.reader = data_.get();
+  stream.reader = data_;
 
   // Extract gainmap image.
   AvifInfoFeatures features;
@@ -1437,11 +1233,48 @@ bool AVIFImageDecoder::GetGainmapInfoAndData(
   }
   out_gainmap_data = CreateGainmapSegmentReader(features, data_.get());
 
-  // Parse gainmap image to get gainmap XMP.
-  AvifIOData gainmap_avif_io_data = {
-      .reader = out_gainmap_data.get(),
-      .all_data_received = IsAllDataReceived(),
-  };
+  // If libavif detected a gain map, it already parsed the metadata from the
+  // 'tmap' box.
+  if (decoder_->gainMapPresent) {
+    const avifGainMapMetadata& metadata = decoder_->image->gainMap.metadata;
+    for (int i = 0; i < 3; ++i) {
+      if (metadata.gainMapMinD[i] == 0 || metadata.gainMapMaxD[i] == 0 ||
+          metadata.gainMapGammaD[i] == 0 || metadata.offsetSdrD[i] == 0 ||
+          metadata.offsetHdrD[i] == 0) {
+        DVLOG(1) << "Invalid gainmap metadata: a denominator value is zero";
+        return false;
+      }
+      // Using double and not float because uint32_t->float conversion can cause
+      // precision loss.
+      out_gainmap_info.fGainmapRatioMin[i] =
+          FractionToFloat(metadata.gainMapMinN[i], metadata.gainMapMinD[i]);
+      out_gainmap_info.fGainmapRatioMax[i] =
+          FractionToFloat(metadata.gainMapMaxN[i], metadata.gainMapMaxD[i]);
+      out_gainmap_info.fGainmapGamma[i] =
+          FractionToFloat(metadata.gainMapGammaN[i], metadata.gainMapGammaD[i]);
+      out_gainmap_info.fEpsilonSdr[i] =
+          FractionToFloat(metadata.offsetSdrN[i], metadata.offsetSdrD[i]);
+      out_gainmap_info.fEpsilonHdr[i] =
+          FractionToFloat(metadata.offsetHdrN[i], metadata.offsetHdrD[i]);
+    }
+    if (metadata.hdrCapacityMinD == 0 || metadata.hdrCapacityMaxD == 0) {
+      DVLOG(1) << "Invalid gainmap metadata: a denominator value is zero";
+      return false;
+    }
+    out_gainmap_info.fDisplayRatioSdr =
+        FractionToFloat(metadata.hdrCapacityMinN, metadata.hdrCapacityMinD);
+    out_gainmap_info.fDisplayRatioHdr =
+        FractionToFloat(metadata.hdrCapacityMaxN, metadata.hdrCapacityMaxD);
+    out_gainmap_info.fBaseImageType = metadata.baseRenditionIsHDR
+                                          ? SkGainmapInfo::BaseImageType::kHDR
+                                          : SkGainmapInfo::BaseImageType::kSDR;
+    return true;
+  }
+  // Otherwise, the metadata should be in the gain map image's XMP.
+
+  // Parse the gainmap image to get the gainmap XMP.
+  AvifIOData gainmap_avif_io_data(out_gainmap_data.get(), IsAllDataReceived());
+
   avifIO gainmap_avif_io = {.destroy = nullptr,
                             .read = ReadFromSegmentReader,
                             .write = nullptr,
@@ -1483,5 +1316,12 @@ bool AVIFImageDecoder::GetGainmapInfoAndData(
   }
   return true;
 }
+
+AVIFImageDecoder::AvifIOData::AvifIOData() = default;
+AVIFImageDecoder::AvifIOData::AvifIOData(
+    scoped_refptr<const SegmentReader> reader,
+    bool all_data_received)
+    : reader(std::move(reader)), all_data_received(all_data_received) {}
+AVIFImageDecoder::AvifIOData::~AvifIOData() = default;
 
 }  // namespace blink

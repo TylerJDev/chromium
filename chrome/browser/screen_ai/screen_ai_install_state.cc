@@ -10,6 +10,7 @@
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/thread_pool.h"
@@ -26,7 +27,7 @@
 
 namespace {
 const int kScreenAICleanUpDelayInDays = 30;
-const char kMinExpectedVersion[] = "114.0";
+const char kMinExpectedVersion[] = "119.0";
 
 bool IsDeviceCompatible() {
   // Check if the CPU has the required instruction set to run the Screen AI
@@ -92,6 +93,18 @@ bool ScreenAIInstallState::ShouldInstall(PrefService* local_state) {
   }
 
   return true;
+}
+
+// static
+void ScreenAIInstallState::RecordComponentInstallationResult(bool install,
+                                                             bool successful) {
+  if (install) {
+    base::UmaHistogramBoolean("Accessibility.ScreenAI.Component.Install",
+                              successful);
+  } else {
+    base::UmaHistogramBoolean("Accessibility.ScreenAI.Component.Uninstall",
+                              successful);
+  }
 }
 
 void ScreenAIInstallState::AddObserver(

@@ -65,11 +65,13 @@ ci.builder(
     ),
     builderless = False,
     cores = None,
-    tree_closing = True,
+    # TODO(crbug.com/1486663): Restore tree-closing when bot is fixed.
+    # tree_closing = True,
     console_view_entry = consoles.console_view_entry(
         category = "builder|arm",
         short_name = "san",
     ),
+    contact_team_email = "clank-engprod@google.com",
     # Higher build timeout since dbg ASAN builds can take a while on a clobber
     # build.
     # TODO(crbug.com/1395760): Check why the compile takes longer time.
@@ -110,6 +112,7 @@ ci.thin_tester(
         short_name = "N",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "woa-engprod@google.com",
 )
 
 ci.thin_tester(
@@ -146,6 +149,7 @@ ci.thin_tester(
         short_name = "O",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "woa-engprod@google.com",
 )
 
 ci.thin_tester(
@@ -182,6 +186,7 @@ ci.thin_tester(
         short_name = "P",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "woa-engprod@google.com",
 )
 
 ci.builder(
@@ -208,14 +213,16 @@ ci.builder(
         ),
         build_gs_bucket = "chromium-android-archive",
     ),
+    free_space = builders.free_space.high,
     tree_closing = True,
     console_view_entry = consoles.console_view_entry(
         category = "builder|arm",
         short_name = "32",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 4 * time.hour,
-    reclient_jobs = reclient.jobs.DEFAULT,
+    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
 
 ci.builder(
@@ -252,6 +259,7 @@ ci.builder(
         short_name = "64",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 7 * time.hour,
 )
 
@@ -295,6 +303,7 @@ ci.builder(
         short_name = "64",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 7 * time.hour,
 )
 
@@ -328,6 +337,7 @@ ci.builder(
         short_name = "64",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 7 * time.hour,
 )
 
@@ -346,6 +356,7 @@ ci.builder(
         short_name = "64-all",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 7 * time.hour,
 )
 
@@ -377,6 +388,7 @@ ci.builder(
         short_name = "32",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 6 * time.hour,
 )
 
@@ -406,6 +418,7 @@ ci.builder(
         short_name = "x86",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "woa-engprod@google.com",
     reclient_jobs = reclient.jobs.DEFAULT,
 )
 
@@ -435,6 +448,7 @@ ci.thin_tester(
         category = "tester|x86",
         short_name = "10",
     ),
+    contact_team_email = "woa-engprod@google.com",
 )
 
 ci.builder(
@@ -467,6 +481,7 @@ ci.builder(
         short_name = "cst",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
 )
 
 ci.builder(
@@ -478,6 +493,7 @@ ci.builder(
         category = "builder|det",
         short_name = "rel",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 7 * time.hour,
     notifies = ["Deterministic Android"],
 )
@@ -492,6 +508,7 @@ ci.builder(
         category = "builder|det",
         short_name = "dbg",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 6 * time.hour,
     notifies = ["Deterministic Android"],
     reclient_jobs = reclient.jobs.DEFAULT,
@@ -528,6 +545,7 @@ ci.thin_tester(
         short_name = "N",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
 )
 
 ci.thin_tester(
@@ -593,6 +611,7 @@ ci.builder(
         category = "builder_tester|arm64",
         short_name = "10",
     ),
+    contact_team_email = "clank-engprod@google.com",
 )
 
 ci.builder(
@@ -624,6 +643,7 @@ ci.builder(
         category = "tester|tablet",
         short_name = "12L",
     ),
+    contact_team_email = "clank-engprod@google.com",
 )
 
 ci.builder(
@@ -655,6 +675,7 @@ ci.builder(
         category = "builder_tester|arm64",
         short_name = "M proguard",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 8 * time.hour,
 )
 
@@ -680,6 +701,7 @@ ci.builder(
         category = "bfcache",
         short_name = "bfc",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 4 * time.hour,
 )
 
@@ -693,6 +715,7 @@ ci.builder(
         category = "builder|other",
         short_name = "size",
     ),
+    contact_team_email = "clank-engprod@google.com",
     reclient_jobs = reclient.jobs.DEFAULT,
 )
 
@@ -980,6 +1003,7 @@ ci.builder(
         category = "cronet|test|perf",
         short_name = "m",
     ),
+    contact_team_email = "clank-engprod@google.com",
     notifies = ["cronet"],
     reclient_jobs = reclient.jobs.DEFAULT,
 )
@@ -1437,6 +1461,7 @@ ci.builder(
         category = "on_cq|x86",
         short_name = "N",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 4 * time.hour,
 )
 
@@ -1465,6 +1490,7 @@ ci.builder(
         category = "builder_tester|x86",
         short_name = "O",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 4 * time.hour,
 )
 
@@ -1499,6 +1525,7 @@ ci.thin_tester(
         short_name = "P",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
 )
 
 ci.builder(
@@ -1532,6 +1559,7 @@ ci.builder(
         short_name = "P",
     ),
     cq_mirrors_console_view = "mirrors",
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 4 * time.hour,
 )
 
@@ -1564,6 +1592,7 @@ ci.builder(
         category = "builder_tester|x86",
         short_name = "P",
     ),
+    contact_team_email = "clank-engprod@google.com",
 )
 
 # TODO(crbug.com/1137474): Update the console view config once on CQ
@@ -1598,6 +1627,7 @@ ci.builder(
         category = "builder_tester|x86",
         short_name = "11",
     ),
+    execution_timeout = 4 * time.hour,
 )
 
 ci.builder(
@@ -1629,6 +1659,7 @@ ci.builder(
         category = "on_cq|x64",
         short_name = "12",
     ),
+    contact_team_email = "clank-engprod@google.com",
     execution_timeout = 4 * time.hour,
 )
 

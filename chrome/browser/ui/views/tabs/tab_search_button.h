@@ -18,7 +18,7 @@ class TabStrip;
 class TabSearchButton : public TabStripControlButton {
  public:
   METADATA_HEADER(TabSearchButton);
-  explicit TabSearchButton(TabStrip* tab_strip);
+  TabSearchButton(TabStrip* tab_strip, Edge flat_edge);
   TabSearchButton(const TabSearchButton&) = delete;
   TabSearchButton& operator=(const TabSearchButton&) = delete;
   ~TabSearchButton() override;
@@ -31,7 +31,7 @@ class TabSearchButton : public TabStripControlButton {
   void NotifyClick(const ui::Event& event) final;
 
  protected:
-  int GetCornerRadius() override;
+  int GetCornerRadius() const override;
 
  private:
 

@@ -19,11 +19,13 @@
 #include "components/exo/shell_surface_util.h"
 #include "components/exo/wayland/serial_tracker.h"
 #include "components/exo/wayland/server_util.h"
+#include "components/exo/wayland/wayland_display_observer.h"
 #include "components/exo/wayland/wayland_positioner.h"
 #include "components/exo/xdg_shell_surface.h"
 #include "ui/aura/window_observer.h"
 #include "ui/base/hit_test.h"
 #include "ui/display/screen.h"
+#include "ui/display/types/display_constants.h"
 #include "ui/views/widget/widget.h"
 #include "ui/wm/core/coordinate_conversion.h"
 
@@ -257,9 +259,10 @@ class WaylandToplevel : public aura::WindowObserver {
       shell_surface_data_->shell_surface->Restore();
   }
 
-  void SetFullscreen(bool fullscreen) {
+  void SetFullscreen(bool fullscreen,
+                     int64_t display_id = display::kInvalidDisplayId) {
     if (shell_surface_data_)
-      shell_surface_data_->shell_surface->SetFullscreen(fullscreen);
+      shell_surface_data_->shell_surface->SetFullscreen(fullscreen, display_id);
   }
 
   void Minimize() {
@@ -399,7 +402,10 @@ void xdg_toplevel_unset_maximized(wl_client* client, wl_resource* resource) {
 void xdg_toplevel_set_fullscreen(wl_client* client,
                                  wl_resource* resource,
                                  wl_resource* output) {
-  GetUserDataAs<WaylandToplevel>(resource)->SetFullscreen(true);
+  int64_t display_id = output
+                           ? GetUserDataAs<WaylandDisplayHandler>(output)->id()
+                           : display::kInvalidDisplayId;
+  GetUserDataAs<WaylandToplevel>(resource)->SetFullscreen(true, display_id);
 }
 
 void xdg_toplevel_unset_fullscreen(wl_client* client, wl_resource* resource) {
@@ -452,7 +458,7 @@ class WaylandXdgToplevelDecoration {
   }
 
   const raw_ptr<wl_resource, ExperimentalAsh> resource_;
-  raw_ptr<WaylandToplevel, ExperimentalAsh> top_level_;
+  raw_ptr<WaylandToplevel, DanglingUntriaged | ExperimentalAsh> top_level_;
   // Keeps track of the xdg-decoration mode on server side.
   uint32_t default_mode_ = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
 };
@@ -562,7 +568,8 @@ class WaylandPopup : aura::WindowObserver {
   }
 
   const raw_ptr<wl_resource, ExperimentalAsh> resource_;
-  const raw_ptr<wl_resource, ExperimentalAsh> surface_resource_;
+  const raw_ptr<wl_resource, DanglingUntriaged | ExperimentalAsh>
+      surface_resource_;
   raw_ptr<WaylandXdgSurface, ExperimentalAsh> shell_surface_data_;
   base::WeakPtrFactory<WaylandPopup> weak_ptr_factory_{this};
 };

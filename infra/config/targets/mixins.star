@@ -152,6 +152,16 @@ targets.mixin(
 )
 
 targets.mixin(
+    name = "android",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Android",
+            "cpu": None,
+        },
+    ),
+)
+
+targets.mixin(
     name = "android_r",
     swarming = targets.swarming(
         dimensions = {
@@ -214,11 +224,20 @@ targets.mixin(
 )
 
 targets.mixin(
+    name = "chrome-intelligence-swarming-pool",
+    swarming = targets.swarming(
+        dimensions = {
+            "pool": "chrome.tests.intelligence",
+        },
+    ),
+)
+
+targets.mixin(
     name = "chrome-refresh-2023",
     args = [
         # All features to be launched under CR2023.
         # See go/chrome-cr2023-testing-on-bots
-        "--enable-features=ChromeRefresh2023,ChromeRefreshSecondary2023,ChromeWebuiRefresh2023,Cr2023ActionChips,Cr2023ActionChipsIcons,kOmniboxCR23SteadyStateIcons,OmniboxExpandedLayout,OmniboxExpandedStateColors,OmniboxExpandedStateHeight,OmniboxExpandedStateShape,OmniboxExpandedStateSuggestIcons,OmniboxSteadyStateBackgroundColor,OmniboxSteadyStateHeight,OmniboxSteadyStateTextColor,OmniboxSuggestionHoverFillShape",
+        "--enable-features=ChromeRefresh2023,ChromeRefreshSecondary2023,ChromeWebuiRefresh2023,Cr2023ActionChips,Cr2023ActionChipsIcons,kOmniboxCR23SteadyStateIcons,OmniboxExpandedLayout,OmniboxExpandedStateColors,OmniboxExpandedStateHeight,OmniboxExpandedStateShape,OmniboxExpandedStateSuggestIcons,OmniboxSteadyStateBackgroundColor,OmniboxSteadyStateHeight,OmniboxSteadyStateTextColor,OmniboxSuggestionHoverFillShape,IPH_DesktopCustomizeChromeRefresh",
     ],
 )
 
@@ -245,7 +264,7 @@ targets.mixin(
     ],
     swarming = targets.swarming(
         dimensions = {
-            "cpu": "x86",
+            "cpu": "x86-64",
             "kvm": "1",
             "os": "Ubuntu-22.04",
             "pool": "chromium.tests",
@@ -276,7 +295,7 @@ targets.mixin(
     ],
     swarming = targets.swarming(
         dimensions = {
-            "cpu": "x86",
+            "cpu": "x86-64",
             "kvm": "1",
             "gce": "1",
             "os": "Ubuntu-22.04",
@@ -306,7 +325,7 @@ targets.mixin(
     ],
     swarming = targets.swarming(
         dimensions = {
-            "cpu": "x86",
+            "cpu": "x86-64",
             "kvm": "1",
             "gce": "1",
             "os": "Ubuntu-22.04",
@@ -366,7 +385,7 @@ targets.mixin(
     ],
     swarming = targets.swarming(
         dimensions = {
-            "cpu": "x86",
+            "cpu": "x86-64",
             "kvm": "1",
             "gce": "1",
             "os": "Ubuntu-18.04",
@@ -609,6 +628,15 @@ targets.mixin(
 )
 
 targets.mixin(
+    name = "ioswpt-chromium-swarming-pool",
+    swarming = targets.swarming(
+        dimensions = {
+            "pool": "chromium.tests.ioswpt",
+        },
+    ),
+)
+
+targets.mixin(
     name = "isolate_profile_data",
     isolate_profile_data = True,
 )
@@ -654,6 +682,72 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "os": "Ubuntu-22.04",
+        },
+    ),
+)
+
+# TODO: Remove this mixin after task scheduling issue is resolved.
+# This uses a different task dimensions set to reduce Datastore index size.
+targets.mixin(
+    name = "linux-jammy-2",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "zone": "us",
+        },
+    ),
+)
+targets.mixin(
+    name = "linux-jammy-3",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "locale": "en_US.UTF-8",
+        },
+    ),
+)
+targets.mixin(
+    name = "linux-jammy-4",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "kvm": "1",
+        },
+    ),
+)
+targets.mixin(
+    name = "linux-jammy-5",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "python": "3",
+        },
+    ),
+)
+targets.mixin(
+    name = "linux-jammy-6",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "inside_docker": "0",
+        },
+    ),
+)
+targets.mixin(
+    name = "linux-jammy-7",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "python": "3.8",
+        },
+    ),
+)
+targets.mixin(
+    name = "linux-jammy-8",
+    swarming = targets.swarming(
+        dimensions = {
+            "os": "Ubuntu-22.04",
+            "cipd_platform": "linux-amd64",
         },
     ),
 )
@@ -829,30 +923,6 @@ targets.mixin(
     ),
 )
 
-# TODO(crbug.com/1464635): Remove this once Mac13.4 upgrade
-# is complete. This is only a temp workaround to roll Xcode 15.
-targets.mixin(
-    name = "mac_13.4_arm64",
-    swarming = targets.swarming(
-        dimensions = {
-            "cpu": "arm64",
-            "os": "Mac-13.4",
-        },
-    ),
-)
-
-# TODO(crbug.com/1464635): Remove this once Mac13.4 upgrade
-# is complete. This is only a temp workaround to roll Xcode 15.
-targets.mixin(
-    name = "mac_13.4_x64",
-    swarming = targets.swarming(
-        dimensions = {
-            "cpu": "x86-64",
-            "os": "Mac-13.4",
-        },
-    ),
-)
-
 targets.mixin(
     name = "mac_13_arm64",
     swarming = targets.swarming(
@@ -918,7 +988,7 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "cpu": "arm64",
-            "os": "Mac-13",
+            "os": "Mac-14",
         },
     ),
 )
@@ -928,7 +998,7 @@ targets.mixin(
     swarming = targets.swarming(
         dimensions = {
             "cpu": "x86-64",
-            "os": "Mac-13",
+            "os": "Mac-13.5",
         },
     ),
 )
@@ -975,7 +1045,7 @@ targets.mixin(
         dimensions = {
             "cpu": "x86-64",
             "gpu": "8086:3e9b",
-            "os": "Mac-13.3.1",
+            "os": "Mac-13.5",
             "display_attached": "1",
         },
     ),
@@ -1001,7 +1071,7 @@ targets.mixin(
             "cpu": "x86-64",
             "gpu": "1002:67ef",
             "hidpi": "1",
-            "os": "Mac-13.4.1|Mac-13.5",
+            "os": "Mac-13.5",
             "pool": "chromium.tests.gpu",
             "display_attached": "1",
         },
@@ -1015,7 +1085,7 @@ targets.mixin(
             "cpu": "x86-64",
             "gpu": "1002:67ef",
             "hidpi": "1",
-            "os": "Mac-13.2.1",
+            "os": "Mac-13.5",
             "pool": "chromium.tests.gpu",
             "display_attached": "1",
         },
@@ -1044,7 +1114,7 @@ targets.mixin(
             "cpu": "x86-64",
             "gpu": "10de:0fe9",
             "hidpi": "1",
-            "os": "Mac-10.14.6",
+            "os": "Mac-11.7.9",
             "pool": "chromium.tests.gpu",
             "display_attached": "1",
         },
@@ -1153,6 +1223,15 @@ targets.mixin(
                 path = ".android_emulator/generic_android24",
             ),
         ],
+    ),
+)
+
+targets.mixin(
+    name = "nougat_or_oreo_fleet",
+    swarming = targets.swarming(
+        dimensions = {
+            "device_os": "N2G48C|OPR4.170623.020",
+        },
     ),
 )
 
@@ -1551,12 +1630,12 @@ targets.mixin(
     name = "xcode_15_beta",
     args = [
         "--xcode-build-version",
-        "15a5219j",
+        "15a240d",
     ],
     swarming = targets.swarming(
         named_caches = [
             swarming.cache(
-                name = "xcode_ios_15a5219j",
+                name = "xcode_ios_15a240d",
                 path = "Xcode.app",
             ),
         ],
@@ -1567,12 +1646,12 @@ targets.mixin(
     name = "xcode_15_main",
     args = [
         "--xcode-build-version",
-        "15a5209g",
+        "15a240d",
     ],
     swarming = targets.swarming(
         named_caches = [
             swarming.cache(
-                name = "xcode_ios_15a5209g",
+                name = "xcode_ios_15a240d",
                 path = "Xcode.app",
             ),
         ],

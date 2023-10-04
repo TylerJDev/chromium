@@ -47,6 +47,7 @@ import org.chromium.components.dom_distiller.core.DomDistillerUrlUtils;
 import org.chromium.components.dom_distiller.core.DomDistillerUrlUtilsJni;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
 
 import java.lang.ref.WeakReference;
@@ -64,7 +65,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @LooperMode(LooperMode.Mode.LEGACY)
 
 public class ShareSheetUsageRankingHelperTest {
-    private static final String MOCK_URL = JUnitTestGURLs.EXAMPLE_URL;
+    private static final String MOCK_URL = JUnitTestGURLs.EXAMPLE_URL.getSpec();
 
     @Rule
     public TestRule mFeatureProcessor = new Features.JUnitProcessor();
@@ -104,7 +105,7 @@ public class ShareSheetUsageRankingHelperTest {
         when(mWindow.getActivity()).thenReturn(new WeakReference<>(mActivity));
         when(mWindow.getUnownedUserDataHost()).thenReturn(new UnownedUserDataHost());
         when(mDistillerUrlUtilsJniMock.getOriginalUrlFromDistillerUrl(anyString()))
-                .thenReturn(JUnitTestGURLs.getGURL(MOCK_URL));
+                .thenReturn(new GURL(MOCK_URL));
         when(mContentTypes.contains(ShareContentTypeHelper.ContentType.IMAGE)).thenReturn(true);
 
         mParams = new ShareParams.Builder(mWindow, "title", MOCK_URL)

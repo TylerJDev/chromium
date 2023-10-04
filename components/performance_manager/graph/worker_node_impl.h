@@ -65,6 +65,7 @@ class WorkerNodeImpl
   WorkerType worker_type() const;
   ProcessNodeImpl* process_node() const;
   const blink::WorkerToken& worker_token() const;
+  resource_attribution::WorkerContext resource_context() const;
 
   // Getters for non-const properties. These are not thread safe.
   const GURL& url() const;
@@ -102,9 +103,12 @@ class WorkerNodeImpl
   const std::string& GetBrowserContextID() const override;
   const ProcessNode* GetProcessNode() const override;
   const blink::WorkerToken& GetWorkerToken() const override;
+  resource_attribution::WorkerContext GetResourceContext() const override;
   const GURL& GetURL() const override;
   const base::flat_set<const FrameNode*> GetClientFrames() const override;
+  bool VisitClientFrames(const FrameNodeVisitor&) const override;
   const base::flat_set<const WorkerNode*> GetClientWorkers() const override;
+  bool VisitClientWorkers(const WorkerNodeVisitor&) const override;
   const base::flat_set<const WorkerNode*> GetChildWorkers() const override;
   bool VisitChildDedicatedWorkers(const WorkerNodeVisitor&) const override;
   const PriorityAndReason& GetPriorityAndReason() const override;

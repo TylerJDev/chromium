@@ -353,8 +353,8 @@ class ChromeContentBrowserClientForMixedContentTest
 
 std::string EncodeQuery(const std::string& query) {
   url::RawCanonOutputT<char> buffer;
-  url::EncodeURIComponent(query.data(), query.size(), &buffer);
-  return std::string(buffer.data(), buffer.length());
+  url::EncodeURIComponent(query, &buffer);
+  return std::string(buffer.view());
 }
 
 // Returns the Sha256 hash of the SPKI of |cert|.
@@ -872,7 +872,7 @@ class SSLUITestBase : public InProcessBrowserTest,
 
     Profile* profile = browser()->profile();
 
-    web_app::AppId app_id =
+    webapps::AppId app_id =
         web_app::test::InstallWebApp(profile, std::move(web_app_info));
 
     Browser* app_browser = web_app::LaunchWebAppBrowserAndWait(profile, app_id);
@@ -2335,7 +2335,8 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, TestExtensionEvents) {
       event_names_.push_back(event.event_name);
     }
 
-    void OnDidDispatchEventToProcess(const extensions::Event& event) override {}
+    void OnDidDispatchEventToProcess(const extensions::Event& event,
+                                     int process_id) override {}
 
     const std::vector<std::string>& event_names() const { return event_names_; }
 
@@ -5862,10 +5863,9 @@ class SSLUITestNoCert : public SSLUITest,
   SSLUITestNoCert() = default;
   ~SSLUITestNoCert() override = default;
 
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    command_line->AppendSwitch(switches::kDisableTestCerts);
+  void SetUp() override {
     net::TestRootCerts::GetInstance()->Clear();
-    SSLUITest::SetUpCommandLine(command_line);
+    SSLUITest::SetUp();
   }
 
   // CertificateManagerModel::Observer implementation:

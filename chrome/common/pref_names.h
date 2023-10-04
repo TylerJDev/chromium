@@ -49,10 +49,6 @@ inline constexpr char kDisableScreenshots[] = "disable_screenshots";
 // 4 - Block malicious downloads
 inline constexpr char kDownloadRestrictions[] = "download_restrictions";
 
-// A boolean specifying whether the new download bubble UI is enabled. If it is
-// set to false, the old download shelf UI will be shown instead.
-inline constexpr char kDownloadBubbleEnabled[] = "download_bubble_enabled";
-
 // A boolean specifying whether the partial download bubble (which shows up
 // automatically when downloads are complete) should be enabled. True (partial
 // bubble will show automatically) by default.
@@ -123,16 +119,6 @@ inline constexpr char kProfileCreationTime[] = "profile.creation_time";
 // prompt. See triggered_profile_resetter.h for more information.
 inline constexpr char kLastProfileResetTimestamp[] =
     "profile.last_reset_timestamp";
-
-// A boolean indicating if settings should be reset for this profile once a
-// run of the Chrome Cleanup Tool has completed.
-inline constexpr char kChromeCleanerResetPending[] =
-    "chrome_cleaner.reset_pending";
-
-// The last time the Chrome cleaner scan completed without finding anything,
-// while Chrome was opened.
-inline constexpr char kChromeCleanerScanCompletionTime[] =
-    "chrome_cleaner.scan_completion_time";
 #endif
 
 // The URL to open the new tab page to. Only set by Group Policy.
@@ -165,15 +151,6 @@ inline constexpr char kURLsToRestoreOnStartup[] = "session.startup_urls";
 
 // Boolean that is true when user feedback to Google is allowed.
 inline constexpr char kUserFeedbackAllowed[] = "feedback_allowed";
-
-#if !BUILDFLAG(IS_ANDROID)
-// Replaced by kManagedSerialAllowAllPortsForUrls in M-93.
-inline constexpr char kManagedProfileSerialAllowAllPortsForUrlsDeprecated[] =
-    "profile.managed.serial_allow_all_ports_for_urls";
-// Replaced by kManagedSerialAllowUsbDevicesForUrls in M-93.
-inline constexpr char kManagedProfileSerialAllowUsbDevicesForUrlsDeprecated[] =
-    "profile.managed.serial_allow_usb_devices_for_urls";
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_RLZ)
 // Integer. RLZ ping delay in seconds.
@@ -1327,8 +1304,6 @@ inline constexpr char kUseAshProxy[] = "lacros.proxy.use_ash_proxy";
 // of lacros-chrome is complete.
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 // Linux specific preference on whether we should match the system theme.
-inline constexpr char kUsesSystemThemeDeprecated[] =
-    "extensions.theme.use_system";
 inline constexpr char kSystemTheme[] = "extensions.theme.system_theme";
 #endif
 inline constexpr char kCurrentThemePackFilename[] = "extensions.theme.pack";
@@ -1480,9 +1455,6 @@ inline constexpr char kEnableHyperlinkAuditing[] = "enable_a_ping";
 
 // Whether to enable sending referrers.
 inline constexpr char kEnableReferrers[] = "enable_referrers";
-
-// Whether to send the DNT header.
-inline constexpr char kEnableDoNotTrack[] = "enable_do_not_track";
 
 // Whether to allow the use of Encrypted Media Extensions (EME), except for the
 // use of Clear Key key sytems, which is always allowed as required by the spec.
@@ -1715,6 +1687,14 @@ inline constexpr char kMessageCenterDisabledExtensionIds[] =
 inline constexpr char kFullscreenAllowed[] = "fullscreen.allowed";
 
 #if BUILDFLAG(IS_ANDROID)
+// The user requested font weight adjustment from OS-level settings.
+// Exposed only to mobile Android.
+inline constexpr char kAccessibilityFontWeightAdjustment[] =
+    "settings.a11y.font_weight_adjustment";
+
+inline constexpr char kAccessibilityTextSizeContrastFactor[] =
+    "settings.a11y.text_size_contrast_factor";
+
 // Boolean pref indicating whether notification permissions were migrated to
 // notification channels (on Android O+ we use channels to store notification
 // permission, so any existing permissions must be migrated).
@@ -1863,18 +1843,6 @@ inline constexpr char kSidePanelCompanionEntryPinnedToToolbar[] =
 inline constexpr char kGoogleSearchSidePanelEnabled[] =
     "side_panel.google_search_side_panel_enabled";
 #endif
-
-// Number of minutes of inactivity before running actions from
-// kIdleTimeoutActions. Controlled via the IdleTimeout policy.
-inline constexpr char kIdleTimeout[] = "idle_timeout";
-
-// Actions to run when the idle timeout is reached. Controller via the
-// IdleTimeoutActions policy.
-inline constexpr char kIdleTimeoutActions[] = "idle_timeout_actions";
-
-// If true, show the IdleTimeout bubble when Chrome starts.
-inline constexpr char kIdleTimeoutShowBubbleOnStartup[] =
-    "idle_timeout_show_bubble_on_startup";
 
 // *************** LOCAL STATE ***************
 // These are attached to the machine/installation
@@ -2098,6 +2066,20 @@ inline constexpr char kOfficeFileMovedToOneDrive[] =
 // The timestamp of the latest office file automatically moved to Google Drive.
 inline constexpr char kOfficeFileMovedToGoogleDrive[] =
     "filebrowser.office.file_moved_google_drive";
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+// Pref that contains the value of the MicrosoftOneDriveMount policy.
+inline constexpr char kMicrosoftOneDriveMount[] =
+    "filebrowser.office.microsoft_one_drive_mount";
+
+// Pref that contains the value of the MicrosoftOfficeCloudUpload policy.
+inline constexpr char kMicrosoftOfficeCloudUpload[] =
+    "filebrowser.office.microsoft_office_cloud_upload";
+
+// Pref that contains the value of the GoogleWorkspaceCloudUpload policy.
+inline constexpr char kGoogleWorkspaceCloudUpload[] =
+    "filebrowser.office.google_workspace_cloud_upload";
 #endif
 
 // A flag to enable/disable the Shared Clipboard feature which enables users to
@@ -2352,6 +2334,11 @@ inline constexpr char kWebAppsAppAgnosticIphState[] =
 inline constexpr char kWebAppsAppAgnosticMlState[] =
     "web_apps.app_agnostic_ml_state";
 
+// A boolean value that stores information about whether error loaded policy
+// apps have been migrated for this profile.
+inline constexpr char kErrorLoadedPolicyAppMigrationCompleted[] =
+    "web_apps.error_loaded_policy_apps_migrated";
+
 // A string representing the last version of Chrome preinstalled web apps were
 // synchronised for.
 inline constexpr char kWebAppsLastPreinstallSynchronizeVersion[] =
@@ -2399,6 +2386,12 @@ inline constexpr char kMediaCdmOriginData[] = "media.cdm.origin_data";
 inline constexpr char kNetworkServiceSandboxEnabled[] =
     "net.network_service_sandbox";
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_LINUX)
+// Records whether the user has seen an HTTP auth "negotiate" header.
+inline constexpr char kReceivedHttpAuthNegotiateHeader[] =
+    "net.received_http_auth_negotiate_headers";
+#endif  // BUILDFLAG(IS_LINUX)
 
 // The last used printer and its settings.
 inline constexpr char kPrintPreviewStickySettings[] =
@@ -2652,26 +2645,6 @@ inline constexpr char kSameOriginTabCaptureAllowedByOrigins[] =
     "hardware.same_origin_tab_capture_allowed_by_origins";
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-// An integer pref that holds enum value of current demo mode configuration.
-// Values are defined by DemoSession::DemoModeConfig enum.
-inline constexpr char kDemoModeConfig[] = "demo_mode.config";
-
-// A string pref holding the value of the current country for demo sessions.
-inline constexpr char kDemoModeCountry[] = "demo_mode.country";
-
-// A string pref holding the value of the retailer name input for demo sessions.
-// This is now mostly called "retailer_name" in code other than in this pref and
-// in Omaha request attributes
-inline constexpr char kDemoModeRetailerId[] = "demo_mode.retailer_id";
-
-// A string pref holding the value of the store number input for demo sessions.
-// This is now mostly called "store_number" in code other than in this pref and
-// in Omaha request attributes
-inline constexpr char kDemoModeStoreId[] = "demo_mode.store_id";
-
-// A string pref holding the value of the default locale for demo sessions.
-inline constexpr char kDemoModeDefaultLocale[] = "demo_mode.default_locale";
-
 // Dictionary for transient storage of settings that should go into device
 // settings storage before owner has been assigned.
 inline constexpr char kDeviceSettingsCache[] = "signed_settings_cache";
@@ -3012,9 +2985,6 @@ inline constexpr char kCloudPrintUserSettings[] = "cloud_print.user_settings";
 // List of printers settings.
 inline constexpr char kCloudPrintPrinters[] =
     "cloud_print.user_settings.printers";
-// A boolean indicating whether submitting jobs to Google Cloud Print is
-// blocked by policy.
-inline constexpr char kCloudPrintSubmitEnabled[] = "cloud_print.submit_enabled";
 
 // Preference to store proxy settings.
 inline constexpr char kMaxConnectionsPerProxy[] =
@@ -3391,31 +3361,6 @@ inline constexpr char kBlockBrowserLegacyExtensionPoints[] =
     "block_browser_legacy_extension_points";
 #endif  // BUILDFLAG(IS_WIN)
 
-// An integer that keeps track of prompt waves for the settings reset
-// prompt. Users will be prompted to reset settings at most once per prompt wave
-// for each setting that the prompt targets (default search, startup URLs and
-// homepage). The value is obtained via a feature parameter. When the stored
-// value is different from the feature parameter, a new prompt wave begins.
-inline constexpr char kSettingsResetPromptPromptWave[] =
-    "settings_reset_prompt.prompt_wave";
-
-// Timestamp of the last time the settings reset prompt was shown during the
-// current prompt wave asking the user if they want to restore their search
-// engine.
-inline constexpr char kSettingsResetPromptLastTriggeredForDefaultSearch[] =
-    "settings_reset_prompt.last_triggered_for_default_search";
-
-// Timestamp of the last time the settings reset prompt was shown during the
-// current prompt wave asking the user if they want to restore their startup
-// settings.
-inline constexpr char kSettingsResetPromptLastTriggeredForStartupUrls[] =
-    "settings_reset_prompt.last_triggered_for_startup_urls";
-
-// Timestamp of the last time the settings reset prompt was shown during the
-// current prompt wave asking the user if they want to restore their homepage.
-inline constexpr char kSettingsResetPromptLastTriggeredForHomepage[] =
-    "settings_reset_prompt.last_triggered_for_homepage";
-
 #if BUILDFLAG(IS_ANDROID)
 // Timestamp of the clipboard's last modified time, stored in base::Time's
 // internal format (int64) in local store.  (I.e., this is not a per-profile
@@ -3658,18 +3603,6 @@ inline constexpr char kCertificateProvisioningStateForDevice[] =
 // DeviceLoginScreenPromptOnMultipleMatchingCertificates).
 inline constexpr char kPromptOnMultipleMatchingCertificates[] =
     "prompt_on_multiple_matching_certificates";
-
-// This pref enables periodically fetching new Media Feed items for top feeds.
-inline constexpr char kMediaFeedsBackgroundFetching[] =
-    "media_feeds_background_fetching_enabled";
-
-// This pref enables checking of Media Feed items against the Safe Search API.
-inline constexpr char kMediaFeedsSafeSearchEnabled[] =
-    "media_feeds_safe_search_enabled";
-
-// This pref enables automated selection of Media Feeds to fetch.
-inline constexpr char kMediaFeedsAutoSelectEnabled[] =
-    "media_feeds_auto_select_enabled";
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 // Boolean pref indicating whether the notification informing the user that

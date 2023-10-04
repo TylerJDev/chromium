@@ -7,10 +7,11 @@
 #import <memory>
 
 #import "base/apple/foundation_util.h"
+#import "base/containers/contains.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/ios/wait_util.h"
 #import "components/content_settings/core/browser/host_content_settings_map.h"
-#import "ios/chrome/browser/content_settings/host_content_settings_map_factory.h"
+#import "ios/chrome/browser/content_settings/model/host_content_settings_map_factory.h"
 #import "ios/chrome/browser/shared/model/browser_state/test_chrome_browser_state.h"
 #import "ios/chrome/browser/shared/ui/table_view/cells/table_view_detail_text_item.h"
 #import "ios/chrome/browser/shared/ui/table_view/chrome_table_view_controller_test.h"
@@ -218,11 +219,11 @@ TEST_F(BlockPopupsTableViewControllerTest, TestMultipleAllowedItemsDeleted) {
 
   std::vector<std::string> blocked_urls;
   std::vector<std::string> allowed_urls;
-  for (std::pair<std::string, std::string> element : patterns_to_url) {
-    if (deleted_patterns.find(element.first) != deleted_patterns.end()) {
-      blocked_urls.push_back(element.second);
+  for (const auto& [pattern, url] : patterns_to_url) {
+    if (base::Contains(deleted_patterns, pattern)) {
+      blocked_urls.push_back(url);
     } else {
-      allowed_urls.push_back(element.second);
+      allowed_urls.push_back(url);
     }
   }
 

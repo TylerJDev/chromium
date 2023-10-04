@@ -37,6 +37,8 @@ source_set("app_service") {
     "metrics/app_service_metrics.h",
     "package_id.cc",
     "package_id.h",
+    "package_id_util.cc",
+    "package_id_util.h",
     "paused_apps.cc",
     "paused_apps.h",
     "policy_util.cc",
@@ -72,6 +74,7 @@ source_set("app_service") {
     "//components/favicon/core",
     "//components/keyed_service/content",
     "//components/services/app_service",
+    "//components/webapps/common",
     "//extensions/browser",
     "//extensions/common",
   ]
@@ -163,6 +166,10 @@ source_set("app_service") {
       "promise_apps/promise_app_service.h",
       "promise_apps/promise_app_update.cc",
       "promise_apps/promise_app_update.h",
+      "promise_apps/promise_app_utils.cc",
+      "promise_apps/promise_app_utils.h",
+      "promise_apps/promise_app_web_apps_utils.cc",
+      "promise_apps/promise_app_web_apps_utils.h",
       "promise_apps/promise_app_wrapper.cc",
       "promise_apps/promise_app_wrapper.h",
       "publishers/arc_apps.cc",
@@ -175,6 +182,7 @@ source_set("app_service") {
       "publishers/bruschetta_apps.h",
       "publishers/built_in_chromeos_apps.cc",
       "publishers/built_in_chromeos_apps.h",
+      "publishers/compressed_icon_getter.h",
       "publishers/crostini_apps.cc",
       "publishers/crostini_apps.h",
       "publishers/extension_apps_chromeos.cc",
@@ -197,6 +205,8 @@ source_set("app_service") {
       "publishers/web_apps_crosapi.h",
       "publishers/web_apps_crosapi_factory.cc",
       "publishers/web_apps_crosapi_factory.h",
+      "shortcut_removal_dialog.cc",
+      "shortcut_removal_dialog.h",
       "subscriber_crosapi.cc",
       "subscriber_crosapi.h",
       "subscriber_crosapi_factory.cc",
@@ -327,6 +337,8 @@ source_set("unit_tests") {
     "app_icon/app_icon_test_util.cc",
     "app_icon/app_icon_test_util.h",
     "app_icon/chrome_apps_icon_unittest.cc",
+    "app_icon/web_app_icon_test_helper.cc",
+    "app_icon/web_app_icon_test_helper.h",
     "app_icon/web_app_icon_unittest.cc",
     "app_service_proxy_unittest.cc",
     "intent_util_unittest.cc",
@@ -387,6 +399,7 @@ source_set("unit_tests") {
     sources += [
       "app_icon/app_icon_decoder_unittest.cc",
       "app_icon/arc_apps_icon_unittest.cc",
+      "app_icon/browser_shortcut_icon_unittest.cc",
       "app_icon/guest_os_apps_icon_unittest.cc",
       "file_utils_unittest.cc",
       "metrics/app_platform_metrics_service_unittest.cc",
@@ -416,6 +429,7 @@ source_set("unit_tests") {
       "//chrome/browser/ash/crosapi:browser_util",
       "//chrome/browser/ash/crosapi:test_support",
       "//chrome/browser/metrics/structured:features",
+      "//chrome/browser/resources:app_icon_resources_grit",
       "//chromeos/ash/components/dbus/cicerone",
       "//chromeos/ash/components/login/login_state",
       "//chromeos/ash/components/standalone_browser",
@@ -433,7 +447,10 @@ source_set("unit_tests") {
   }
 
   if (is_chromeos_lacros) {
-    sources += [ "app_service_proxy_lacros_unittest.cc" ]
+    sources += [
+      "app_service_proxy_lacros_unittest.cc",
+      "metrics/website_metrics_service_lacros_unittest.cc",
+    ]
   } else {
     sources += [ "publishers/app_publisher_unittest.cc" ]
   }
@@ -476,4 +493,21 @@ source_set("test_support") {
       "mock_crosapi_app_service_proxy.h",
     ]
   }
+}
+
+source_set("app_registry_cache_waiter") {
+  testonly = true
+
+  sources = [
+    "app_registry_cache_waiter.cc",
+    "app_registry_cache_waiter.h",
+  ]
+
+  public_deps = [ "//components/services/app_service" ]
+
+  deps = [
+    ":app_service",
+    "//build:chromeos_buildflags",
+    "//url",
+  ]
 }

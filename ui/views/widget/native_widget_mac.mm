@@ -18,7 +18,6 @@
 #include "base/strings/sys_string_conversions.h"
 #include "components/crash/core/common/crash_key.h"
 #import "components/remote_cocoa/app_shim/bridged_content_view.h"
-#import "components/remote_cocoa/app_shim/immersive_mode_controller.h"
 #import "components/remote_cocoa/app_shim/native_widget_mac_nswindow.h"
 #import "components/remote_cocoa/app_shim/native_widget_ns_window_bridge.h"
 #import "components/remote_cocoa/app_shim/views_nswindow_delegate.h"
@@ -514,10 +513,7 @@ void NativeWidgetMac::SetBoundsConstrained(const gfx::Rect& bounds) {
 void NativeWidgetMac::SetSize(const gfx::Size& size) {
   if (!ns_window_host_)
     return;
-  // Ensure the top-left corner stays in-place (rather than the bottom-left,
-  // which -[NSWindow setContentSize:] would do).
-  ns_window_host_->SetBoundsInScreen(
-      gfx::Rect(GetWindowBoundsInScreen().origin(), size));
+  ns_window_host_->SetSize(size);
 }
 
 void NativeWidgetMac::StackAbove(gfx::NativeView native_view) {
@@ -588,8 +584,9 @@ void NativeWidgetMac::CloseNow() {
 
 void NativeWidgetMac::Show(ui::WindowShowState show_state,
                            const gfx::Rect& restore_bounds) {
-  if (!GetNSWindowMojo())
+  if (!GetNSWindowHost()) {
     return;
+  }
 
   switch (show_state) {
     case ui::SHOW_STATE_DEFAULT:
@@ -614,7 +611,7 @@ void NativeWidgetMac::Show(ui::WindowShowState show_state,
                        ? window_state
                        : WindowVisibilityState::kShowInactive;
   }
-  GetNSWindowMojo()->SetVisibilityState(window_state);
+  GetNSWindowHost()->SetVisibilityState(window_state);
 
   // Ignore the SetInitialFocus() result. BridgedContentView should get
   // firstResponder status regardless.
@@ -622,9 +619,10 @@ void NativeWidgetMac::Show(ui::WindowShowState show_state,
 }
 
 void NativeWidgetMac::Hide() {
-  if (!GetNSWindowMojo())
+  if (!GetNSWindowHost()) {
     return;
-  GetNSWindowMojo()->SetVisibilityState(WindowVisibilityState::kHideWindow);
+  }
+  GetNSWindowHost()->SetVisibilityState(WindowVisibilityState::kHideWindow);
 }
 
 bool NativeWidgetMac::IsVisible() const {
@@ -632,9 +630,10 @@ bool NativeWidgetMac::IsVisible() const {
 }
 
 void NativeWidgetMac::Activate() {
-  if (!GetNSWindowMojo())
+  if (!GetNSWindowHost()) {
     return;
-  GetNSWindowMojo()->SetVisibilityState(
+  }
+  GetNSWindowHost()->SetVisibilityState(
       WindowVisibilityState::kShowAndActivateWindow);
 }
 

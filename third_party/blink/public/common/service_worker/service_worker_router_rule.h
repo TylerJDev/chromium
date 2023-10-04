@@ -20,6 +20,8 @@ enum class RequestDestination : int32_t;
 
 namespace blink {
 
+struct ServiceWorkerRouterCondition;
+
 struct ServiceWorkerRouterRequestCondition {
   // https://fetch.spec.whatwg.org/#concept-request-method
   // Technically, it can be an arbitrary string, but Chromium would set
@@ -50,19 +52,32 @@ struct ServiceWorkerRouterRunningStatusCondition {
   }
 };
 
+struct ServiceWorkerRouterConditionObject {
+  std::vector<ServiceWorkerRouterCondition> conditions;
+
+  bool operator==(const ServiceWorkerRouterConditionObject& other) const;
+};
+struct ServiceWorkerRouterOrCondition {
+  std::vector<ServiceWorkerRouterConditionObject> objects;
+
+  bool operator==(const ServiceWorkerRouterOrCondition& other) const;
+};
+
 // TODO(crbug.com/1371756): implement other conditions in the proposal.
 // TODO(crbug.com/1456599): migrate to absl::variant if possible.
 struct BLINK_COMMON_EXPORT ServiceWorkerRouterCondition {
   // Type of conditions.
-  enum class ConditionType {
+  enum class Type {
     // URLPattern is used as a condition.
     kUrlPattern,
     // Request condition.
     kRequest,
     // Running status condition.
     kRunningStatus,
+    // Or condition
+    kOr,
   };
-  ConditionType type;
+  Type type;
 
   // URLPattern to be used for matching.
   // This field is valid if `type` is `kUrlPattern`.
@@ -75,6 +90,11 @@ struct BLINK_COMMON_EXPORT ServiceWorkerRouterCondition {
   // Running status to be used for matching.
   // This field is valid if `type` is `kRunningStatus`.
   absl::optional<ServiceWorkerRouterRunningStatusCondition> running_status;
+
+  // `Or` condition to be used for matching
+  // This field is valid if `type` is `kOr`
+  // We need `_condition` suffix to avoid conflict with reserved keywords in C++
+  absl::optional<ServiceWorkerRouterOrCondition> or_condition;
 
   bool operator==(const ServiceWorkerRouterCondition& other) const;
 };
@@ -101,27 +121,40 @@ struct BLINK_COMMON_EXPORT ServiceWorkerRouterFetchEventSource {
   }
 };
 
+// Cache source structure.
+struct BLINK_COMMON_EXPORT ServiceWorkerRouterCacheSource {
+  // A name of the Cache object.
+  // If the field is not set, any of the Cache objects that the CacheStorage
+  // tracks are used for matching as if CacheStorage.match().
+  absl::optional<std::string> cache_name;
+
+  bool operator==(const ServiceWorkerRouterCacheSource& other) const;
+};
+
 // This represents a source of the router rule.
 // TODO(crbug.com/1371756): implement other sources in the proposal.
 struct BLINK_COMMON_EXPORT ServiceWorkerRouterSource {
   // Type of sources.
   // These values are persisted to logs. Entries should not be renumbered and
   // numeric values should never be reused.
-  enum class SourceType {
+  enum class Type {
     // Network is used as a source.
     kNetwork = 0,
     // Race network and fetch handler.
     kRace = 1,
     // Fetch Event is used as a source.
     kFetchEvent = 2,
+    // Cache is used as a source.
+    kCache = 3,
 
-    kMaxValue = kFetchEvent,
+    kMaxValue = kCache,
   };
-  SourceType type;
+  Type type;
 
   absl::optional<ServiceWorkerRouterNetworkSource> network_source;
   absl::optional<ServiceWorkerRouterRaceSource> race_source;
   absl::optional<ServiceWorkerRouterFetchEventSource> fetch_event_source;
+  absl::optional<ServiceWorkerRouterCacheSource> cache_source;
 
   bool operator==(const ServiceWorkerRouterSource& other) const;
 };

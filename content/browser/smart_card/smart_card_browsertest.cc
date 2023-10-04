@@ -823,7 +823,7 @@ IN_PROC_BROWSER_TEST_F(SmartCardTest, GetStatusChange) {
   ASSERT_TRUE(NavigateToURL(shell(), GetIsolatedContextUrl()));
 
   EXPECT_EQ(
-      "Fake Reader, {unaware=false, ignore=false, changed=false, "
+      "Fake Reader, {ignore=false, changed=false, "
       "unknown=false, unavailable=false, empty=false, present=true, "
       "exclusive=false, inuse=true, mute=false, unpowered=false}, 7, {1,2,3,4}",
       EvalJs(shell(), R"((async () => {
@@ -842,8 +842,7 @@ IN_PROC_BROWSER_TEST_F(SmartCardTest, GetStatusChange) {
        let atrString = new Uint8Array(statesOut[0].answerToReset).toString();
 
        let flags = statesOut[0].eventState;
-       let eventStateString = `unaware=${flags.unaware}`
-           + `, ignore=${flags.ignore}`
+       let eventStateString = `ignore=${flags.ignore}`
            + `, changed=${flags.changed}`
            + `, unknown=${flags.unknown}`
            + `, unavailable=${flags.unavailable}`
@@ -1477,6 +1476,126 @@ IN_PROC_BROWSER_TEST_F(SmartCardTest, NoCoiPermission) {
   EXPECT_THAT(
       EvalJs(shell(), "navigator.smartCard.establishContext()").error,
       HasSubstr("Frame is not sufficiently isolated to use smart cards."));
+}
+
+/* Tests the situation where a transaction callback erroneously returns while an
+ * operation in this connection is ongoing. If that operation fails at PC/SC
+ * level the Web API implementation should still cleanup after itself by ending
+ * the PC/SC transaction once that operation completes.
+ */
+IN_PROC_BROWSER_TEST_F(SmartCardTest, EndTransactionAfterFailedOperation) {
+  ASSERT_TRUE(NavigateToURL(shell(), GetIsolatedContextUrl()));
+
+  MockSmartCardContextFactory& mock_context_factory =
+      GetFakeSmartCardDelegate().mock_context_factory;
+  MockSmartCardConnection mock_connection;
+  mojo::Receiver<SmartCardConnection> connection_receiver(&mock_connection);
+
+  MockSmartCardTransaction mock_transaction;
+  mojo::AssociatedReceiver<SmartCardTransaction> transaction_receiver(
+      &mock_transaction);
+
+  {
+    InSequence s;
+
+    mock_context_factory.ExpectConnectFakeReaderSharedT1(connection_receiver);
+
+    mock_connection.ExpectBeginTransaction(transaction_receiver);
+
+    EXPECT_CALL(mock_connection, Status(_))
+        .WillOnce([](SmartCardConnection::StatusCallback callback) {
+          // Simulate a PC/SC failure.
+          auto result = device::mojom::SmartCardStatusResult::NewError(
+              SmartCardError::kReaderUnavailable);
+          std::move(callback).Run(std::move(result));
+        });
+
+    mock_transaction.ExpectEndTransaction(SmartCardDisposition::kLeave);
+  }
+
+  EXPECT_EQ(
+      "startTransaction: InvalidStateError, Transaction callback returned "
+      "while an operation was still in progress.",
+      EvalJs(shell(), R"(
+    (async () => {
+      let context = await navigator.smartCard.establishContext();
+
+      let connection =
+        (await context.connect("Fake reader", "shared",
+          {preferredProtocols: ["t1"]})).connection;
+
+      let transaction = () => {
+        connection.status();
+      };
+
+      try {
+        await connection.startTransaction(transaction);
+      } catch (e) {
+        return `startTransaction: ${e.name}, ${e.message}`;
+      }
+
+      return "ok";
+    })())"));
+}
+
+/* Tests the situation where a transaction callback erroneously returns while a
+ * SmartCardContext operation is ongoing. The Web API implementation should
+ * cleanup after itself by ending the PC/SC transaction once that operation
+ * completes.
+ */
+IN_PROC_BROWSER_TEST_F(SmartCardTest, EndTransactionAfterContextOperation) {
+  ASSERT_TRUE(NavigateToURL(shell(), GetIsolatedContextUrl()));
+
+  MockSmartCardContextFactory& mock_context_factory =
+      GetFakeSmartCardDelegate().mock_context_factory;
+  MockSmartCardConnection mock_connection;
+  mojo::Receiver<SmartCardConnection> connection_receiver(&mock_connection);
+
+  MockSmartCardTransaction mock_transaction;
+  mojo::AssociatedReceiver<SmartCardTransaction> transaction_receiver(
+      &mock_transaction);
+
+  {
+    InSequence s;
+
+    mock_context_factory.ExpectConnectFakeReaderSharedT1(connection_receiver);
+
+    mock_connection.ExpectBeginTransaction(transaction_receiver);
+
+    EXPECT_CALL(mock_context_factory, ListReaders(_))
+        .WillOnce([](SmartCardContext::ListReadersCallback callback) {
+          std::vector<std::string> readers{"Foo", "Bar"};
+          auto result =
+              device::mojom::SmartCardListReadersResult::NewReaders(readers);
+          std::move(callback).Run(std::move(result));
+        });
+
+    mock_transaction.ExpectEndTransaction(SmartCardDisposition::kLeave);
+  }
+
+  EXPECT_EQ(
+      "startTransaction: InvalidStateError, Transaction callback returned "
+      "while an operation was still in progress.",
+      EvalJs(shell(), R"(
+    (async () => {
+      let context = await navigator.smartCard.establishContext();
+
+      let connection =
+        (await context.connect("Fake reader", "shared",
+          {preferredProtocols: ["t1"]})).connection;
+
+      let transaction = () => {
+        context.listReaders();
+      };
+
+      try {
+        await connection.startTransaction(transaction);
+      } catch (e) {
+        return `startTransaction: ${e.name}, ${e.message}`;
+      }
+
+      return "ok";
+    })())"));
 }
 
 }  // namespace content

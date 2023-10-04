@@ -4,21 +4,16 @@
 
 package org.chromium.chrome.browser.tasks.tab_management;
 
-import static org.chromium.chrome.browser.device.DeviceClassManager.GTS_ACCESSIBILITY_SUPPORT;
-import static org.chromium.chrome.browser.device.DeviceClassManager.GTS_LOW_END_SUPPORT;
-
 import android.content.Context;
 
 import org.chromium.base.Log;
 import org.chromium.base.ResettersForTesting;
 import org.chromium.base.SysUtils;
-import org.chromium.chrome.browser.device.DeviceClassManager;
+import org.chromium.build.BuildConfig;
 import org.chromium.chrome.browser.flags.BooleanCachedFieldTrialParameter;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.IntCachedFieldTrialParameter;
 import org.chromium.chrome.browser.flags.MutableFlagWithSafeDefault;
-import org.chromium.chrome.browser.tasks.ReturnToChromeUtil;
-import org.chromium.chrome.browser.util.ChromeAccessibilityUtil;
 import org.chromium.ui.base.DeviceFormFactor;
 
 /**
@@ -32,12 +27,6 @@ public class TabUiFeatureUtilities {
     public static final BooleanCachedFieldTrialParameter SKIP_SLOW_ZOOMING =
             new BooleanCachedFieldTrialParameter(
                     ChromeFeatureList.TAB_TO_GTS_ANIMATION, SKIP_SLOW_ZOOMING_PARAM, true);
-
-    // TODO(crbug/1466158): Remove and keep in false state.
-    private static final String GTS_ACCESSIBILITY_LIST_MODE_PARAM = "gts-accessibility-list-mode";
-    public static final BooleanCachedFieldTrialParameter GTS_ACCESSIBILITY_LIST_MODE =
-            new BooleanCachedFieldTrialParameter(ChromeFeatureList.TAB_GROUPS_CONTINUATION_ANDROID,
-                    GTS_ACCESSIBILITY_LIST_MODE_PARAM, false);
 
     // Field trial parameter for the minimum physical memory size to enable zooming animation.
     private static final String MIN_MEMORY_MB_PARAM = "zooming-min-memory-mb";
@@ -58,10 +47,16 @@ public class TabUiFeatureUtilities {
             new BooleanCachedFieldTrialParameter(ChromeFeatureList.TAB_STRIP_REDESIGN,
                     TAB_STRIP_REDESIGN_DISABLE_BUTTON_STYLE_PARAM, false);
 
-    private static boolean sTabSelectionEditorLongPressEntryEnabled;
-
     public static final MutableFlagWithSafeDefault sThumbnailPlaceholder =
             new MutableFlagWithSafeDefault(ChromeFeatureList.THUMBNAIL_PLACEHOLDER, false);
+
+    public static final MutableFlagWithSafeDefault sAdvancedPeripheralsSupportTabStrip =
+            new MutableFlagWithSafeDefault(
+                    ChromeFeatureList.ADVANCED_PERIPHERALS_SUPPORT_TAB_STRIP, false);
+
+    // Cached and fixed values.
+    private static boolean sTabSelectionEditorLongPressEntryEnabled;
+    private static Boolean sIsTabToGtsAnimationEnabled;
 
     /**
      * Set whether the longpress entry for TabSelectionEditor is enabled. Currently only in tests.
@@ -103,76 +98,49 @@ public class TabUiFeatureUtilities {
     }
 
     /**
-     * @return Whether the Grid Tab Switcher UI is enabled and available for use.
-     * @param context The activity context.
-     */
-    public static boolean isGridTabSwitcherEnabled(Context context) {
-        if (DeviceFormFactor.isNonMultiDisplayContextOnTablet(context)) {
-            return true;
-        }
-
-        // Having Tab Groups or Start implies Grid Tab Switcher.
-        return isTabGroupsAndroidEnabled(context)
-                || ReturnToChromeUtil.isStartSurfaceEnabled(context);
-    }
-
-    /**
      * @return Whether the Grid Tab Switcher UI should use list mode.
      * @param context The activity context.
      */
     public static boolean shouldUseListMode(Context context) {
-        if (!isTabGroupsAndroidContinuationEnabled(context)) {
-            return false;
-        }
-        // Low-end forces list mode regardless of accessibility behavior.
-        if (GTS_LOW_END_SUPPORT.getValue() && SysUtils.isLowEndDevice()) {
-            return true;
-        }
-        if (GTS_ACCESSIBILITY_SUPPORT.getValue()
-                && ChromeAccessibilityUtil.get().isAccessibilityEnabled()) {
-            return GTS_ACCESSIBILITY_LIST_MODE.getValue();
-        }
-        return false;
-    }
-
-    /**
-     * @return Whether the tab group feature is enabled and available for use.
-     * @param context The activity context.
-     */
-    public static boolean isTabGroupsAndroidEnabled(Context context) {
-        // Enable tab group for tablet.
-        if (DeviceFormFactor.isNonMultiDisplayContextOnTablet(context)) {
-            return true;
-        }
-
-        return !DeviceClassManager.enableAccessibilityLayout(context);
-    }
-
-    /**
-     * @return Whether the tab group continuation feature is enabled and available for use.
-     * @param context The activity context.
-     */
-    public static boolean isTabGroupsAndroidContinuationEnabled(Context context) {
-        return isTabGroupsAndroidEnabled(context)
-                && ChromeFeatureList.sTabGroupsContinuationAndroid.isEnabled();
+        // Low-end forces list mode.
+        return SysUtils.isLowEndDevice();
     }
 
     /**
      * @return Whether the Tab-to-Grid (and Grid-to-Tab) transition animation is enabled.
      */
     public static boolean isTabToGtsAnimationEnabled(Context context) {
-        Log.d(TAG, "GTS.MinMemoryMB = " + ZOOMING_MIN_MEMORY.getValue());
-        return ChromeFeatureList.sTabToGTSAnimation.isEnabled()
-                && SysUtils.amountOfPhysicalMemoryKB() / 1024 >= ZOOMING_MIN_MEMORY.getValue()
-                && !shouldUseListMode(context);
+        if (sIsTabToGtsAnimationEnabled == null || BuildConfig.IS_FOR_TEST) {
+            if (DeviceFormFactor.isNonMultiDisplayContextOnTablet(context)) {
+                sIsTabToGtsAnimationEnabled = false;
+            } else {
+                Log.d(TAG, "GTS.MinMemoryMB = " + ZOOMING_MIN_MEMORY.getValue());
+                sIsTabToGtsAnimationEnabled = ChromeFeatureList.sTabToGTSAnimation.isEnabled()
+                        && SysUtils.amountOfPhysicalMemoryKB() / 1024
+                                >= ZOOMING_MIN_MEMORY.getValue()
+                        && !shouldUseListMode(context);
+            }
+        }
+        return sIsTabToGtsAnimationEnabled;
     }
 
     /**
      * @return Whether the instant start is supported.
      */
     public static boolean supportInstantStart(boolean isTablet, Context context) {
-        return !DeviceClassManager.enableAccessibilityLayout(context)
-                && ChromeFeatureList.sInstantStart.isEnabled() && !isTablet
+        return ChromeFeatureList.sInstantStart.isEnabled() && !isTablet
                 && !SysUtils.isLowEndDevice();
+    }
+
+    /**
+     * @return whether tab drag is enabled (either via drag as window or drag as tab).
+     * TODO(crbug.com/1485628) - merge both flags and use device property instead to differentiate.
+     */
+    public static boolean isTabDragEnabled() {
+        // Both flags should not be enabled together.
+        assert !(ChromeFeatureList.sTabLinkDragDropAndroid.isEnabled()
+                && ChromeFeatureList.sTabDragDropAsWindowAndroid.isEnabled());
+        return ChromeFeatureList.sTabDragDropAsWindowAndroid.isEnabled()
+                || ChromeFeatureList.sTabLinkDragDropAndroid.isEnabled();
     }
 }

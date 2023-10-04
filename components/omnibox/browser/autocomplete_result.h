@@ -150,6 +150,9 @@ class AutocompleteResult {
   // Filter and remove OmniboxActions according to Platform-specific rules.
   void TrimOmniboxActions(bool is_zero_suggest);
 
+  // Split some `actions` on matches out to become their own matches.
+  void SplitActionsToSuggestions();
+
   // Sets |action| in matches that have Pedal-triggering text.
   void AttachPedalsToMatches(const AutocompleteInput& input,
                              const AutocompleteProviderClient& client);
@@ -273,6 +276,12 @@ class AutocompleteResult {
   // Returns omnibox::DEFAULT_PRIMARY if `suggestion_group_id` is not found in
   // `suggestion_groups_map_`.
   omnibox::GroupConfig_SideType GetSideTypeForSuggestionGroup(
+      omnibox::GroupId suggestion_group_id) const;
+
+  // Returns the render type associated with `suggestion_group_id`.
+  // Returns omnibox::DEFAULT_VERTICAL if `suggestion_group_id` is not found in
+  // `suggestion_groups_map_`.
+  omnibox::GroupConfig_RenderType GetRenderTypeForSuggestionGroup(
       omnibox::GroupId suggestion_group_id) const;
 
   // Updates |suggestion_groups_map_| with the suggestion groups information

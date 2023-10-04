@@ -207,7 +207,8 @@ bool PolicyServiceImpl::IsFirstPolicyLoadComplete(PolicyDomain domain) const {
          policy_domain_status_[domain] == PolicyDomainStatus::kPolicyReady;
 }
 
-void PolicyServiceImpl::RefreshPolicies(base::OnceClosure callback) {
+void PolicyServiceImpl::RefreshPolicies(base::OnceClosure callback,
+                                        PolicyFetchReason reason) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   VLOG_POLICY(2, POLICY_PROCESSING) << "Policy refresh starting";
@@ -230,7 +231,7 @@ void PolicyServiceImpl::RefreshPolicies(base::OnceClosure callback) {
     for (auto* provider : providers_)
       refresh_pending_.insert(provider);
     for (auto* provider : providers_)
-      provider->RefreshPolicies();
+      provider->RefreshPolicies(reason);
   }
 }
 
@@ -304,30 +305,16 @@ void PolicyServiceImpl::MergeAndTriggerUpdates() {
 #if BUILDFLAG(IS_CHROMEOS)
   DefaultChromeAppsMigrator chrome_apps_migrator;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-#if !BUILDFLAG(IS_CHROMEOS)
-  // Merge precedence metapolicies into the bundle first.
-  // Because their value affects policy overriding.
-  for (auto* provider : providers_) {
-    if (!provider->is_active()) {
-      continue;
-    }
-    PolicyMap provider_map = provider->policies().Get(chrome_namespace).Clone();
-    IgnoreUserCloudPrecedencePolicies(&provider_map);
-    bundle.Get(chrome_namespace)
-        .MergeFrom(provider_map, /*merge_precedence_metapolicies=*/true);
-  }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-
   for (auto* provider : providers_) {
     if (!provider->is_active()) {
       continue;
     }
 
     PolicyBundle provided_bundle = provider->policies().Clone();
+    IgnoreUserCloudPrecedencePolicies(&provided_bundle.Get(chrome_namespace));
     DowngradeMetricsReportingToRecommendedPolicy(
         &provided_bundle.Get(chrome_namespace));
 #if BUILDFLAG(IS_CHROMEOS)
-    IgnoreUserCloudPrecedencePolicies(&provided_bundle.Get(chrome_namespace));
     chrome_apps_migrator.Migrate(&provided_bundle.Get(chrome_namespace));
 #endif  // BUILDFLAG(IS_CHROMEOS)
     bundle.MergeFrom(provided_bundle);
@@ -481,6 +468,8 @@ void PolicyServiceImpl::MaybeNotifyPolicyDomainStatusChange(
     // If and when crbug.com/1221454 gets fixed, we should drop the WeakPtr
     // construction and checks here.
     const auto weak_this = weak_ptr_factory_.GetWeakPtr();
+    VLOG_POLICY(2, POLICY_PROCESSING)
+        << "PolicyService is initialized for domain: " << policy_domain;
     for (auto& observer : iter->second) {
       observer.OnPolicyServiceInitialized(policy_domain);
       if (!weak_this) {

@@ -355,6 +355,21 @@
             </network-siminfo>
           </div>
         </template>
+
+        <!-- Suppress Text Messages (Cellular only). -->
+        <template is="dom-if"
+            if="[[shouldShowSuppressTextMessagesToggle_(managedProperties_)]]" restamp>
+          <div class="single-column stretch">
+            <network-config-toggle id="suppressTextMessagesToggle" policy-on-left
+                property="[[managedProperties_.typeProperties.cellular.allowTextMessages]]"
+                label="$i18n{networkSuppressTextMessages}"
+                checked="{{suppressTextMessagesOverride_}}"
+                on-checked-changed="suppressTextMessagesChanged_"
+                disabled="[[disabled_]]">
+            </network-config-toggle>
+          </div>
+        </template>
+
         <!-- Metered (WiFi and Cellular only). -->
         <template is="dom-if"
             if="[[showMetered_(managedProperties_, showMeteredToggle_)]]">
@@ -474,14 +489,20 @@
         </div>
 
         <!-- Hidden. -->
-        <settings-toggle-button id="hiddenToggle"
-            pref="{{hiddenPref_}}"
-            label="$i18n{networkHidden}"
-            sub-label="$i18n{networkHiddenSublabel}"
-            sub-label-icon="cr20:warning"
-            learn-more-url="$i18n{wifiHiddenNetworkLearnMoreUrl}"
-            deep-link-focus-id$="[[Setting.kWifiHidden]]">
-        </settings-toggle-button>
+        <template is="dom-if"
+            if="[[showHiddenNetworkToggle_(
+                    globalPolicy,
+                    managedNetworkAvailable,
+                    managedProperties_)]]">
+          <settings-toggle-button id="hiddenToggle"
+              pref="{{hiddenPref_}}"
+              label="$i18n{networkHidden}"
+              sub-label="$i18n{networkHiddenSublabel}"
+              sub-label-icon="cr20:warning"
+              learn-more-url="$i18n{wifiHiddenNetworkLearnMoreUrl}"
+              deep-link-focus-id$="[[Setting.kWifiHidden]]">
+          </settings-toggle-button>
+        </template>
       </iron-collapse>
     </template>
 

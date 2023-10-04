@@ -6,10 +6,12 @@ import {TestRunner} from 'test_runner';
 import {AxeCoreTestRunner} from 'axe_core_test_runner';
 import {SourcesTestRunner} from 'sources_test_runner';
 
+import * as Sources from 'devtools/panels/sources/sources.js';
+import * as UI from 'devtools/ui/legacy/legacy.js';
+
 (async function() {
-  await TestRunner.loadLegacyModule('sources');
   await TestRunner.showPanel('sources');
-  await UI.viewManager.showView('sources.scopeChain');
+  await UI.ViewManager.ViewManager.instance().showView('sources.scopeChain');
 
   TestRunner.addResult('Testing accessibility in the scope pane.\n');
   await SourcesTestRunner.startDebuggerTestPromise();
@@ -26,8 +28,8 @@ import {SourcesTestRunner} from 'sources_test_runner';
   `);
   await SourcesTestRunner.waitUntilPausedPromise();
 
-  await TestRunner.addSnifferPromise(Sources.ScopeChainSidebarPane.prototype, 'sidebarPaneUpdatedForTest');
-  const scopePane = Sources.ScopeChainSidebarPane.instance();
+  await TestRunner.addSnifferPromise(Sources.ScopeChainSidebarPane.ScopeChainSidebarPane.prototype, 'sidebarPaneUpdatedForTest');
+  const scopePane = Sources.ScopeChainSidebarPane.ScopeChainSidebarPane.instance();
   await TestRunner.addSnifferPromise(ObjectUI.ObjectPropertyTreeElement, 'populateWithProperties');
   TestRunner.addResult(`Scope pane content: ${scopePane.contentElement.deepTextContent()}`);
   TestRunner.addResult(`Running the axe-core linter on the scope pane.`);

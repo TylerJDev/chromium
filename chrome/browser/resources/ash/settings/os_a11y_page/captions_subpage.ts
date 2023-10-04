@@ -141,6 +141,9 @@ export class SettingsCaptionsElement extends SettingsCaptionsElementBase {
 
       /**
        * List of options for the text shadow drop-down menu.
+       *
+       * These values are based on
+       * https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/resources/ash/settings/a11y_page/captions_subpage.ts;l=142;drc=0918c7f73782a9575396f0c6b80a722b5a3d255a
        */
       textShadowOptions_: {
         readOnly: true,
@@ -206,7 +209,7 @@ export class SettingsCaptionsElement extends SettingsCaptionsElementBase {
   private readonly textSizeOptions_: DropdownMenuOptionList;
   private enableLiveCaption_: boolean;
 
-  override ready() {
+  override ready(): void {
     super.ready();
     FontsBrowserProxyImpl.getInstance().fetchFontsData().then(
         (response: FontsData) => this.setFontsData_(response));
@@ -225,7 +228,7 @@ export class SettingsCaptionsElement extends SettingsCaptionsElementBase {
   /**
    * @param response A list of fonts.
    */
-  private setFontsData_(response: FontsData) {
+  private setFontsData_(response: FontsData): void {
     const fontMenuOptions =
         [{value: '', name: loadTimeData.getString('captionsDefaultSetting')}];
     for (const fontData of response.fontList) {

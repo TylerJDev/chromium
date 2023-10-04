@@ -43,30 +43,65 @@
 
 - (void)recordMagicStackTopModuleImpressionForType:
     (ContentSuggestionsModuleType)type {
+  CHECK(_localState);
   switch (type) {
     case ContentSuggestionsModuleType::kMostVisited: {
-      if (_localState) {
-        // Increment freshness pref since it is an impression of
-        // the latest Most Visited Sites as the top module.
-        int freshness_impression_count = _localState->GetInteger(
-            prefs::kIosMagicStackSegmentationMVTImpressionsSinceFreshness);
-        _localState->SetInteger(
-            prefs::kIosMagicStackSegmentationMVTImpressionsSinceFreshness,
-            freshness_impression_count + 1);
-      }
+      // Increment freshness pref since it is an impression of
+      // the latest Most Visited Sites as the top module.
+      int freshness_impression_count = _localState->GetInteger(
+          prefs::kIosMagicStackSegmentationMVTImpressionsSinceFreshness);
+      _localState->SetInteger(
+          prefs::kIosMagicStackSegmentationMVTImpressionsSinceFreshness,
+          freshness_impression_count + 1);
       break;
     }
     case ContentSuggestionsModuleType::kShortcuts: {
-      if (_localState) {
-        // Increment freshness pref since it is an impression of
-        // the latest Most Visited Sites as the top module.
-        int freshness_impression_count = _localState->GetInteger(
-            prefs::
-                kIosMagicStackSegmentationShortcutsImpressionsSinceFreshness);
-        _localState->SetInteger(
-            prefs::kIosMagicStackSegmentationShortcutsImpressionsSinceFreshness,
-            freshness_impression_count + 1);
-      }
+      // Increment freshness pref since it is an impression of
+      // the latest Most Visited Sites as the top module.
+      int freshness_impression_count = _localState->GetInteger(
+          prefs::kIosMagicStackSegmentationShortcutsImpressionsSinceFreshness);
+      _localState->SetInteger(
+          prefs::kIosMagicStackSegmentationShortcutsImpressionsSinceFreshness,
+          freshness_impression_count + 1);
+      break;
+    }
+
+    case ContentSuggestionsModuleType::kSafetyCheck:
+    case ContentSuggestionsModuleType::kSafetyCheckMultiRow:
+    case ContentSuggestionsModuleType::kSafetyCheckMultiRowOverflow: {
+      // Increment freshness pref since it is an impression of
+      // the latest Safety Check results as the top module.
+      int freshness_impression_count = _localState->GetInteger(
+          prefs::
+              kIosMagicStackSegmentationSafetyCheckImpressionsSinceFreshness);
+      _localState->SetInteger(
+          prefs::kIosMagicStackSegmentationSafetyCheckImpressionsSinceFreshness,
+          freshness_impression_count + 1);
+      break;
+    }
+    case ContentSuggestionsModuleType::kTabResumption: {
+      // Increment freshness pref since it is an impression of
+      // the latest Tab Resumption results as the top module.
+      int freshness_impression_count = _localState->GetInteger(
+          prefs::
+              kIosMagicStackSegmentationTabResumptionImpressionsSinceFreshness);
+      _localState->SetInteger(
+          prefs::
+              kIosMagicStackSegmentationTabResumptionImpressionsSinceFreshness,
+          freshness_impression_count + 1);
+      break;
+    }
+    case ContentSuggestionsModuleType::kParcelTracking:
+    case ContentSuggestionsModuleType::kParcelTrackingSeeMore: {
+      // Increment freshness pref since it is an impression of
+      // the latest Tab Resumption results as the top module.
+      int freshness_impression_count = _localState->GetInteger(
+          prefs::
+              kIosMagicStackSegmentationParcelTrackingImpressionsSinceFreshness);
+      _localState->SetInteger(
+          prefs::
+              kIosMagicStackSegmentationParcelTrackingImpressionsSinceFreshness,
+          freshness_impression_count + 1);
       break;
     }
     case ContentSuggestionsModuleType::kSetUpListSync:
@@ -74,8 +109,6 @@
     case ContentSuggestionsModuleType::kSetUpListAutofill:
     case ContentSuggestionsModuleType::kCompactedSetUpList:
     case ContentSuggestionsModuleType::kSetUpListAllSet:
-    case ContentSuggestionsModuleType::kSafetyCheck:
-    case ContentSuggestionsModuleType::kSafetyCheckMultiRow:
       break;
   }
   UMA_HISTOGRAM_ENUMERATION(kMagicStackTopModuleImpressionHistogram, type);

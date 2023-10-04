@@ -6,10 +6,11 @@ import {TestRunner} from 'test_runner';
 import {BindingsTestRunner} from 'bindings_test_runner';
 import {SourcesTestRunner} from 'sources_test_runner';
 
+import * as Common from 'devtools/core/common/common.js';
+
 (async function() {
   TestRunner.addResult(
       `Verify that sourcemap sources are mapped event when sourcemap compiled url matches with one of the source urls.\n`);
-  await TestRunner.loadLegacyModule('sources');
   await TestRunner.showPanel('sources');
   await TestRunner.addScriptTag('resources/sourcemap-name-clash/out.js');
 
@@ -19,8 +20,8 @@ import {SourcesTestRunner} from 'sources_test_runner';
 
   Promise
       .all([
-        getResourceContent('out.js', Common.resourceTypes.Script),
-        getResourceContent('out.js', Common.resourceTypes.SourceMapScript),
+        getResourceContent('out.js', Common.ResourceType.resourceTypes.Script),
+        getResourceContent('out.js', Common.ResourceType.resourceTypes.SourceMapScript),
       ])
       .then(onResourceContents);
 

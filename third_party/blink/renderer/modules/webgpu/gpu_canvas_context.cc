@@ -129,14 +129,15 @@ void GPUCanvasContext::Reshape(int width, int height) {
   Host()->SetNeedsCompositingUpdate();
 }
 
-scoped_refptr<StaticBitmapImage> GPUCanvasContext::GetImage(
-    CanvasResourceProvider::FlushReason) {
+scoped_refptr<StaticBitmapImage> GPUCanvasContext::GetImage(FlushReason) {
   if (!swap_buffers_)
     return nullptr;
 
   // If there is a current texture, create a snapshot from it.
-  if (texture_) {
+  if (texture_ && !texture_->Destroyed()) {
     return SnapshotInternal(texture_->GetHandle(), swap_buffers_->Size());
+  } else if (swap_texture_) {
+    return SnapshotInternal(swap_texture_->GetHandle(), swap_buffers_->Size());
   }
 
   // If there is no current texture, we need to get the information of the last
@@ -226,21 +227,11 @@ bool GPUCanvasContext::PushFrame() {
     return false;
   }
 
-  // Acquires a CanvasResource of type ExternalCanvasResource that will
-  // encapsulate an external mailbox, synctoken and release callback.
-  SkImageInfo resource_info = SkImageInfo::Make(
-      transferable_resource.size.width(), transferable_resource.size.height(),
-      viz::ToClosestSkColorType(
-          /*gpu_compositing=*/true, transferable_resource.format),
-      kPremul_SkAlphaType);
   auto canvas_resource = ExternalCanvasResource::Create(
-      transferable_resource.mailbox_holder.mailbox, std::move(release_callback),
-      transferable_resource.mailbox_holder.sync_token, resource_info,
-      transferable_resource.mailbox_holder.texture_target,
+      transferable_resource, std::move(release_callback),
       GetContextProviderWeakPtr(), /*resource_provider=*/nullptr,
       cc::PaintFlags::FilterQuality::kLow,
-      /*is_origin_top_left=*/kBottomLeft_GrSurfaceOrigin,
-      transferable_resource.is_overlay_candidate);
+      /*is_origin_top_left=*/kBottomLeft_GrSurfaceOrigin);
   if (!canvas_resource)
     return false;
 
@@ -613,6 +604,14 @@ GPUTexture* GPUCanvasContext::getCurrentTexture(
     texture_ = MakeGarbageCollected<GPUTexture>(
         device_, GetProcs().deviceCreateTexture(device_->GetHandle(),
                                                 &texture_descriptor_));
+    // If the user manually destroys the texture before yielding control back
+    // to the browser, do the copy just prior to the texture destruction.
+    texture_->SetBeforeDestroyCallback(WTF::BindOnce(
+        [](GPUCanvasContext* context, GPUTexture* texture) {
+          context->CopyToSwapTexture();
+          texture->ClearBeforeDestroyCallback();
+        },
+        WrapPersistent(this), WrapPersistent(texture_.Get())));
   } else {
     texture_ = swap_texture_;
   }
@@ -632,6 +631,7 @@ void GPUCanvasContext::ReplaceDrawingBuffer(bool destroy_swap_buffers) {
   }
 
   if (copy_to_swap_texture_required_ && texture_) {
+    texture_->ClearBeforeDestroyCallback();
     texture_->destroy();
   }
   texture_ = nullptr;
@@ -644,7 +644,7 @@ void GPUCanvasContext::ReplaceDrawingBuffer(bool destroy_swap_buffers) {
   }
 }
 
-void GPUCanvasContext::FinalizeFrame(CanvasResourceProvider::FlushReason) {
+void GPUCanvasContext::FinalizeFrame(FlushReason) {
   // In some cases, such as when a canvas is hidden or offscreen, compositing
   // will never happen and thus OnTextureTransferred will never be called. In
   // those cases, getCurrentTexture is still required to return a new texture
@@ -658,8 +658,9 @@ void GPUCanvasContext::OnTextureTransferred() {
   DCHECK(texture_);
   DCHECK(swap_texture_);
 
-  if (copy_to_swap_texture_required_ && texture_) {
+  if (copy_to_swap_texture_required_ && texture_ && !texture_->Destroyed()) {
     CopyToSwapTexture();
+    texture_->ClearBeforeDestroyCallback();
     texture_->destroy();
   }
   texture_ = nullptr;
@@ -768,7 +769,15 @@ bool GPUCanvasContext::CopyTextureToResourceProvider(
       .depthOrArrayLayers = 1,
   };
 
-  if (alpha_mode_ == V8GPUCanvasAlphaMode::Enum::kOpaque) {
+  bool isOpaque = alpha_mode_ == V8GPUCanvasAlphaMode::Enum::kOpaque;
+
+  // If either the texture is opaque or the texture format does not match the
+  // resource provider's format then CopyTextureForBrowser will be used, which
+  // performs a blit and can fix up the texture data during the copy.
+  if (isOpaque || copy_to_swap_texture_required_) {
+    WGPUAlphaMode srcAlphaMode =
+        isOpaque ? WGPUAlphaMode_Opaque : WGPUAlphaMode_Premultiplied;
+
     // Issue a copyTextureForBrowser call with internal usage turned on.
     // There is a special step for srcAlphaMode == WGPUAlphaMode_Opaque that
     // clears alpha channel to one.
@@ -786,12 +795,12 @@ bool GPUCanvasContext::CopyTextureToResourceProvider(
         break;
       default:
         // Unknown dst alpha type, default to equal to src alpha mode
-        dstAlphaMode = WGPUAlphaMode_Opaque;
+        dstAlphaMode = srcAlphaMode;
         break;
     }
     WGPUCopyTextureForBrowserOptions options = {
         .flipY = !resource_provider->IsOriginTopLeft(),
-        .srcAlphaMode = WGPUAlphaMode_Opaque,
+        .srcAlphaMode = srcAlphaMode,
         .dstAlphaMode = dstAlphaMode,
         .internalUsage = true,
     };
@@ -850,8 +859,7 @@ scoped_refptr<StaticBitmapImage> GPUCanvasContext::SnapshotInternal(
   if (!CopyTextureToResourceProvider(texture, size, resource_provider.get()))
     return nullptr;
 
-  return resource_provider->Snapshot(
-      CanvasResourceProvider::FlushReason::kNone);
+  return resource_provider->Snapshot(FlushReason::kNone);
 }
 
 // DawnObjectBase substitute methods

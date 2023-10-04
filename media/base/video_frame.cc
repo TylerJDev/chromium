@@ -388,7 +388,8 @@ scoped_refptr<VideoFrame> VideoFrame::WrapNativeTextures(
       format != PIXEL_FORMAT_I420 && format != PIXEL_FORMAT_ABGR &&
       format != PIXEL_FORMAT_XBGR && format != PIXEL_FORMAT_XR30 &&
       format != PIXEL_FORMAT_XB30 && format != PIXEL_FORMAT_P016LE &&
-      format != PIXEL_FORMAT_RGBAF16 && format != PIXEL_FORMAT_YV12) {
+      format != PIXEL_FORMAT_RGBAF16 && format != PIXEL_FORMAT_YV12 &&
+      format != PIXEL_FORMAT_BGRA) {
     DLOG(ERROR) << "Unsupported pixel format: "
                 << VideoPixelFormatToString(format);
     return nullptr;
@@ -775,9 +776,10 @@ scoped_refptr<VideoFrame> VideoFrame::WrapUnacceleratedIOSurface(
     DLOG(ERROR) << "Failed to lock IOSurface.";
     return nullptr;
   }
-  auto unlock_lambda = [](base::ScopedCFTypeRef<IOSurfaceRef> io_surface) {
-    IOSurfaceUnlock(io_surface, kIOSurfaceLockReadOnly, nullptr);
-  };
+  auto unlock_lambda =
+      [](base::apple::ScopedCFTypeRef<IOSurfaceRef> io_surface) {
+        IOSurfaceUnlock(io_surface, kIOSurfaceLockReadOnly, nullptr);
+      };
 
   scoped_refptr<VideoFrame> frame =
       new VideoFrame(*layout, storage_type, visible_rect, size, timestamp);

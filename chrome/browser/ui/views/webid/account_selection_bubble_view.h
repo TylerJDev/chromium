@@ -17,6 +17,8 @@
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/view.h"
 
+using TokenError = content::IdentityCredentialTokenError;
+
 namespace views {
 class Checkbox;
 class ImageButton;
@@ -63,7 +65,14 @@ class AccountSelectionBubbleView : public views::BubbleDialogDelegateView,
 
     // Called when the user clicks the "continue" button on the sign-in
     // failure dialog.
-    virtual void OnSigninToIdP() = 0;
+    virtual void OnSigninToIdP(const ui::Event& event) = 0;
+
+    // Called when the user clicks "got it" button.
+    virtual void OnGotIt(const ui::Event& event) = 0;
+
+    // Called when the user clicks the "more details" button on the error
+    // dialog.
+    virtual void OnMoreDetails(const ui::Event& event) = 0;
 
     // Called when IdentityProvider.close() is called from the renderer.
     virtual void CloseModalDialog() = 0;
@@ -100,6 +109,12 @@ class AccountSelectionBubbleView : public views::BubbleDialogDelegateView,
       const absl::optional<std::u16string>& iframe_for_display,
       const std::u16string& idp_for_display,
       const content::IdentityProviderMetadata& idp_metadata) override;
+
+  void ShowErrorDialog(const std::u16string& top_frame_for_display,
+                       const absl::optional<std::u16string>& iframe_for_display,
+                       const std::u16string& idp_for_display,
+                       const content::IdentityProviderMetadata& idp_metadata,
+                       const absl::optional<TokenError>& error) override;
 
   // Populates `idp_images` when an IDP image has been fetched.
   void AddIdpImage(const GURL& image_url, gfx::ImageSkia idp_image);
@@ -205,9 +220,6 @@ class AccountSelectionBubbleView : public views::BubbleDialogDelegateView,
 
   // View containing the continue button.
   raw_ptr<views::MdTextButton> continue_button_ = nullptr;
-
-  // View containing the sign in to IDP button.
-  raw_ptr<views::MdTextButton> signin_to_idp_button_ = nullptr;
 
   // Auto re-authn opt-out checkbox.
   raw_ptr<views::Checkbox> auto_reauthn_checkbox_ = nullptr;

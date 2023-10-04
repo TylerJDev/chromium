@@ -125,8 +125,22 @@ try_.builder(
 )
 
 try_.builder(
+    name = "fuchsia-fyi-x64-asan",
+    mirrors = ["ci/fuchsia-fyi-x64-asan"],
+    contact_team_email = "chrome-fuchsia-engprod@google.com",
+    execution_timeout = 10 * time.hour,
+)
+
+try_.builder(
     name = "fuchsia-fyi-x64-dbg",
     mirrors = ["ci/fuchsia-fyi-x64-dbg"],
+)
+
+try_.builder(
+    name = "fuchsia-fyi-x64-dbg-persistent-emulator",
+    mirrors = ["ci/fuchsia-fyi-x64-dbg-persistent-emulator"],
+    contact_team_email = "chrome-fuchsia-engprod@google.com",
+    execution_timeout = 10 * time.hour,
 )
 
 try_.orchestrator_builder(
@@ -151,35 +165,6 @@ try_.compilator_builder(
     name = "fuchsia-x64-cast-receiver-rel-compilator",
     branch_selector = branches.selector.FUCHSIA_BRANCHES,
     cores = "8|16",
-    ssd = True,
-    main_list_view = "try",
-)
-
-# TODO(b/277863839): remove Siso experimental builders after migrate
-# fuchsia-x64-cast-receiver-rel to Siso.
-try_.orchestrator_builder(
-    name = "fuchsia-x64-cast-receiver-siso-rel",
-    mirrors = builder_config.copy_from("try/fuchsia-x64-cast-receiver-rel"),
-    try_settings = builder_config.try_settings(
-        is_compile_only = True,
-    ),
-    compilator = "fuchsia-x64-cast-receiver-siso-rel-compilator",
-    coverage_test_types = ["unit", "overall"],
-    experiments = {
-        "enable_weetbix_queries": 100,
-        "weetbix.retry_weak_exonerations": 100,
-        "weetbix.enable_weetbix_exonerations": 100,
-    },
-    main_list_view = "try",
-    tryjob = try_.job(
-        # TODO(b/277863839): increase percentage.
-        experiment_percentage = 20,
-    ),
-    use_clang_coverage = True,
-)
-
-try_.compilator_builder(
-    name = "fuchsia-x64-cast-receiver-siso-rel-compilator",
     ssd = True,
     main_list_view = "try",
     siso_enabled = True,

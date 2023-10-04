@@ -9,6 +9,7 @@
 #include "ui/ozone/platform/wayland/host/wayland_connection.h"
 #include "ui/ozone/platform/wayland/host/wayland_window.h"
 #include "ui/ozone/platform/wayland/host/wayland_window_drag_controller.h"
+#include "ui/ozone/platform/wayland/host/wayland_window_observer.h"
 
 namespace ui {
 
@@ -202,16 +203,26 @@ void WaylandWindowManager::RemoveWindow(gfx::AcceleratedWidget widget) {
 
   window_map_.erase(widget);
 
-  for (WaylandWindowObserver& observer : observers_)
-    observer.OnWindowRemoved(window);
-
+  // Reset `pointer_focused_window_` and `keyboard_focused_window_` before
+  // notifying any observers to make sure GetCurrentPointerFocusedWindow() and
+  // GetCurrentKeyboardFocusedWindow() behave correctly. Especially the former
+  // can be problematic if notifying WaylandWindowDragController that a window
+  // has been removed before resetting `pointer_focused_window_`, because that
+  // leads to WaylandEventSource::OnPointerButtonEvent() being called, which
+  // then calls GetCurrentPointerFocusedWindow().
+  if (window == pointer_focused_window_) {
+    pointer_focused_window_ = nullptr;
+  }
   if (window == keyboard_focused_window_) {
     keyboard_focused_window_ = nullptr;
-    for (auto& observer : observers_)
+    for (auto& observer : observers_) {
       observer.OnKeyboardFocusedWindowChanged();
+    }
   }
-  if (window == pointer_focused_window_)
-    pointer_focused_window_ = nullptr;
+
+  for (WaylandWindowObserver& observer : observers_) {
+    observer.OnWindowRemoved(window);
+  }
 }
 
 void WaylandWindowManager::AddSubsurface(gfx::AcceleratedWidget widget,
@@ -268,6 +279,11 @@ bool WaylandWindowManager::IsWindowValid(const WaylandWindow* window) const {
       return true;
   }
   return false;
+}
+
+bool WaylandWindowManager::HasObserverForTesting(
+    const WaylandWindowObserver& observer) const {
+  return observers_.HasObserver(&observer);
 }
 
 }  // namespace ui

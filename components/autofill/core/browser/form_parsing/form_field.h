@@ -14,6 +14,7 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/strings/string_piece.h"
+#include "components/autofill/core/browser/country_type.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/form_parsing/autofill_parsing_utils.h"
 #include "components/autofill/core/browser/form_parsing/field_candidates.h"
@@ -50,6 +51,7 @@ class FormField {
   // |field_candidates|.
   static void ParseFormFields(
       const std::vector<std::unique_ptr<AutofillField>>& fields,
+      const GeoIpCountryCode& client_country,
       const LanguageCode& page_language,
       bool is_form_tag,
       PatternSource pattern_source,
@@ -61,6 +63,7 @@ class FormField {
   // used as the key into |field_candidates|.
   static void ParseSingleFieldForms(
       const std::vector<std::unique_ptr<AutofillField>>& fields,
+      const GeoIpCountryCode& client_country,
       const LanguageCode& page_language,
       bool is_form_tag,
       PatternSource pattern_source,
@@ -75,6 +78,7 @@ class FormField {
   // in the form, which is why its parsing logic is extracted to its own method.
   static void ParseStandaloneCVCFields(
       const std::vector<std::unique_ptr<AutofillField>>& fields,
+      const GeoIpCountryCode& client_country,
       const LanguageCode& page_language,
       PatternSource pattern_source,
       FieldCandidatesMap& field_candidates,
@@ -199,8 +203,21 @@ class FormField {
   // ParseFormFieldsPass() helper function.
   typedef std::unique_ptr<FormField> ParseFunction(
       AutofillScanner* scanner,
+      const GeoIpCountryCode& client_country,
       const LanguageCode& page_language,
       PatternSource pattern_source,
+      LogManager* log_manager);
+
+  // Removes entries from `field_candidates` in case
+  // - not enough fields were classified by local heuristics.
+  // - fields were not explicitly allow-listed because they appear in
+  //   contexts that don't contain enough fields (e.g. forms with only an
+  //   email address).
+  static void ClearCandidatesIfHeuristicsDidNotFindEnoughFields(
+      const std::vector<std::unique_ptr<AutofillField>>& fields,
+      FieldCandidatesMap& field_candidates,
+      bool is_form_tag,
+      const GeoIpCountryCode& client_country,
       LogManager* log_manager);
 
   static bool ParseFieldSpecificsWithNewPatterns(
@@ -253,6 +270,7 @@ class FormField {
   static void ParseFormFieldsPass(ParseFunction parse,
                                   const std::vector<AutofillField*>& fields,
                                   FieldCandidatesMap& field_candidates,
+                                  const GeoIpCountryCode& client_country,
                                   const LanguageCode& page_language,
                                   PatternSource pattern_source,
                                   LogManager* log_manager);

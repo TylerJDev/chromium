@@ -35,6 +35,10 @@ class ShelfControllerHelper : public ExtensionEnableFlowDelegate {
 
   ~ShelfControllerHelper() override;
 
+  // Get the item label that should be shown for the specified promise app
+  // status.
+  static std::string GetLabelForPromiseStatus(apps::PromiseStatus status);
+
   // Helper function to return the title associated with |app_id|.
   // Returns an empty title if no matching extension can be found.
   static std::u16string GetAppTitle(Profile* profile,
@@ -68,6 +72,9 @@ class ShelfControllerHelper : public ExtensionEnableFlowDelegate {
   static ash::AppStatus ConvertPromiseStatusToAppStatus(
       apps::PromiseStatus promise_status);
 
+  // Check whether this item is an app service shortcut.
+  static bool IsAppServiceShortcut(Profile* profile, const std::string& id);
+
   // Returns true if |id| is valid for the currently active profile.
   // Used during restore to ignore no longer valid extensions.
   // Note that already running applications are ignored by the restore process.
@@ -83,6 +90,9 @@ class ShelfControllerHelper : public ExtensionEnableFlowDelegate {
   Profile* profile() { return profile_; }
   const Profile* profile() const { return profile_; }
   void set_profile(Profile* profile) { profile_ = profile; }
+
+  bool IsValidPromisePackageIdFromAppService(
+      const std::string& promise_package_id) const;
 
  private:
   // ExtensionEnableFlowDelegate:

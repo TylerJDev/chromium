@@ -67,11 +67,14 @@ class CORE_EXPORT StylePropertySerializer {
   String GetShorthandValueForDoubleBarCombinator(
       const StylePropertyShorthand&) const;
   String GetShorthandValueForGrid(const StylePropertyShorthand&) const;
+  String GetShorthandValueForGridArea(const StylePropertyShorthand&) const;
+  String GetShorthandValueForGridLine(const StylePropertyShorthand&) const;
   String GetShorthandValueForGridTemplate(const StylePropertyShorthand&) const;
   String ContainerValue() const;
   String TimelineValue(const StylePropertyShorthand&) const;
   String ScrollTimelineValue() const;
   String ViewTimelineValue() const;
+  String AlternativeViewTimelineWithInsetValue() const;
   String AnimationDelayShorthandValue() const;
   String AnimationRangeShorthandValue() const;
   String FontValue() const;

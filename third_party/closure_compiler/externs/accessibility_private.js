@@ -277,6 +277,8 @@ chrome.accessibilityPrivate.AccessibilityFeature = {
   GOOGLE_TTS_LANGUAGE_PACKS: 'googleTtsLanguagePacks',
   DICTATION_CONTEXT_CHECKING: 'dictationContextChecking',
   CHROMEVOX_SETTINGS_MIGRATION: 'chromevoxSettingsMigration',
+  GAME_FACE_INTEGRATION: 'gameFaceIntegration',
+  GOOGLE_TTS_HIGH_QUALITY_VOICES: 'googleTtsHighQualityVoices',
 };
 
 /**
@@ -337,6 +339,14 @@ chrome.accessibilityPrivate.DictationBubbleHintType = {
  * }}
  */
 chrome.accessibilityPrivate.DictationBubbleProperties;
+
+/**
+ * @enum {string}
+ */
+chrome.accessibilityPrivate.ToastType = {
+  DICTATION_NO_FOCUSED_TEXT_FIELD: 'dictationNoFocusedTextField',
+  DICTATION_MIC_MUTED: 'dictationMicMuted',
+};
 
 /**
  * @enum {string}
@@ -536,6 +546,13 @@ chrome.accessibilityPrivate.sendSyntheticMouseEvent = function(mouseEvent) {};
 chrome.accessibilityPrivate.setSelectToSpeakState = function(state) {};
 
 /**
+ * Called by the Select-to-Speak extension to request a clipboard copy in the
+ * active Lacros Google Docs tab for the copy-paste fallback.
+ * @param {string} url URL of the Google Docs tab.
+ */
+chrome.accessibilityPrivate.clipboardCopyInActiveLacrosGoogleDoc = function(url) {};
+
+/**
  * Called by the Accessibility Common extension when
  * onScrollableBoundsForPointRequested has found a scrolling container. |rect|
  * will be the bounds of the nearest scrollable ancestor of the node at the
@@ -655,6 +672,13 @@ chrome.accessibilityPrivate.getDlcContents = function(dlc, callback) {};
  *     result is returned.
  */
 chrome.accessibilityPrivate.isLacrosPrimary = function(callback) {};
+
+/**
+ * Displays an accessibility-related toast.
+ * @param {!chrome.accessibilityPrivate.ToastType} type The type of toast to
+ *     show.
+ */
+chrome.accessibilityPrivate.showToast = function(type) {};
 
 /**
  * Fired whenever ChromeVox should output introduction.

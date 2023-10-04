@@ -42,24 +42,12 @@ class MockLoginDisplayHost : public LoginDisplayHost {
   MOCK_METHOD(WebUILoginView*, GetWebUILoginView, (), (const, override));
   MOCK_METHOD(void, BeforeSessionStart, (), (override));
 
-  // Workaround for move-only args in GMock.
-  MOCK_METHOD(void, MockFinalize, (base::OnceClosure*));
-  void Finalize(base::OnceClosure completion_callback) override {
-    MockFinalize(&completion_callback);
-  }
-
   MOCK_METHOD(void, FinalizeImmediately, (), (override));
   MOCK_METHOD(void, SetStatusAreaVisible, (bool), (override));
   MOCK_METHOD(void, StartWizard, (OobeScreenId), (override));
   MOCK_METHOD(WizardController*, GetWizardController, (), (override));
   MOCK_METHOD(KioskLaunchController*, GetKioskLaunchController, (), (override));
   MOCK_METHOD(bool, IsFinalizing, (), (override));
-
-  // Workaround for move-only args in GMock.
-  MOCK_METHOD(void, MockStartUserAdding, (base::OnceClosure*));
-  void StartUserAdding(base::OnceClosure completion_callback) override {
-    MockStartUserAdding(&completion_callback);
-  }
 
   MOCK_METHOD(void, CancelUserAdding, (), (override));
   MOCK_METHOD(void, StartSignInScreen, (), (override));
@@ -107,6 +95,7 @@ class MockLoginDisplayHost : public LoginDisplayHost {
               (final));
   MOCK_METHOD(WizardContext*, GetWizardContextForTesting, (), (final));
   MOCK_METHOD(WizardContext*, GetWizardContext, (), (override));
+  MOCK_METHOD(OobeMetricsHelper*, GetOobeMetricsHelper, (), (override));
   MOCK_METHOD(bool, IsWebUIStarted, (), (const final));
   MOCK_METHOD(base::WeakPtr<quick_start::TargetDeviceBootstrapController>,
               GetQuickStartBootstrapController,

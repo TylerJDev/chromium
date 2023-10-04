@@ -12,7 +12,11 @@
 #include <set>
 #include <vector>
 
+#include "ash/accelerators/accelerator_capslock_state_machine.h"
 #include "ash/accelerators/accelerator_history_impl.h"
+#include "ash/accelerators/accelerator_launcher_state_machine.h"
+#include "ash/accelerators/accelerator_prefs.h"
+#include "ash/accelerators/accelerator_shift_disable_capslock_state_machine.h"
 #include "ash/accelerators/accelerator_table.h"
 #include "ash/accelerators/ash_accelerator_configuration.h"
 #include "ash/accelerators/exit_warning_handler.h"
@@ -57,7 +61,8 @@ class ASH_EXPORT AcceleratorControllerImpl
     : public ui::AcceleratorTarget,
       public AcceleratorController,
       public input_method::InputMethodManager::Observer,
-      public AshAcceleratorConfiguration::Observer {
+      public AshAcceleratorConfiguration::Observer,
+      public AcceleratorPrefs::Observer {
  public:
   // TestApi is used for tests to get internal implementation details.
   class TestApi {
@@ -132,6 +137,9 @@ class ASH_EXPORT AcceleratorControllerImpl
 
   // AshAcceleratorConfiguration::Observer overrides:
   void OnAcceleratorsUpdated() override;
+
+  // AcceleratorPrefs::Observer overrides:
+  void OnShortcutPolicyUpdated() override;
 
   // Registers global keyboard accelerators for the specified target. If
   // multiple targets are registered for any given accelerator, a target
@@ -235,6 +243,10 @@ class ASH_EXPORT AcceleratorControllerImpl
 
   // A tracker for the current and previous accelerators.
   std::unique_ptr<AcceleratorHistoryImpl> accelerator_history_;
+  std::unique_ptr<AcceleratorLauncherStateMachine> launcher_state_machine_;
+  std::unique_ptr<AcceleratorCapslockStateMachine> capslock_state_machine_;
+  std::unique_ptr<AcceleratorShiftDisableCapslockStateMachine>
+      shift_disable_state_machine_;
 
   // Manages all accelerator mappings.
   raw_ptr<AshAcceleratorConfiguration, ExperimentalAsh>

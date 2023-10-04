@@ -8,10 +8,11 @@ import android.content.Context;
 import android.view.View;
 
 import org.chromium.base.supplier.ObservableSupplier;
+import org.chromium.base.supplier.Supplier;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsSizer;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.MutableFlagWithSafeDefault;
+import org.chromium.chrome.browser.share.ShareDelegate;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.bottomsheet.ExpandedSheetHelper;
@@ -24,8 +25,6 @@ import java.util.function.BooleanSupplier;
  * various components lazily.
  */
 public class PageInsightsCoordinator {
-    private static MutableFlagWithSafeDefault sPageInsightsHub =
-            new MutableFlagWithSafeDefault(ChromeFeatureList.CCT_PAGE_INSIGHTS_HUB, false);
 
     private final Context mContext;
 
@@ -40,25 +39,29 @@ public class PageInsightsCoordinator {
 
     /** Returns true if page insight is enabled in the feature flag. */
     public static boolean isFeatureEnabled() {
-        return sPageInsightsHub.isEnabled();
+        return ChromeFeatureList.sCctPageInsightsHub.isEnabled();
     }
 
     /**
      * Constructor.
      * @param context The associated {@link Context}.
      * @param tabProvider Provider of the current activity tab.
+     * @param shareDelegateSupplier Supplier of {@link ShareDelegate}.
      * @param bottomSheetController {@link ManagedBottomSheetController} for page insights.
      * @param bottomUiController {@link BottomSheetController} for other bottom sheet UIs.
      * @param expandedSheetHelper Helps interaction with other UI in expanded mode.
      * @param controlsStateProvider Provides the browser controls' state.
      * @param browserControlsSizer Bottom browser controls resizer.
      * @param isPageInsightsHubEnabled Supplier of the feature flag.
+     * @param firstLoadTimeMs Timestamp for the first page load completion.
      */
     public PageInsightsCoordinator(Context context, ObservableSupplier<Tab> tabProvider,
+            Supplier<ShareDelegate> shareDelegateSupplier,
             ManagedBottomSheetController bottomSheetController,
             BottomSheetController bottomUiController, ExpandedSheetHelper expandedSheetHelper,
             BrowserControlsStateProvider controlsStateProvider,
-            BrowserControlsSizer browserControlsSizer, BooleanSupplier isPageInsightsHubEnabled) {
+            BrowserControlsSizer browserControlsSizer, BooleanSupplier isPageInsightsHubEnabled,
+            long firstLoadTimeMs) {
         mContext = context;
         mTabProvider = tabProvider;
         mBottomSheetController = bottomSheetController;
@@ -66,16 +69,17 @@ public class PageInsightsCoordinator {
         mBottomUiController = bottomUiController;
         mControlsStateProvider = controlsStateProvider;
         mBrowserControlsSizer = browserControlsSizer;
-        mMediator = new PageInsightsMediator(mContext, mTabProvider, mBottomSheetController,
-                mBottomUiController, mExpandedSheetHelper, mControlsStateProvider,
-                mBrowserControlsSizer, isPageInsightsHubEnabled);
+        mMediator = new PageInsightsMediator(mContext, mTabProvider, shareDelegateSupplier,
+                mBottomSheetController, mBottomUiController, mExpandedSheetHelper,
+                mControlsStateProvider, mBrowserControlsSizer, isPageInsightsHubEnabled,
+                firstLoadTimeMs);
     }
 
     /**
      * Launch PageInsights hub in bottom sheet container and fetch the data to show.
      */
     public void launch() {
-        mMediator.requestShowContent();
+        mMediator.launch();
     }
 
     /**

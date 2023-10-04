@@ -26,9 +26,9 @@ class OSFeedbackAppDelegate : public ash::SystemWebAppDelegate {
 
   // ash::SystemWebAppDelegate overrides:
   std::unique_ptr<web_app::WebAppInstallInfo> GetWebAppInfo() const override;
-  bool IsAppEnabled() const override;
   bool ShouldAllowScriptsToCloseWindows() const override;
   bool ShouldCaptureNavigations() const override;
+  bool ShouldAllowFullscreen() const override;
   bool ShouldAllowMaximize() const override;
   bool ShouldAllowResize() const override;
   bool ShouldShowInLauncher() const override;

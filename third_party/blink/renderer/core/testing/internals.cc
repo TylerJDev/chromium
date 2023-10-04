@@ -2547,7 +2547,7 @@ bool Internals::isPageBoxVisible(Document* document, int page_number) {
   DCHECK(document);
   // Named pages aren't supported here, because this function may be called
   // without laying out first.
-  scoped_refptr<const ComputedStyle> style =
+  const ComputedStyle* style =
       document->StyleForPage(page_number, /* page_name */ AtomicString());
   return style->Visibility() !=
          EVisibility::kHidden;  // display property doesn't apply to @page.
@@ -3611,12 +3611,16 @@ void Internals::forceLoseCanvasContext(OffscreenCanvas* offscreencanvas,
   context->LoseContext(CanvasRenderingContext::kSyntheticLostContext);
 }
 
+void Internals::disableCanvasAcceleration(HTMLCanvasElement* canvas) {
+  canvas->DisableAcceleration();
+}
+
 void Internals::setScrollChain(ScrollState* scroll_state,
                                const HeapVector<Member<Element>>& elements,
                                ExceptionState&) {
   Deque<DOMNodeId> scroll_chain;
   for (wtf_size_t i = 0; i < elements.size(); ++i)
-    scroll_chain.push_back(DOMNodeIds::IdForNode(elements[i].Get()));
+    scroll_chain.push_back(elements[i].Get()->GetDomNodeId());
   scroll_state->SetScrollChain(scroll_chain);
 }
 
@@ -4044,6 +4048,11 @@ void Internals::setBackForwardCacheRestorationBufferSize(unsigned int maxSize) {
   WindowPerformance& perf =
       *DOMWindowPerformance::performance(*document_->domWindow());
   perf.setBackForwardCacheRestorationBufferSizeForTest(maxSize);
+}
+
+Vector<String> Internals::getCreatorScripts(HTMLImageElement* img) {
+  DCHECK(img);
+  return Vector<String>(img->creator_scripts());
 }
 
 }  // namespace blink

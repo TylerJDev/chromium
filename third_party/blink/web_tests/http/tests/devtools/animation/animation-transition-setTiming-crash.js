@@ -4,10 +4,10 @@
 
 import {TestRunner} from 'test_runner';
 import {ElementsTestRunner} from 'elements_test_runner';
+import * as UI from 'devtools/ui/legacy/legacy.js';
 
 (async function() {
   TestRunner.addResult(`This test passes if it does not crash.\n`);
-  await TestRunner.loadLegacyModule('elements');
   await TestRunner.showPanel('elements');
   await TestRunner.loadHTML(`
       <style>
@@ -27,7 +27,7 @@ import {ElementsTestRunner} from 'elements_test_runner';
       }
   `);
 
-  await UI.viewManager.showView('animations');
+  await UI.ViewManager.ViewManager.instance().showView('animations');
   var timeline = Animation.AnimationTimeline.instance();
   TestRunner.evaluateInPage('startCSSTransition()');
   ElementsTestRunner.waitForAnimationAdded(animationAdded);

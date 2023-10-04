@@ -32,7 +32,7 @@ namespace password_manager {
 
 namespace {
 
-using sync_util::IsPasswordSyncEnabled;
+using sync_util::IsSyncFeatureEnabledIncludingPasswords;
 
 bool ShouldErrorResultInFallback(PasswordStoreBackendError error) {
   switch (error.recovery_type) {
@@ -303,10 +303,6 @@ PasswordStoreProxyBackend::CreateSyncControllerDelegate() {
   return built_in_backend_->CreateSyncControllerDelegate();
 }
 
-void PasswordStoreProxyBackend::ClearAllLocalPasswords() {
-  NOTIMPLEMENTED();
-}
-
 void PasswordStoreProxyBackend::OnSyncServiceInitialized(
     syncer::SyncService* sync_service) {
   sync_service_ = sync_service;
@@ -359,7 +355,7 @@ bool PasswordStoreProxyBackend::UsesAndroidBackendAsMainBackend() {
     return false;
   }
 
-  if (!IsPasswordSyncEnabled(sync_service_)) {
+  if (!IsSyncFeatureEnabledIncludingPasswords(sync_service_)) {
     return false;
   }
   return true;

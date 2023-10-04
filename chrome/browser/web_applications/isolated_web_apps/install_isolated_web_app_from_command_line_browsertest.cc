@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/web_applications/isolated_web_apps/install_isolated_web_app_from_command_line.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_installation_manager.h"
 
 #include <memory>
 #include <vector>
@@ -19,12 +19,12 @@
 #include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
 #include "chrome/browser/web_applications/test/web_app_test_observers.h"
 #include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_id.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "components/web_package/signed_web_bundles/signed_web_bundle_id.h"
+#include "components/webapps/common/web_app_id.h"
 #include "content/public/common/content_features.h"
 #include "content/public/test/browser_test.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
@@ -89,18 +89,18 @@ class InstallIsolatedWebAppFromCommandLineFromUrlBrowserTest
 IN_PROC_BROWSER_TEST_F(InstallIsolatedWebAppFromCommandLineFromUrlBrowserTest,
                        AppFromCommandLineIsInstalled) {
   WebAppTestInstallObserver observer(browser()->profile());
-  AppId id = observer.BeginListeningAndWait();
+  webapps::AppId id = observer.BeginListeningAndWait();
 
-  ASSERT_THAT(GetWebAppRegistrar().IsInstalled(id), IsTrue());
-
-  EXPECT_THAT(
-      GetWebAppRegistrar().GetAppById(id),
-      Pointee(Property(
-          &WebApp::isolation_data,
-          Optional(Field(&WebApp::IsolationData::location,
-                         VariantWith<DevModeProxy>(
-                             Field(&DevModeProxy::proxy_url,
-                                   Eq(url::Origin::Create(GetAppUrl())))))))));
+  EXPECT_THAT(GetWebAppRegistrar().IsInstalled(id), IsTrue());
+  EXPECT_THAT(GetWebAppRegistrar().GetAppById(id),
+              test::IwaIs(Eq("Simple Isolated App"),
+                          test::IsolationDataIs(
+                              VariantWith<DevModeProxy>(
+                                  Field(&DevModeProxy::proxy_url,
+                                        Eq(url::Origin::Create(GetAppUrl())))),
+                              Eq(base::Version("1.0.0")),
+                              /*controlled_frame_partitions=*/_,
+                              /*pending_update_info=*/Eq(absl::nullopt))));
 }
 
 class InstallIsolatedWebAppFromCommandLineFromFileBrowserTest
@@ -140,7 +140,7 @@ class InstallIsolatedWebAppFromCommandLineFromFileBrowserTest
 IN_PROC_BROWSER_TEST_F(InstallIsolatedWebAppFromCommandLineFromFileBrowserTest,
                        AppFromCommandLineIsInstalled) {
   WebAppTestInstallObserver observer(browser()->profile());
-  AppId id = observer.BeginListeningAndWait();
+  webapps::AppId id = observer.BeginListeningAndWait();
 
   ASSERT_TRUE(bundle_id_);
   ASSERT_EQ(
@@ -161,13 +161,14 @@ IN_PROC_BROWSER_TEST_F(InstallIsolatedWebAppFromCommandLineFromFileBrowserTest,
     absolute_path = base::MakeAbsoluteFilePath(signed_web_bundle_path_);
   }
 
-  EXPECT_THAT(
-      GetWebAppRegistrar().GetAppById(id),
-      Pointee(Property(
-          &WebApp::isolation_data,
-          Optional(Field(&WebApp::IsolationData::location,
-                         VariantWith<DevModeBundle>(Field(
-                             &DevModeBundle::path, Eq(absolute_path))))))));
+  EXPECT_THAT(GetWebAppRegistrar().GetAppById(id),
+              test::IwaIs(Eq("Simple Isolated App"),
+                          test::IsolationDataIs(
+                              VariantWith<DevModeBundle>(Field(
+                                  &DevModeBundle::path, Eq(absolute_path))),
+                              Eq(base::Version("1.0.0")),
+                              /*controlled_frame_partitions=*/_,
+                              /*pending_update_info=*/Eq(absl::nullopt))));
 }
 
 }  // namespace

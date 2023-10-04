@@ -27,6 +27,7 @@
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/download/download_crx_util.h"
 #include "chrome/browser/download/download_history.h"
+#include "chrome/browser/download/download_item_warning_data.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/download/download_stats.h"
 #include "chrome/browser/download/download_target_determiner.h"
@@ -38,7 +39,7 @@
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_interrupt_reasons.h"
@@ -232,19 +233,6 @@ bool MaybeSubmitDownloadToFeedbackService(DownloadCommands::Command command,
 }
 
 #endif
-
-// Enum representing reasons why a download is not preferred to be opened in
-// browser.
-enum class NotOpenedInBrowserReason {
-  // The total number of checks. This value should be used as the denominator
-  // when calculating the percentage of a specific reason below.
-  TOTAL_DOWNLOAD_CHECKED = 0,
-  DOWNLOAD_PATH_EMPTY = 1,
-  NOT_PREFERRED_IN_DELEGATE = 2,
-  CANNOT_BE_HANDLED_SAFELY = 3,
-
-  kMaxValue = CANNOT_BE_HANDLED_SAFELY
-};
 
 }  // namespace
 
@@ -811,7 +799,6 @@ void DownloadItemModel::ExecuteCommand(DownloadCommands* download_commands,
     case DownloadCommands::ALWAYS_OPEN_TYPE: {
       bool is_checked = IsCommandChecked(download_commands,
                                          DownloadCommands::ALWAYS_OPEN_TYPE);
-      base::UmaHistogramBoolean("Download.SetAlwaysOpenTo", !is_checked);
       DownloadPrefs* prefs = DownloadPrefs::FromBrowserContext(profile());
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     BUILDFLAG(IS_MAC)
@@ -834,13 +821,11 @@ void DownloadItemModel::ExecuteCommand(DownloadCommands* download_commands,
       SetOpenWhenComplete(true);
 #endif
       if (GetDangerType() == download::DOWNLOAD_DANGER_TYPE_ASYNC_SCANNING) {
-        base::UmaHistogramEnumeration(
-            "SBClientDownload.DeepScanEvent2",
-            safe_browsing::DeepScanEvent::kScanCanceled);
+        LogDeepScanEvent(download_,
+                         safe_browsing::DeepScanEvent::kScanCanceled);
       } else {
-        base::UmaHistogramEnumeration(
-            "SBClientDownload.DeepScanEvent2",
-            safe_browsing::DeepScanEvent::kPromptBypassed);
+        LogDeepScanEvent(download_,
+                         safe_browsing::DeepScanEvent::kPromptBypassed);
       }
       [[fallthrough]];
     case DownloadCommands::KEEP:
@@ -909,7 +894,7 @@ void DownloadItemModel::ExecuteCommand(DownloadCommands* download_commands,
       break;
     case DownloadCommands::DEEP_SCAN: {
       safe_browsing::DownloadProtectionService::UploadForConsumerDeepScanning(
-          download_, /*password=*/"");
+          download_, /*password=*/absl::nullopt);
       break;
     }
     case DownloadCommands::CANCEL_DEEP_SCAN: {
@@ -1176,24 +1161,6 @@ void DownloadItemModel::DetermineAndSetShouldPreferOpeningInBrowser(
   if (!delegate)
     return;
 
-  // TODO(crbug.com/1372476): Remove this histogram and the associated enum
-  // after debugging.
-  base::UmaHistogramEnumeration(
-      "Download.NotPreferredOpeningInBrowserReasons",
-      NotOpenedInBrowserReason::TOTAL_DOWNLOAD_CHECKED);
-  if (target_path.empty()) {
-    base::UmaHistogramEnumeration(
-        "Download.NotPreferredOpeningInBrowserReasons",
-        NotOpenedInBrowserReason::DOWNLOAD_PATH_EMPTY);
-  } else if (!delegate->IsOpenInBrowserPreferreredForFile(target_path)) {
-    base::UmaHistogramEnumeration(
-        "Download.NotPreferredOpeningInBrowserReasons",
-        NotOpenedInBrowserReason::NOT_PREFERRED_IN_DELEGATE);
-  } else if (!is_filetype_handled_safely) {
-    base::UmaHistogramEnumeration(
-        "Download.NotPreferredOpeningInBrowserReasons",
-        NotOpenedInBrowserReason::CANNOT_BE_HANDLED_SAFELY);
-  }
   if (!target_path.empty() &&
       delegate->IsOpenInBrowserPreferreredForFile(target_path) &&
       is_filetype_handled_safely) {
@@ -1208,4 +1175,8 @@ void DownloadItemModel::DetermineAndSetShouldPreferOpeningInBrowser(
   }
 #endif
   SetShouldPreferOpeningInBrowser(false);
+}
+
+bool DownloadItemModel::IsEncryptedArchive() const {
+  return DownloadItemWarningData::IsEncryptedArchive(download_);
 }

@@ -4,10 +4,14 @@
 
 #include "components/metrics/structured/test/test_key_data_provider.h"
 
+#include "base/check.h"
+#include "base/time/time.h"
+
 namespace metrics::structured {
 
 TestKeyDataProvider::TestKeyDataProvider(const base::FilePath& device_key_path)
     : device_key_path_(device_key_path), profile_key_path_(base::FilePath()) {}
+
 TestKeyDataProvider::TestKeyDataProvider(const base::FilePath& device_key_path,
                                          const base::FilePath& profile_key_path)
     : device_key_path_(device_key_path), profile_key_path_(profile_key_path) {}

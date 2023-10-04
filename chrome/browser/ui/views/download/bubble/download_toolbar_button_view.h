@@ -8,37 +8,59 @@
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "chrome/browser/download/bubble/download_display.h"
-#include "chrome/browser/download/bubble/download_icon_state.h"
 #include "chrome/browser/download/download_ui_model.h"
 #include "chrome/browser/ui/browser_list_observer.h"
+#include "chrome/browser/ui/download/download_bubble_row_list_view_info.h"
+#include "chrome/browser/ui/download/download_display.h"
 #include "chrome/browser/ui/views/frame/immersive_mode_controller.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_button.h"
+#include "components/offline_items_collection/core/offline_item.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/metadata/metadata_header_macros.h"
-#include "ui/gfx/animation/throb_animation.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 
 namespace gfx {
 class RenderText;
 }
 
+namespace offline_items_collection {
+struct ContentId;
+}
+
 class Browser;
 class BrowserView;
 class DownloadDisplayController;
 class DownloadBubbleContentsView;
-class DownloadBubbleUIController;
 class DownloadBubbleRowView;
+class DownloadBubbleUIController;
 
 class DownloadBubbleNavigationHandler {
  public:
+  using CloseOnDeactivatePin =
+      views::BubbleDialogDelegate::CloseOnDeactivatePin;
+
   // Primary dialog is either main or partial view.
   virtual void OpenPrimaryDialog() = 0;
-  virtual void OpenSecurityDialog(DownloadBubbleRowView* download_row_view) = 0;
+
+  // Opens the security dialog. If the bubble is not currently open, it creates
+  // a new bubble to do so.
+  virtual void OpenSecurityDialog(
+      const offline_items_collection::ContentId& content_id) = 0;
+
   virtual void CloseDialog(views::Widget::ClosedReason reason) = 0;
+
   virtual void ResizeDialog() = 0;
+
   // Callback invoked when the dialog has been interacted with by hovering over
   // or by focusing (on the partial view).
   virtual void OnDialogInteracted() = 0;
+
+  // Returns a CloseOnDeactivatePin for the download bubble. For the lifetime of
+  // the returned pin (if non-null), the download bubble will not close on
+  // deactivate. Returns nullptr if the bubble is not open.
+  virtual std::unique_ptr<CloseOnDeactivatePin>
+  PreventDialogCloseOnDeactivate() = 0;
+
   virtual base::WeakPtr<DownloadBubbleNavigationHandler> GetWeakPtr() = 0;
 };
 
@@ -50,7 +72,8 @@ class DownloadBubbleNavigationHandler {
 class DownloadToolbarButtonView : public ToolbarButton,
                                   public DownloadDisplay,
                                   public DownloadBubbleNavigationHandler,
-                                  public BrowserListObserver {
+                                  public BrowserListObserver,
+                                  public DownloadBubbleRowListViewInfoObserver {
  public:
   METADATA_HEADER(DownloadToolbarButtonView);
 
@@ -66,15 +89,21 @@ class DownloadToolbarButtonView : public ToolbarButton,
   // DownloadDisplay implementation.
   void Show() override;
   void Hide() override;
-  bool IsShowing() override;
+  bool IsShowing() const override;
   void Enable() override;
   void Disable() override;
-  void UpdateDownloadIcon(bool show_animation) override;
+  void UpdateDownloadIcon(const IconUpdateInfo& updates) override;
+  void UpdateIconProgress(const ProgressInfo& info) override;
   void ShowDetails() override;
   void HideDetails() override;
-  bool IsShowingDetails() override;
-  bool IsFullscreenWithParentViewHidden() override;
-  bool ShouldShowExclusiveAccessBubble() override;
+  bool IsShowingDetails() const override;
+  bool IsFullscreenWithParentViewHidden() const override;
+  bool ShouldShowExclusiveAccessBubble() const override;
+  void OpenSecuritySubpage(
+      const offline_items_collection::ContentId& id) override;
+  bool OpenMostSpecificDialog(
+      const offline_items_collection::ContentId& content_id) override;
+  IconState GetIconState() const override;
 
   // ToolbarButton:
   void UpdateIcon() override;
@@ -84,10 +113,13 @@ class DownloadToolbarButtonView : public ToolbarButton,
 
   // DownloadBubbleNavigationHandler:
   void OpenPrimaryDialog() override;
-  void OpenSecurityDialog(DownloadBubbleRowView* download_row_view) override;
+  void OpenSecurityDialog(
+      const offline_items_collection::ContentId& content_id) override;
   void CloseDialog(views::Widget::ClosedReason reason) override;
   void ResizeDialog() override;
   void OnDialogInteracted() override;
+  std::unique_ptr<views::BubbleDialogDelegate::CloseOnDeactivatePin>
+  PreventDialogCloseOnDeactivate() override;
   base::WeakPtr<DownloadBubbleNavigationHandler> GetWeakPtr() override;
 
   // BrowserListObserver
@@ -103,10 +135,16 @@ class DownloadToolbarButtonView : public ToolbarButton,
   DownloadDisplayController* display_controller() { return controller_.get(); }
 
   SkColor GetIconColor() const;
-  void SetIconColor(SkColor color);
 
   void DisableAutoCloseTimerForTesting();
   void DisableDownloadStartedAnimationForTesting();
+
+  DownloadBubbleContentsView* bubble_contents_for_testing() {
+    return bubble_contents_;
+  }
+
+  void SetBubbleControllerForTesting(
+      std::unique_ptr<DownloadBubbleUIController> bubble_controller);
 
  private:
   // Max download count to show in the badge. Any higher number of downloads
@@ -130,11 +168,13 @@ class DownloadToolbarButtonView : public ToolbarButton,
   void CreateBubbleDialogDelegate();
   void OnBubbleClosing();
 
+  // Opens primary dialog and shows the item with given id, if found. Returns
+  // pointer to the row if found, or nullptr if not found.
+  DownloadBubbleRowView* ShowPrimaryDialogRow(
+      absl::optional<offline_items_collection::ContentId> content_id);
+
   // Callback invoked when the partial view is closed.
   void OnPartialViewClosed();
-
-  // Creates a timer to track the auto-close task. Does not start the timer.
-  void CreateAutoCloseTimer();
 
   // Called to automatically close the partial view, if such closing has not
   // been deactivated.
@@ -148,7 +188,12 @@ class DownloadToolbarButtonView : public ToolbarButton,
   // a download icon moving upwards towards the toolbar icon.
   void ShowPendingDownloadStartedAnimation();
 
+  bool ShouldShowBubbleAsInactive() const;
+
   SkColor GetProgressColor(bool is_disabled, bool is_active) const;
+
+  // DownloadBubbleRowListViewInfoObserver implementation:
+  void OnAnyRowRemoved() override;
 
   raw_ptr<Browser> browser_;
   bool is_primary_partial_view_ = false;
@@ -158,6 +203,17 @@ class DownloadToolbarButtonView : public ToolbarButton,
   std::unique_ptr<DownloadBubbleUIController> bubble_controller_;
   raw_ptr<views::BubbleDialogDelegate> bubble_delegate_ = nullptr;
   raw_ptr<DownloadBubbleContentsView> bubble_contents_ = nullptr;
+
+  // Current or pending state of the icon. If changing these, trigger
+  // UpdateIcon() afterwards.
+  IconState state_ = IconState::kComplete;
+  IconActive active_ = IconActive::kInactive;
+
+  // Parameters determining how the progress ring should be drawn.
+  ProgressInfo progress_info_;
+
+  // Whether we have a new progress_info_ and need to redraw the button.
+  bool redraw_progress_soon_ = false;
 
   // Marks whether there is a pending download started animation. This is needed
   // because the animation should only be triggered after the view has been
@@ -170,9 +226,9 @@ class DownloadToolbarButtonView : public ToolbarButton,
 
   // Tracks the task to automatically close the partial view after some amount
   // of time open, to minimize disruption to the user.
-  std::unique_ptr<base::RetainingOneShotTimer> auto_close_bubble_timer_;
-  // Whether we are allowed to create the above timer, may be false in tests.
-  bool create_auto_close_timer_ = true;
+  base::RetainingOneShotTimer auto_close_bubble_timer_;
+  // Whether the above timer does anything, which may be false in tests.
+  bool use_auto_close_bubble_timer_ = true;
 
   base::TimeTicks button_click_time_;
 
@@ -191,10 +247,6 @@ class DownloadToolbarButtonView : public ToolbarButton,
   // default tooltip ("Downloads"), the entries for larger numbers are the
   // tooltips for N in-progress downloads ("N downloads in progress").
   std::map<int, std::u16string> tooltip_texts_;
-
-  // Override for the icon color. Used for PWAs, which don't have full
-  // ThemeProvider color support.
-  absl::optional<SkColor> icon_color_;
 
   gfx::SlideAnimation scanning_animation_{this};
 

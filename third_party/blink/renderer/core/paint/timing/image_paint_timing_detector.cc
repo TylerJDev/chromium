@@ -64,17 +64,6 @@ bool ShouldReportAnimatedImages() {
        base::FeatureList::IsEnabled(features::kLCPVideoFirstFrame)));
 }
 
-static bool LargeImageFirst(const base::WeakPtr<ImageRecord>& a,
-                            const base::WeakPtr<ImageRecord>& b) {
-  DCHECK(a);
-  DCHECK(b);
-  if (a->recorded_size != b->recorded_size)
-    return a->recorded_size > b->recorded_size;
-  // This make sure that two different |ImageRecord|s with the same
-  // |recorded_size| wouldn't be merged in the |size_ordered_set_|.
-  return a->insertion_index < b->insertion_index;
-}
-
 }  // namespace
 
 double ImageRecord::EntropyForLCP() const {
@@ -89,6 +78,10 @@ absl::optional<WebURLRequest::Priority> ImageRecord::RequestPriority() const {
   return media_timing->RequestPriority();
 }
 
+void ImageRecord::Trace(Visitor* visitor) const {
+  visitor->Trace(media_timing);
+}
+
 ImagePaintTimingDetector::ImagePaintTimingDetector(
     LocalFrameView* frame_view,
     PaintTimingCallbackManager* callback_manager)
@@ -99,17 +92,12 @@ ImagePaintTimingDetector::ImagePaintTimingDetector(
       callback_manager_(callback_manager) {}
 
 ImageRecord* ImageRecordsManager::LargestImage() const {
-  DCHECK_EQ(pending_images_.size(), size_ordered_set_.size());
-  ImageRecord* largest_pending =
-      size_ordered_set_.empty() ? nullptr : size_ordered_set_.begin()->get();
-  if (!largest_painted_image_) {
-    return largest_pending;
+  if (!largest_painted_image_ ||
+      (largest_pending_image_ && (largest_painted_image_->recorded_size <
+                                  largest_pending_image_->recorded_size))) {
+    return largest_pending_image_.Get();
   }
-  if (!largest_pending ||
-      largest_painted_image_->recorded_size >= largest_pending->recorded_size) {
-    return largest_painted_image_.get();
-  }
-  return largest_pending;
+  return largest_painted_image_.Get();
 }
 
 void ImagePaintTimingDetector::PopulateTraceValue(
@@ -231,8 +219,8 @@ void ImagePaintTimingDetector::OnPaintFinished() {
 void ImagePaintTimingDetector::NotifyImageRemoved(
     const LayoutObject& object,
     const MediaTiming* media_timing) {
-  RecordId record_id = std::make_pair(&object, media_timing);
-  records_manager_.RemoveRecord(record_id);
+  records_manager_.RemoveRecord(
+      MediaRecordId::GenerateHash(&object, media_timing));
 }
 
 void ImagePaintTimingDetector::StopRecordEntries() {
@@ -269,8 +257,7 @@ void ImageRecordsManager::AssignPaintTimeToRegisteredQueuedRecords(
     const base::TimeTicks& timestamp,
     unsigned last_queued_frame_index) {
   while (!images_queued_for_paint_time_.empty()) {
-    const base::WeakPtr<ImageRecord>& record =
-        images_queued_for_paint_time_.front().first;
+    ImageRecord* record = images_queued_for_paint_time_.front();
     if (!record) {
       images_queued_for_paint_time_.pop_front();
       continue;
@@ -282,8 +269,7 @@ void ImageRecordsManager::AssignPaintTimeToRegisteredQueuedRecords(
       record->first_animated_frame_time = timestamp;
       record->queue_animated_paint = false;
     }
-    auto it =
-        pending_images_.find(images_queued_for_paint_time_.front().second);
+    auto it = pending_images_.find(record->hash);
     images_queued_for_paint_time_.pop_front();
     // A record may be in |images_queued_for_paint_time_| twice, for instance if
     // is already loaded by the time of its first paint.
@@ -292,7 +278,6 @@ void ImageRecordsManager::AssignPaintTimeToRegisteredQueuedRecords(
       continue;
     }
     record->paint_time = timestamp;
-    size_ordered_set_.erase(it->value->AsWeakPtr());
     if (!largest_painted_image_ ||
         largest_painted_image_->recorded_size < record->recorded_size) {
       largest_painted_image_ = std::move(it->value);
@@ -319,7 +304,15 @@ bool ImagePaintTimingDetector::RecordImage(
   if (image_border.IsEmpty())
     return false;
 
-  RecordId record_id = std::make_pair(&object, &media_timing);
+  if (RuntimeEnabledFeatures::
+          ExcludeBrokenImageIconFromBeingLcpEligibleEnabled()) {
+    if (media_timing.IsBroken()) {
+      return false;
+    }
+  }
+
+  MediaRecordId record_id(&object, &media_timing);
+  MediaRecordIdHash record_id_hash = record_id.GetHash();
 
   if (int depth = IgnorePaintTimingScope::IgnoreDepth()) {
     // Record the largest loaded image that is hidden due to documentElement
@@ -340,17 +333,17 @@ bool ImagePaintTimingDetector::RecordImage(
     return false;
   }
 
-  if (records_manager_.IsRecordedImage(record_id)) {
-    base::WeakPtr<ImageRecord> record =
-        records_manager_.GetPendingImage(record_id);
+  if (records_manager_.IsRecordedImage(record_id_hash)) {
+    ImageRecord* record = records_manager_.GetPendingImage(record_id_hash);
     if (!record)
       return false;
     if (ShouldReportAnimatedImages() && media_timing.IsPaintedFirstFrame()) {
       added_entry_in_latest_frame_ |=
-          records_manager_.OnFirstAnimatedFramePainted(record_id, frame_index_);
+          records_manager_.OnFirstAnimatedFramePainted(record_id_hash,
+                                                       frame_index_);
     }
     if (!record->loaded && media_timing.IsSufficientContentLoadedForPaint()) {
-      records_manager_.OnImageLoaded(record_id, frame_index_, style_image);
+      records_manager_.OnImageLoaded(record_id_hash, frame_index_, style_image);
       added_entry_in_latest_frame_ = true;
       if (absl::optional<PaintTimingVisualizer>& visualizer =
               frame_view_->GetPaintTimingDetector().Visualizer()) {
@@ -386,10 +379,11 @@ bool ImagePaintTimingDetector::RecordImage(
 
   if (ShouldReportAnimatedImages() && media_timing.IsPaintedFirstFrame()) {
     added_entry_in_latest_frame_ |=
-        records_manager_.OnFirstAnimatedFramePainted(record_id, frame_index_);
+        records_manager_.OnFirstAnimatedFramePainted(record_id_hash,
+                                                     frame_index_);
   }
   if (media_timing.IsSufficientContentLoadedForPaint()) {
-    records_manager_.OnImageLoaded(record_id, frame_index_, style_image);
+    records_manager_.OnImageLoaded(record_id_hash, frame_index_, style_image);
     added_entry_in_latest_frame_ = true;
     return true;
   }
@@ -445,8 +439,8 @@ uint64_t ImagePaintTimingDetector::ComputeImageRectSize(
 void ImagePaintTimingDetector::NotifyImageFinished(
     const LayoutObject& object,
     const MediaTiming* media_timing) {
-  RecordId record_id = std::make_pair(&object, media_timing);
-  records_manager_.NotifyImageFinished(record_id);
+  records_manager_.NotifyImageFinished(
+      MediaRecordId::GenerateHash(&object, media_timing));
 }
 
 void ImagePaintTimingDetector::ReportLargestIgnoredImage() {
@@ -455,12 +449,12 @@ void ImagePaintTimingDetector::ReportLargestIgnoredImage() {
 }
 
 ImageRecordsManager::ImageRecordsManager(LocalFrameView* frame_view)
-    : size_ordered_set_(&LargeImageFirst), frame_view_(frame_view) {}
+    : frame_view_(frame_view) {}
 
 bool ImageRecordsManager::OnFirstAnimatedFramePainted(
-    const RecordId& record_id,
+    MediaRecordIdHash record_id_hash,
     unsigned current_frame_index) {
-  base::WeakPtr<ImageRecord> record = GetPendingImage(record_id);
+  ImageRecord* record = GetPendingImage(record_id_hash);
   DCHECK(record);
   if (record->media_timing &&
       !record->media_timing->GetFirstVideoFrameTime().is_null()) {
@@ -473,19 +467,19 @@ bool ImageRecordsManager::OnFirstAnimatedFramePainted(
     // Otherwise, this is an animated images, and so we should wait for the
     // presentation callback to fire to set the first frame presentation time.
     record->queue_animated_paint = true;
-    QueueToMeasurePaintTime(record_id, record, current_frame_index);
+    QueueToMeasurePaintTime(record, current_frame_index);
     return true;
   }
   return false;
 }
 
-void ImageRecordsManager::OnImageLoaded(const RecordId& record_id,
+void ImageRecordsManager::OnImageLoaded(MediaRecordIdHash record_id_hash,
                                         unsigned current_frame_index,
                                         const StyleFetchedImage* style_image) {
-  base::WeakPtr<ImageRecord> record = GetPendingImage(record_id);
+  ImageRecord* record = GetPendingImage(record_id_hash);
   DCHECK(record);
   if (!style_image) {
-    auto it = image_finished_times_.find(record_id);
+    auto it = image_finished_times_.find(record_id_hash);
     if (it != image_finished_times_.end()) {
       record->load_time = it->value;
       DCHECK(!record->load_time.is_null());
@@ -498,7 +492,7 @@ void ImageRecordsManager::OnImageLoaded(const RecordId& record_id,
       record->origin_clean = style_image->IsOriginClean();
     }
   }
-  OnImageLoadedInternal(record_id, record, current_frame_index);
+  OnImageLoadedInternal(record, current_frame_index);
 }
 
 void ImageRecordsManager::ReportLargestIgnoredImage(
@@ -509,7 +503,7 @@ void ImageRecordsManager::ReportLargestIgnoredImage(
   if (!node || !node->GetLayoutObject() ||
       !largest_ignored_image_->media_timing) {
     // The image has been removed, so we have no content to report.
-    largest_ignored_image_.reset();
+    largest_ignored_image_ = nullptr;
     return;
   }
 
@@ -518,25 +512,21 @@ void ImageRecordsManager::ReportLargestIgnoredImage(
   DCHECK(document);
   PaintTiming::From(*document).MarkFirstContentfulPaint();
 
-  RecordId record_id = std::make_pair(node->GetLayoutObject(),
-                                      largest_ignored_image_->media_timing);
-  recorded_images_.insert(record_id);
-  base::WeakPtr<ImageRecord> record = largest_ignored_image_->AsWeakPtr();
-  size_ordered_set_.insert(record);
-  pending_images_.insert(record_id, std::move(largest_ignored_image_));
-  OnImageLoadedInternal(record_id, record, current_frame_index);
+  ImageRecord* record = largest_ignored_image_.Get();
+  CHECK(record);
+  recorded_images_.insert(record->hash);
+  AddPendingImage(record);
+  OnImageLoadedInternal(record, current_frame_index);
 }
 
-void ImageRecordsManager::OnImageLoadedInternal(
-    const RecordId& record_id,
-    base::WeakPtr<ImageRecord>& record,
-    unsigned current_frame_index) {
+void ImageRecordsManager::OnImageLoadedInternal(ImageRecord* record,
+                                                unsigned current_frame_index) {
   SetLoaded(record);
-  QueueToMeasurePaintTime(record_id, record, current_frame_index);
+  QueueToMeasurePaintTime(record, current_frame_index);
 }
 
 void ImageRecordsManager::MaybeUpdateLargestIgnoredImage(
-    const RecordId& record_id,
+    const MediaRecordId& record_id,
     const uint64_t& visual_size,
     const gfx::Rect& frame_visual_rect,
     const gfx::RectF& root_visual_rect,
@@ -544,14 +534,15 @@ void ImageRecordsManager::MaybeUpdateLargestIgnoredImage(
   if (visual_size && (!largest_ignored_image_ ||
                       visual_size > largest_ignored_image_->recorded_size)) {
     largest_ignored_image_ = CreateImageRecord(
-        *record_id.first, record_id.second, visual_size, frame_visual_rect,
-        root_visual_rect, is_loaded_after_mouseover);
+        *record_id.GetLayoutObject(), record_id.GetMediaTiming(), visual_size,
+        frame_visual_rect, root_visual_rect, is_loaded_after_mouseover,
+        record_id.GetHash());
     largest_ignored_image_->load_time = base::TimeTicks::Now();
   }
 }
 
 bool ImageRecordsManager::RecordFirstPaintAndReturnIsPending(
-    const RecordId& record_id,
+    const MediaRecordId& record_id,
     const uint64_t& visual_size,
     const gfx::Rect& frame_visual_rect,
     const gfx::RectF& root_visual_rect,
@@ -562,7 +553,7 @@ bool ImageRecordsManager::RecordFirstPaintAndReturnIsPending(
   if (visual_size == 0u) {
     return false;
   }
-  recorded_images_.insert(record_id);
+  recorded_images_.insert(record_id.GetHash());
   // If this cannot become an LCP candidate, no need to do anything else.
   if (visual_size == 0u ||
       (largest_painted_image_ &&
@@ -587,28 +578,35 @@ bool ImageRecordsManager::RecordFirstPaintAndReturnIsPending(
     return false;
   }
 
-  std::unique_ptr<ImageRecord> record = CreateImageRecord(
-      *record_id.first, record_id.second, visual_size, frame_visual_rect,
-      root_visual_rect, is_loaded_after_mouseover);
-  size_ordered_set_.insert(record->AsWeakPtr());
-  pending_images_.insert(record_id, std::move(record));
+  ImageRecord* record = CreateImageRecord(
+      *record_id.GetLayoutObject(), record_id.GetMediaTiming(), visual_size,
+      frame_visual_rect, root_visual_rect, is_loaded_after_mouseover,
+      record_id.GetHash());
+  AddPendingImage(record);
   return true;
 }
+void ImageRecordsManager::AddPendingImage(ImageRecord* record) {
+  if (!largest_pending_image_ ||
+      (largest_pending_image_->recorded_size < record->recorded_size)) {
+    largest_pending_image_ = record;
+  }
+  pending_images_.insert(record->hash, record);
+}
 
-std::unique_ptr<ImageRecord> ImageRecordsManager::CreateImageRecord(
+ImageRecord* ImageRecordsManager::CreateImageRecord(
     const LayoutObject& object,
     const MediaTiming* media_timing,
     const uint64_t& visual_size,
     const gfx::Rect& frame_visual_rect,
     const gfx::RectF& root_visual_rect,
-    bool is_loaded_after_mouseover) {
+    bool is_loaded_after_mouseover,
+    MediaRecordIdHash hash) {
   DCHECK_GT(visual_size, 0u);
   Node* node = object.GetNode();
-  DOMNodeId node_id = DOMNodeIds::IdForNode(node);
-  std::unique_ptr<ImageRecord> record = std::make_unique<ImageRecord>(
-      node_id, media_timing, visual_size, frame_visual_rect, root_visual_rect,
-      is_loaded_after_mouseover);
-  return record;
+  DOMNodeId node_id = node->GetDomNodeId();
+  return MakeGarbageCollected<ImageRecord>(node_id, media_timing, visual_size,
+                                           frame_visual_rect, root_visual_rect,
+                                           is_loaded_after_mouseover, hash);
 }
 
 void ImageRecordsManager::ClearImagesQueuedForPaintTime() {
@@ -616,17 +614,22 @@ void ImageRecordsManager::ClearImagesQueuedForPaintTime() {
 }
 
 void ImageRecordsManager::Clear() {
-  largest_painted_image_.reset();
+  largest_painted_image_ = nullptr;
+  largest_pending_image_ = nullptr;
   images_queued_for_paint_time_.clear();
-  size_ordered_set_.clear();
   recorded_images_.clear();
   pending_images_.clear();
   image_finished_times_.clear();
-  largest_ignored_image_.reset();
+  largest_ignored_image_ = nullptr;
 }
 
 void ImageRecordsManager::Trace(Visitor* visitor) const {
   visitor->Trace(frame_view_);
+  visitor->Trace(largest_painted_image_);
+  visitor->Trace(largest_pending_image_);
+  visitor->Trace(pending_images_);
+  visitor->Trace(images_queued_for_paint_time_);
+  visitor->Trace(largest_ignored_image_);
 }
 
 void ImagePaintTimingDetector::Trace(Visitor* visitor) const {

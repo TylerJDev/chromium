@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/webui/signin/profile_picker_handler.h"
 
 #include "base/check.h"
+#include "base/check_op.h"
 #include "base/containers/cxx20_erase.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/feature_list.h"
@@ -443,6 +444,10 @@ void ProfilePickerHandler::RegisterMessages() {
       base::BindRepeating(
           &ProfilePickerHandler::HandleRecordSignInPromoImpression,
           base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "updateProfileOrder",
+      base::BindRepeating(&ProfilePickerHandler::HandleUpdateProfileOrder,
+                          base::Unretained(this)));
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   web_ui()->RegisterMessageCallback(
       "getAvailableAccounts",
@@ -552,6 +557,7 @@ void ProfilePickerHandler::HandleLaunchSelectedProfile(
 void ProfilePickerHandler::OnProfileForDialogLoaded(Profile* profile) {
   if (!profile)
     return;
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
   ProfileAttributesEntry* entry =
       g_browser_process->profile_manager()
           ->GetProfileAttributesStorage()
@@ -560,8 +566,15 @@ void ProfilePickerHandler::OnProfileForDialogLoaded(Profile* profile) {
   if (entry->IsSigninRequired()) {
     DCHECK(signin_util::IsForceSigninEnabled());
     if (entry->CanBeManaged()) {
-      ProfilePickerForceSigninDialog::ShowReauthDialog(
-          profile, base::UTF16ToUTF8(entry->GetUserName()));
+      if (base::FeatureList::IsEnabled(kForceSigninFlowInProfilePicker)) {
+        ProfilePicker::SwitchToReauth(
+            profile,
+            base::BindOnce(&ProfilePickerHandler::OnReauthErrorCallback,
+                           weak_factory_.GetWeakPtr()));
+      } else {
+        ProfilePickerForceSigninDialog::ShowReauthDialog(
+            profile, base::UTF16ToUTF8(entry->GetUserName()));
+      }
     } else if (entry->GetActiveTime() != base::Time()) {
       // If force-sign-in is enabled, do not allow users to sign in to a
       // pre-existing locked profile, as this may force unexpected profile data
@@ -576,14 +589,21 @@ void ProfilePickerHandler::OnProfileForDialogLoaded(Profile* profile) {
       // Fresh sign in via profile picker without existing email address.
       ProfilePickerForceSigninDialog::ShowForceSigninDialog(profile);
     }
+  }
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-  } else if (!profiles::AreSecondaryProfilesAllowed() &&
-             !Profile::IsMainProfilePath(profile->GetPath())) {
+  if (!profiles::AreSecondaryProfilesAllowed() &&
+      !Profile::IsMainProfilePath(profile->GetPath())) {
     LoginUIServiceFactory::GetForProfile(profile)
         ->SetProfileBlockingErrorMessage();
     ProfilePicker::ShowDialogAndDisplayErrorMessage(profile);
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
   }
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+}
+
+void ProfilePickerHandler::OnReauthErrorCallback() {
+  AllowJavascript();
+  FireWebUIListener("display-force-signin-error-dialog", base::Value());
 }
 
 void ProfilePickerHandler::HandleLaunchGuestProfile(
@@ -840,6 +860,21 @@ void ProfilePickerHandler::HandleRemoveProfile(const base::Value::List& args) {
   profile_statistics_keep_alive_.reset();
 }
 
+void ProfilePickerHandler::HandleUpdateProfileOrder(
+    const base::Value::List& args) {
+  CHECK_EQ(2U, args.size());
+  CHECK(args[0].is_int());
+  CHECK(args[1].is_int());
+
+  int from_index = args[0].GetInt();
+  int to_index = args[1].GetInt();
+  CHECK(from_index >= 0 && to_index >= 0);
+
+  g_browser_process->profile_manager()
+      ->GetProfileAttributesStorage()
+      .UpdateProfilesOrderPref(from_index, to_index);
+}
+
 void ProfilePickerHandler::HandleCloseProfileStatistics(
     const base::Value::List& args) {
   CHECK_EQ(0U, args.size());
@@ -1046,7 +1081,7 @@ ProfilePickerHandler::GetProfileAttributes() {
   std::vector<ProfileAttributesEntry*> ordered_entries =
       g_browser_process->profile_manager()
           ->GetProfileAttributesStorage()
-          .GetAllProfilesAttributesSortedWithCheck();
+          .GetAllProfilesAttributesSortedByLocalProfileNameWithCheck();
   base::EraseIf(ordered_entries, [](const ProfileAttributesEntry* entry) {
     return entry->IsOmitted();
   });

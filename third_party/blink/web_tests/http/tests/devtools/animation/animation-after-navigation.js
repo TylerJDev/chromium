@@ -4,6 +4,7 @@
 
 import {TestRunner} from 'test_runner';
 import {ElementsTestRunner} from 'elements_test_runner';
+import * as UI from 'devtools/ui/legacy/legacy.js';
 
 (async function() {
   TestRunner.addResult(`Tests that animation view works post navigation.\n`);
@@ -11,9 +12,8 @@ import {ElementsTestRunner} from 'elements_test_runner';
   // This loads the animations view on the existing page, which is
   // somewhere below http://127.0.0.1:8000/. By loading the animations view,
   // we'll start the InspectorAnimationAgent.
-  await TestRunner.loadLegacyModule('elements');
   await TestRunner.showPanel('elements');
-  await UI.viewManager.showView('animations');
+  await UI.ViewManager.ViewManager.instance().showView('animations');
 
   // This navigation starts a new renderer, because it's to localhost as
   // opposed to 127.0.0.1. This means, that within the new renderer, the

@@ -37,6 +37,7 @@
 #include "device/fido/fido_discovery_factory.h"
 #include "device/fido/fido_request_handler_base.h"
 #include "device/fido/fido_transport_protocol.h"
+#include "device/fido/fido_types.h"
 #include "device/fido/test_callback_receiver.h"
 #include "device/fido/virtual_ctap2_device.h"
 #include "device/fido/virtual_fido_device_authenticator.h"
@@ -367,11 +368,16 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, CableConfiguration) {
       &fake_win_webauthn_api);
 #endif
 
-  for (const bool windows_has_hybrid : {
-         false
+  enum WinHybridExpectation {
+    kNoWinHybrid,
+    kWinHybridPasskeySyncing,
+    kWinHybridNoPasskeySyncing,
+  };
+
+  for (const WinHybridExpectation windows_has_hybrid : {
+         kNoWinHybrid,
 #if BUILDFLAG(IS_WIN)
-             ,
-             true
+             kWinHybridPasskeySyncing, kWinHybridNoPasskeySyncing,
 #endif
        }) {
     unsigned test_case = 0;
@@ -380,7 +386,16 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, CableConfiguration) {
       test_case++;
 
 #if BUILDFLAG(IS_WIN)
-      fake_win_webauthn_api.set_version(windows_has_hybrid ? 6 : 4);
+      fake_win_webauthn_api.set_version(windows_has_hybrid == kNoWinHybrid ? 4
+                                                                           : 7);
+      base::test::ScopedFeatureList scoped_feature_list;
+      if (windows_has_hybrid == kWinHybridNoPasskeySyncing) {
+        scoped_feature_list.InitWithFeatures(
+            {}, {device::kWebAuthnListSyncedPasskeys});
+      } else if (windows_has_hybrid == kWinHybridPasskeySyncing) {
+        scoped_feature_list.InitWithFeatures(
+            {device::kWebAuthnListSyncedPasskeys}, {});
+      }
       SCOPED_TRACE(windows_has_hybrid);
 #endif
 
@@ -395,8 +410,9 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, CableConfiguration) {
           test.request_type, test.resident_key_requirement, test.extensions,
           &discovery_factory);
 
-      switch (windows_has_hybrid ? test.expected_result_with_system_hybrid
-                                 : test.expected_result) {
+      switch (windows_has_hybrid == kWinHybridNoPasskeySyncing
+                  ? test.expected_result_with_system_hybrid
+                  : test.expected_result) {
         case Result::kNone:
           EXPECT_FALSE(discovery_factory.qr_key.has_value());
           EXPECT_TRUE(discovery_factory.cable_data.empty());
@@ -430,6 +446,36 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, CableConfiguration) {
           break;
       }
     }
+  }
+}
+
+TEST_F(ChromeAuthenticatorRequestDelegateTest, NoExtraDiscoveriesWithoutUI) {
+  const std::string rp_id = "https://example.com";
+  const std::string origin = "https://" + rp_id;
+
+  for (const bool disable_ui : {false, true}) {
+    SCOPED_TRACE(disable_ui);
+
+    ChromeAuthenticatorRequestDelegate delegate(main_rfh());
+    delegate.SetRelyingPartyId(rp_id);
+    delegate.SetPassEmptyUsbDeviceManagerForTesting(true);
+    if (disable_ui) {
+      delegate.DisableUI();
+    }
+    MockCableDiscoveryFactory discovery_factory;
+    delegate.ConfigureDiscoveries(url::Origin::Create(GURL(origin)), origin,
+                                  content::AuthenticatorRequestClientDelegate::
+                                      RequestSource::kWebAuthentication,
+                                  device::FidoRequestType::kMakeCredential,
+                                  device::ResidentKeyRequirement::kPreferred,
+                                  {}, &discovery_factory);
+
+    EXPECT_EQ(discovery_factory.qr_key.has_value(), !disable_ui);
+    EXPECT_EQ(discovery_factory.aoa_configured, !disable_ui);
+
+    // `discovery_factory.nswindow_` won't be set in any case because it depends
+    // on the `RenderFrameHost` having a `BrowserWindow`, which it doesn't in
+    // this context.
   }
 }
 
@@ -704,6 +750,91 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, GpmPasskeys_ShadowedPasskeys) {
   EXPECT_EQ(credential.user.display_name, "Hatsune Miku");
   EXPECT_EQ(credential.user.name, "hmiku");
   EXPECT_EQ(credential.user.id, std::vector<uint8_t>({5, 6, 7, 8}));
+}
+
+TEST_F(ChromeAuthenticatorRequestDelegateTest, FilterGoogleComPasskeys) {
+  base::test::ScopedFeatureList scoped_feature_list{
+      device::kWebAuthnFilterGooglePasskeys};
+  auto HasCreds = device::FidoRequestHandlerBase::RecognizedCredential::
+      kHasRecognizedCredential;
+  auto NoCreds = device::FidoRequestHandlerBase::RecognizedCredential::
+      kNoRecognizedCredential;
+  auto UnknownCreds =
+      device::FidoRequestHandlerBase::RecognizedCredential::kUnknown;
+  constexpr char kGoogle[] = "google.com";
+  constexpr char kOtherRpId[] = "example.com";
+  struct {
+    std::string rp_id;
+    device::FidoRequestHandlerBase::RecognizedCredential recognized_credential;
+    std::vector<std::string> user_ids;
+
+    device::FidoRequestHandlerBase::RecognizedCredential
+        expected_recognized_credential;
+    std::vector<std::string> expected_user_ids;
+  } kTests[] = {
+      {kOtherRpId,
+       HasCreds,
+       {"GOOGLE_ACCOUNT:c1", "c2"},
+       HasCreds,
+       {"GOOGLE_ACCOUNT:c1", "c2"}},
+      {kGoogle,
+       HasCreds,
+       {"GOOGLE_ACCOUNT:c1", "c2", "AUTOFILL_AUTH:c3"},
+       HasCreds,
+       {"GOOGLE_ACCOUNT:c1"}},
+      {kGoogle, HasCreds, {"c2", "AUTOFILL_AUTH:c3"}, NoCreds, {}},
+      {kGoogle, UnknownCreds, {}, UnknownCreds, {}},
+      {kGoogle, HasCreds, {}, HasCreds, {}},
+  };
+
+  for (const auto& test : kTests) {
+    SCOPED_TRACE(::testing::Message() << "rp_id=" << test.rp_id);
+    SCOPED_TRACE(::testing::Message()
+                 << "creds=" << base::JoinString(test.user_ids, ","));
+    device::FidoRequestHandlerBase::TransportAvailabilityInfo data;
+    device::FidoRequestHandlerBase::TransportAvailabilityInfo result;
+    EXPECT_CALL(observer_, OnTransportAvailabilityEnumerated)
+        .WillOnce([&result](const auto* _, const auto* new_tai) {
+          result = std::move(*new_tai);
+        });
+
+    for (const std::string& user_id : test.user_ids) {
+      data.recognized_credentials.emplace_back(
+          device::AuthenticatorType::kOther, test.rp_id,
+          std::vector<uint8_t>{0},
+          device::PublicKeyCredentialUserEntity(
+              std::vector<uint8_t>(user_id.begin(), user_id.end())));
+    }
+    data.has_platform_authenticator_credential = test.recognized_credential;
+
+    // Mix in an icloud keychain credential. These should not be filtered or
+    // affect setting the recognized credentials flag.
+    data.recognized_credentials.emplace_back(
+        device::AuthenticatorType::kICloudKeychain, test.rp_id,
+        std::vector<uint8_t>{0}, device::PublicKeyCredentialUserEntity({1}));
+    data.has_icloud_keychain_credential = device::FidoRequestHandlerBase::
+        RecognizedCredential::kHasRecognizedCredential;
+
+    ChromeAuthenticatorRequestDelegate delegate(main_rfh());
+    delegate.SetRelyingPartyId(test.rp_id);
+    delegate.OnTransportAvailabilityEnumerated(std::move(data));
+
+    EXPECT_EQ(result.has_platform_authenticator_credential,
+              test.expected_recognized_credential);
+    EXPECT_EQ(result.has_icloud_keychain_credential,
+              device::FidoRequestHandlerBase::RecognizedCredential::
+                  kHasRecognizedCredential);
+    ASSERT_EQ(result.recognized_credentials.size(),
+              test.expected_user_ids.size() + 1);
+    for (size_t i = 0; i < test.expected_user_ids.size(); ++i) {
+      std::string expected_id = test.expected_user_ids[i];
+      EXPECT_EQ(result.recognized_credentials[i].user.id,
+                std::vector<uint8_t>(expected_id.begin(), expected_id.end()));
+    }
+    EXPECT_EQ(result.recognized_credentials.back().source,
+              device::AuthenticatorType::kICloudKeychain);
+    testing::Mock::VerifyAndClearExpectations(&observer_);
+  }
 }
 
 #if BUILDFLAG(IS_MAC)

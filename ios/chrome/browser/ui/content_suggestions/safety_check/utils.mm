@@ -4,6 +4,7 @@
 
 #import "ios/chrome/browser/ui/content_suggestions/safety_check/utils.h"
 
+#import "base/metrics/user_metrics.h"
 #import "components/password_manager/core/browser/ui/credential_ui_entry.h"
 #import "components/password_manager/core/browser/ui/password_check_referrer.h"
 #import "components/password_manager/core/common/password_manager_features.h"
@@ -11,10 +12,22 @@
 #import "ios/chrome/browser/passwords/password_checkup_utils.h"
 #import "ios/chrome/browser/shared/public/commands/application_commands.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
+#import "ios/chrome/browser/ui/content_suggestions/safety_check/safety_check_state.h"
 #import "ios/chrome/common/channel_info.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ui/base/l10n/l10n_util.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+#import "ui/base/l10n/time_format.h"
 #import "url/gurl.h"
 
 namespace {
+
+// The Safety Check should only be run once every 24 hours.
+constexpr base::TimeDelta kSafetyCheckRunThreshold = base::Hours(24);
+
+// The amount of time after which the last run timestamp is shown, instead of
+// displaying the last run "just now" text.
+constexpr base::TimeDelta kDisplayTimestampThreshold = base::Minutes(1);
 
 // Returns the number of unique warning types found in `counts`.
 //
@@ -105,11 +118,88 @@ void HandleSafetyCheckPasswordTap(
                                       referrer:password_manager::
                                                    PasswordCheckReferrer::
                                                        kSafetyCheckMagicStack];
+
+    return;
   }
 
   // If there are multiple passwords (with multiple warning types), or no
   // compromised credentials at all, navigate users to the Password Checkup
   // overview screen.
+  base::RecordAction(
+      base::UserMetricsAction("MobileMagicStackOpenPasswordCheckup"));
+
   [handler showPasswordCheckupPageForReferrer:
                password_manager::PasswordCheckReferrer::kSafetyCheckMagicStack];
+}
+
+bool InvalidUpdateChromeState(UpdateChromeSafetyCheckState state) {
+  return state == UpdateChromeSafetyCheckState::kOutOfDate;
+}
+
+bool InvalidPasswordState(PasswordSafetyCheckState state) {
+  return state == PasswordSafetyCheckState::kUnmutedCompromisedPasswords ||
+         state == PasswordSafetyCheckState::kReusedPasswords ||
+         state == PasswordSafetyCheckState::kWeakPasswords;
+}
+
+bool InvalidSafeBrowsingState(SafeBrowsingSafetyCheckState state) {
+  return state == SafeBrowsingSafetyCheckState::kUnsafe;
+}
+
+int CheckIssuesCount(SafetyCheckState* state) {
+  int invalid_check_count = 0;
+
+  if (InvalidUpdateChromeState(state.updateChromeState)) {
+    invalid_check_count++;
+  }
+
+  if (InvalidPasswordState(state.passwordState)) {
+    invalid_check_count++;
+  }
+
+  if (InvalidSafeBrowsingState(state.safeBrowsingState)) {
+    invalid_check_count++;
+  }
+
+  return invalid_check_count;
+}
+
+bool CanRunSafetyCheck(absl::optional<base::Time> last_run_time) {
+  // The Safety Check should be run if it's never been run before.
+  if (!last_run_time.has_value()) {
+    return true;
+  }
+
+  base::TimeDelta last_run_age = base::Time::Now() - last_run_time.value();
+
+  if (last_run_age > kSafetyCheckRunThreshold) {
+    return true;
+  }
+
+  return false;
+}
+
+NSString* FormatElapsedTimeSinceLastSafetyCheck(
+    absl::optional<base::Time> last_run_time) {
+  if (!last_run_time.has_value()) {
+    return l10n_util::GetNSString(IDS_IOS_CHECK_NEVER_RUN);
+  }
+
+  base::TimeDelta elapsed_time = base::Time::Now() - last_run_time.value();
+
+  std::u16string timestamp;
+
+  // If the latest Safety Check run happened less than
+  // `kDisplayTimestampThreshold` ago, show the last run "just now" text instead
+  // of the timestamp.
+  if (elapsed_time < kDisplayTimestampThreshold) {
+    timestamp = l10n_util::GetStringUTF16(IDS_IOS_CHECK_FINISHED_JUST_NOW);
+  } else {
+    timestamp = ui::TimeFormat::SimpleWithMonthAndYear(
+        ui::TimeFormat::FORMAT_ELAPSED, ui::TimeFormat::LENGTH_SHORT,
+        elapsed_time, true);
+  }
+
+  return l10n_util::GetNSStringF(IDS_IOS_SAFETY_CHECK_LAST_COMPLETED_CHECK,
+                                 timestamp);
 }

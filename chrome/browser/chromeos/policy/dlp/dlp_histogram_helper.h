@@ -24,10 +24,16 @@ constexpr char kDataTransferControllerStartedUMA[] =
     "DataTransferControllerStarted";
 constexpr char kDlpPolicyPresentUMA[] = "DlpPolicyPresent";
 constexpr char kDragDropBlockedUMA[] = "DragDropBlocked";
-constexpr char kFilesDaemonStartedUMA[] = "FilesDaemonStarted";
-constexpr char kFileActionBlockedUMA[] = "FileActionBlocked";
+constexpr char kFileActionBlockedUMA[] = "FileActionBlocked2";
+constexpr char kFileActionBlockReviewedUMA[] = "FileActionBlockReviewed";
+constexpr char kFilesBlockedCountUMA[] = "FilesBlockedCount";
 constexpr char kFileActionWarnedUMA[] = "FileActionWarned";
 constexpr char kFileActionWarnProceededUMA[] = "FileActionWarnProceeded";
+constexpr char kFileActionWarnTimedOutUMA[] = "FileActionWarnTimedOut";
+constexpr char kFileActionWarnReviewedUMA[] = "FileActionWarnReviewed";
+constexpr char kFilesWarnedCountUMA[] = "FilesWarnedCount";
+constexpr char kFilesAppOpenTimedOutUMA[] = "FilesAppOpenTimedOut";
+constexpr char kFilesDaemonStartedUMA[] = "FilesDaemonStarted";
 constexpr char kSameFileEventTimeDiffUMA[] = "SameFileEventTimeDiff";
 constexpr char kPrintingBlockedUMA[] = "PrintingBlocked";
 constexpr char kPrintingWarnedUMA[] = "PrintingWarned";
@@ -74,6 +80,8 @@ template <typename T>
 void DlpHistogramEnumeration(const std::string& suffix, T sample) {
   base::UmaHistogramEnumeration(GetDlpHistogramPrefix() + suffix, sample);
 }
+
+void DlpCountHistogram10000(const std::string& suffix, int sample);
 
 }  // namespace policy
 

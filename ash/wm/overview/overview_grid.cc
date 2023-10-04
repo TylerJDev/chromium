@@ -5,8 +5,6 @@
 #include "ash/wm/overview/overview_grid.h"
 
 #include <algorithm>
-#include <functional>
-#include <memory>
 #include <utility>
 
 #include "ash/accessibility/accessibility_controller_impl.h"
@@ -45,9 +43,11 @@
 #include "ash/wm/mru_window_tracker.h"
 #include "ash/wm/overview/overview_constants.h"
 #include "ash/wm/overview/overview_controller.h"
+#include "ash/wm/overview/overview_focus_cycler.h"
+#include "ash/wm/overview/overview_focusable_view.h"
 #include "ash/wm/overview/overview_grid_event_handler.h"
-#include "ash/wm/overview/overview_highlight_controller.h"
 #include "ash/wm/overview/overview_item.h"
+#include "ash/wm/overview/overview_item_base.h"
 #include "ash/wm/overview/overview_item_view.h"
 #include "ash/wm/overview/overview_types.h"
 #include "ash/wm/overview/overview_utils.h"
@@ -57,6 +57,7 @@
 #include "ash/wm/splitview/split_view_divider.h"
 #include "ash/wm/splitview/split_view_utils.h"
 #include "ash/wm/tablet_mode/tablet_mode_controller.h"
+#include "ash/wm/window_state_delegate.h"
 #include "ash/wm/window_util.h"
 #include "ash/wm/workspace/backdrop_controller.h"
 #include "ash/wm/workspace/workspace_layout_manager.h"
@@ -69,12 +70,12 @@
 #include "chromeos/ui/base/window_properties.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/chromeos/styles/cros_tokens_color_mappings.h"
 #include "ui/compositor/compositor_observer.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor/layer_animator.h"
 #include "ui/compositor/presentation_time_recorder.h"
 #include "ui/compositor/throughput_tracker.h"
+#include "ui/gfx/geometry/size_f.h"
 #include "ui/gfx/geometry/transform.h"
 #include "ui/gfx/geometry/transform_util.h"
 #include "ui/gfx/geometry/vector2d_f.h"
@@ -108,11 +109,9 @@ constexpr float kOverviewInsetRatio = 0.05f;
 constexpr float kOverviewVerticalInset = 0.1f;
 
 // Number of rows for windows in tablet overview mode.
-constexpr int kTabletLayoutRow = 2;
+constexpr int kScrollingLayoutRow = 2;
 
-// Number of rows for windows in clamshell (scrolling) overview mode.
-// TODO(b/286568408): Get feedback from UX on window height.
-constexpr int kClamshellScrollRow = 2;
+constexpr int kMinimumItemsForScrollingLayout = 6;
 
 constexpr int kTabletModeOverviewItemTopPaddingDp = 16;
 
@@ -310,8 +309,7 @@ END_METADATA
 // Creates |drop_target_widget_|. It's created when a window or overview item is
 // dragged around, and destroyed when the drag ends.
 std::unique_ptr<views::Widget> CreateDropTargetWidget(
-    aura::Window* root_window,
-    aura::Window* dragged_window) {
+    aura::Window* root_window) {
   views::Widget::InitParams params;
   params.type = views::Widget::InitParams::TYPE_WINDOW_FRAMELESS;
   params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
@@ -400,8 +398,8 @@ gfx::Insets GetGridInsetsImpl(const gfx::Rect& grid_bounds) {
 }
 
 bool ShouldExcludeItemFromGridLayout(
-    OverviewItem* item,
-    const base::flat_set<OverviewItem*>& ignored_items) {
+    OverviewItemBase* item,
+    const base::flat_set<OverviewItemBase*>& ignored_items) {
   return item->animating_to_close() || ignored_items.contains(item);
 }
 
@@ -417,6 +415,79 @@ bool IsUnsupportedWindow(aura::Window* window) {
 
 bool IsIncognitoWindow(aura::Window* window) {
   return !Shell::Get()->saved_desk_delegate()->IsWindowPersistable(window);
+}
+
+// Returns the window(s) associated with dragging which can be the window(s)
+// represented by the `OverviewItemBase` or a preset `dragged_window`.
+aura::Window::Windows GetWindowsAssociatedWithDragging(
+    OverviewItemBase* grid_dragged_item,
+    aura::Window* dragged_window) {
+  return grid_dragged_item ? grid_dragged_item->GetWindows()
+                           : aura::Window::Windows({dragged_window});
+}
+
+// Returns true if all the `windows` associated with the drag are not null and
+// have parent.
+bool AreDraggedWindowsValid(const aura::Window::Windows& windows) {
+  for (const auto* window : windows) {
+    if (!window || !window->parent()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Returns true if all the `windows` associated with the drag are maximized.
+bool AreAllWindowsMaximized(const aura::Window::Windows& windows) {
+  for (const auto* window : windows) {
+    if (!WindowState::Get(window)->IsMaximized()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Returns the total size of the `windows` associated with the drag.
+gfx::Size GetTotalDraggedWindowsSize(const aura::Window::Windows& windows) {
+  gfx::Rect total_bounds;
+  for (auto* win : windows) {
+    total_bounds.Union(win->bounds());
+  }
+
+  return total_bounds.size();
+}
+
+// Returns the total size of the given `windows` including the transient
+// children. If the given `windows` belong to the same snap group, the total
+// size needs to be enlarged to include the size of the divider.
+gfx::SizeF GetTotalUnionSizeIncludingTransients(
+    const aura::Window::Windows& windows) {
+  gfx::RectF total_bounds;
+  for (auto* win : windows) {
+    total_bounds.Union(GetTargetBoundsInScreen(win));
+  }
+
+  gfx::SizeF total_size = total_bounds.size();
+  // TODO(michelefan): Add extra width of the divider for the height of the
+  // `total_size` in portrait mode.
+  if (windows.size() == 2u) {
+    total_size.Enlarge(kSplitviewDividerShortSideLength, 0);
+  }
+
+  return total_size;
+}
+
+// Returns the maximum of the `aura::client::kTopViewInset` among the `windows`.
+int GetTopViewInset(const aura::Window::Windows& windows) {
+  int inset = 0;
+  for (auto* win : windows) {
+    const int win_inset = win->GetProperty(aura::client::kTopViewInset);
+    inset = std::max(inset, win_inset);
+  }
+
+  return inset;
 }
 
 }  // namespace
@@ -444,12 +515,15 @@ OverviewGrid::OverviewGrid(aura::Window* root_window,
     // OnImplicitAnimationsCompleted() of the observer of the
     // available-workspace-covering window's animation.
     auto* animator = window->layer()->GetAnimator();
-    if (animator->is_animating())
+    if (animator->is_animating()) {
       window->layer()->GetAnimator()->StopAnimating();
-    window_list_.push_back(
-        std::make_unique<OverviewItem>(window, overview_session_, this));
+    }
 
-    UpdateNumSavedDeskUnsupportedWindows(window, /*increment*/ true);
+    std::unique_ptr<OverviewItemBase> overview_item_base =
+        OverviewItemBase::Create(window, overview_session_, this);
+    UpdateNumSavedDeskUnsupportedWindows(overview_item_base->GetWindows(),
+                                         /*increment=*/true);
+    window_list_.push_back(std::move(overview_item_base));
   }
 }
 
@@ -460,6 +534,7 @@ void OverviewGrid::Shutdown(OverviewEnterExitType exit_type) {
 
   EndNudge();
 
+  RootWindowController::ForWindow(root_window_)->EndSplitViewOverviewSession();
   SplitViewController::Get(root_window_)->RemoveObserver(this);
   ScreenRotationAnimator::GetForRootWindow(root_window_)->RemoveObserver(this);
   Shell::Get()->wallpaper_controller()->RemoveObserver(this);
@@ -539,84 +614,75 @@ void OverviewGrid::PrepareForOverview() {
 }
 
 void OverviewGrid::PositionWindowsContinuously(float y_offset) {
-  // If it's the first scroll, the rects will need to be re-calculated.
-  bool first_scroll = false;
-  if (cached_rects_.empty()) {
-    first_scroll = true;
-    cached_rects_ = ShouldUseScrollingLayout(/*ignored_items_size=*/0)
-                        ? GetWindowRectsForScrollingLayout({})
-                        : GetWindowRects({});
-    // When starting a continuous scroll to EXIT overview mode, hide the save
-    // desk button immediately.
-    // When starting a continuous scroll to ENTER overview mode, the save desk
-    // button will be shown once overview mode is fully entered.
-    if (IsSaveDeskButtonContainerVisible()) {
-      UpdateSaveDeskButtons();
-    }
-  }
+  const float scroll_ratio = y_offset / WmGestureHandler::kVerticalThresholdDp;
 
-  // Fade in/out the minimized windows and position non-minimized windows.
-  float scroll_ratio = y_offset / WmGestureHandler::kVerticalThresholdDp;
-  for (size_t i = 0; i < window_list_.size(); ++i) {
-    OverviewItem* window_item = window_list_[i].get();
-    gfx::RectF rect = cached_rects_[i];
-    // If this is the first scroll update, position minimized windows
-    // and hide the headers of non-minimized windows.
-    if (first_scroll) {
-      if (WindowState::Get(window_item->GetWindow())->IsMinimized()) {
-        window_item->SetBounds(rect, OVERVIEW_ANIMATION_NONE);
-      } else {
-        window_item->overview_item_view()->layer()->SetOpacity(0.0f);
-      }
-    }
-    // For all scroll updates, set the opacity of minimized windows and
-    // reposition non-minimized windows.
-    if (WindowState::Get(window_item->GetWindow())->IsMinimized()) {
-      float opacity = std::clamp(0.01f, scroll_ratio, 1.f);
-      window_item->overview_item_view()->layer()->SetOpacity(opacity);
-    } else {
-      rect = gfx::Tween::RectFValueBetween(
-          scroll_ratio, gfx::RectF(window_item->GetWindow()->bounds()), rect);
-      window_item->SetBounds(rect, OVERVIEW_ANIMATION_NONE);
-    }
-  }
-
-  // Move the desk bar up/down.
+  // Move the desks bar up/down.
   if (auto* desks_bar = desks_bar_view()) {
-    gfx::Transform transform;
-    transform.Translate(
-        0, -desks_bar->GetBoundsInScreen().height() +
-               (desks_bar->GetBoundsInScreen().height() * scroll_ratio));
-    desks_bar->layer()->SetTransform(transform);
-  }
-}
-
-bool OverviewGrid::ShouldUseScrollingLayout(size_t ignored_items_size) const {
-  if (ShouldUseTabletModeGridLayout()) {
-    return window_list_.size() - ignored_items_size >=
-           kMinimumItemsForNewLayoutInTablet;
+    desks_bar->layer()->SetTransform(gfx::Transform::MakeTranslation(
+        0, desks_bar->height() * (scroll_ratio - 1)));
   }
 
-  if (features::IsOverviewScrollLayoutForClamshellEnabled()) {
-    return window_list_.size() - ignored_items_size >=
-           kMinimumItemsForNewLayoutInClamshell;
+  // Compute and adjust the "No recent items" label.
+  if (no_windows_widget_) {
+    no_windows_widget_->GetLayer()->SetOpacity(
+        std::clamp(0.01f, scroll_ratio, 1.f));
   }
 
-  return false;
+  if (!cached_transforms_.empty()) {
+    // TODO(http://b/297923747): Integrate continuous animation with snap
+    // groups.
+    for (const auto& [overview_item, transform] : cached_transforms_) {
+      overview_item->OnOverviewItemContinuousScroll(transform, scroll_ratio);
+    }
+    return;
+  }
+
+  if (window_list_.empty()) {
+    return;
+  }
+
+  // The first time we call this function we want to compute the target
+  // transforms.
+  const std::vector<gfx::RectF> target_rects =
+      ShouldUseScrollingLayout(/*ignored_items_size=*/0u)
+          ? GetWindowRectsForScrollingLayout({})
+          : GetWindowRects({});
+  CHECK_EQ(window_list_.size(), target_rects.size());
+
+  for (size_t i = 0; i < window_list_.size(); ++i) {
+    OverviewItemBase* overview_item = window_list_[i].get();
+    cached_transforms_[overview_item] =
+        overview_item->ComputeTargetTransform(target_rects[i]);
+
+    if (WindowState::Get(overview_item->GetWindow())->IsMinimized()) {
+      overview_item->SetBounds(target_rects[i], OVERVIEW_ANIMATION_NONE);
+    } else {
+      // Keep the overview header, backdrop, etc. and rounded corners and shadow
+      // hidden during the trackpad swipe. They will be shown after the swipe is
+      // completed.
+      overview_item->item_widget()->GetLayer()->SetOpacity(0.f);
+      overview_item->UpdateRoundedCornersAndShadow();
+    }
+  }
+
+  // When starting a continuous scroll to EXIT overview mode, hide the save
+  // desk button immediately.
+  // When starting a continuous scroll to ENTER overview mode, the save desk
+  // button will be shown once overview mode is fully entered.
+  if (IsSaveDeskButtonContainerVisible()) {
+    UpdateSaveDeskButtons();
+  }
 }
 
 void OverviewGrid::PositionWindows(
     bool animate,
-    const base::flat_set<OverviewItem*>& ignored_items,
+    const base::flat_set<OverviewItemBase*>& ignored_items,
     OverviewTransition transition) {
   if (!overview_session_ || suspend_reposition_ || window_list_.empty())
     return;
 
   DCHECK_NE(transition, OverviewTransition::kExit);
 
-  // If there are too many windows on the overview mode screen, the new
-  // scrolling layout can be shown. If in tablet mode, show the new
-  // layout by default. If in clamshell, only show if feature is enabled.
   std::vector<gfx::RectF> rects =
       ShouldUseScrollingLayout(ignored_items.size())
           ? GetWindowRectsForScrollingLayout(ignored_items)
@@ -655,7 +721,7 @@ void OverviewGrid::PositionWindows(
       animate && transition == OverviewTransition::kInOverview;
 
   for (size_t i = 0; i < window_list_.size(); ++i) {
-    OverviewItem* window_item = window_list_[i].get();
+    OverviewItemBase* window_item = window_list_[i].get();
     if (ShouldExcludeItemFromGridLayout(window_item, ignored_items)) {
       rects[i].SetRect(0, 0, 0, 0);
       continue;
@@ -697,44 +763,47 @@ void OverviewGrid::PositionWindows(
   // Apply the animation after creating metrics_tracker_ so that unit test
   // can correctly count the measure requests.
   for (size_t i = 0; i < window_list_.size(); ++i) {
-    if (rects[i].IsEmpty())
-      continue;
-    OverviewItem* window_item = window_list_[i].get();
-    window_item->SetBounds(rects[i], animation_types[i]);
+    if (const auto& rect = rects[i]; !rect.IsEmpty()) {
+      window_list_[i].get()->SetBounds(rect, animation_types[i]);
+    }
   }
 
   UpdateSaveDeskButtons();
 
   // This is a no-op if the feature ContinuousOverviewScrollAnimation is not
-  // enabled. Once windows are placed at their final positions, clear rects so
-  // that they get re-calculated when a continuous downward scroll begins.
-  cached_rects_.clear();
+  // enabled. Once windows are placed at their final positions, clear transforms
+  // so that they get re-calculated when a continuous downward scroll begins.
+  cached_transforms_.clear();
 }
 
-OverviewItem* OverviewGrid::GetOverviewItemContaining(
+OverviewItemBase* OverviewGrid::GetOverviewItemContaining(
     const aura::Window* window) const {
   for (const auto& window_item : window_list_) {
-    if (window_item && window_item->Contains(window))
+    if (window_item && window_item->Contains(window)) {
       return window_item.get();
+    }
   }
+
   return nullptr;
 }
 
-void OverviewGrid::AddItem(aura::Window* window,
-                           bool reposition,
-                           bool animate,
-                           const base::flat_set<OverviewItem*>& ignored_items,
-                           size_t index,
-                           bool use_spawn_animation,
-                           bool restack) {
-  DCHECK(!GetOverviewItemContaining(window));
-  DCHECK_LE(index, window_list_.size());
+void OverviewGrid::AddItem(
+    aura::Window* window,
+    bool reposition,
+    bool animate,
+    const base::flat_set<OverviewItemBase*>& ignored_items,
+    size_t index,
+    bool use_spawn_animation,
+    bool restack) {
+  CHECK(!GetOverviewItemContaining(window));
+  CHECK_LE(index, window_list_.size());
 
-  UpdateNumSavedDeskUnsupportedWindows(window, /*increment*/ true);
-
-  window_list_.insert(
-      window_list_.begin() + index,
-      std::make_unique<OverviewItem>(window, overview_session_, this));
+  std::unique_ptr<OverviewItemBase> overview_item_base =
+      OverviewItemBase::Create(window, overview_session_, this);
+  UpdateNumSavedDeskUnsupportedWindows(overview_item_base->GetWindows(),
+                                       /*increment=*/true);
+  window_list_.insert(window_list_.begin() + index,
+                      std::move(overview_item_base));
 
   if (overview_session_)
     overview_session_->UpdateFrameThrottling();
@@ -787,31 +856,32 @@ void OverviewGrid::AddItemInMruOrder(aura::Window* window,
           FindInsertionIndex(window), use_spawn_animation, restack);
 }
 
-void OverviewGrid::RemoveItem(OverviewItem* overview_item,
+void OverviewGrid::RemoveItem(OverviewItemBase* overview_item,
                               bool item_destroying,
                               bool reposition) {
   EndNudge();
 
   // Use reverse iterator to be efficient when removing all.
   auto iter = base::ranges::find(base::Reversed(window_list_), overview_item,
-                                 &std::unique_ptr<OverviewItem>::get);
+                                 &std::unique_ptr<OverviewItemBase>::get);
   DCHECK(iter != window_list_.rend());
 
-  UpdateNumSavedDeskUnsupportedWindows(overview_item->GetWindow(),
-                                       /*increment*/ false);
+  UpdateNumSavedDeskUnsupportedWindows(overview_item->GetWindows(),
+                                       /*increment=*/false);
 
   // This can also be called when shutting down |this|, at which the item will
   // be cleaning up and its associated view may be nullptr. |overview_item|
   // needs to still be in |window_list_| so we can compute what the deleted
   // index is.
-  if (overview_session_ && (*iter)->overview_item_view()) {
-    overview_session_->highlight_controller()->OnViewDestroyingOrDisabling(
-        (*iter)->overview_item_view());
+  if (OverviewFocusableView* focusable_view = (*iter)->GetFocusableView();
+      overview_session_ && focusable_view) {
+    overview_session_->focus_cycler()->OnViewDestroyingOrDisabling(
+        focusable_view);
   }
 
   // Erase from the list first because deleting OverviewItem can lead to
   // iterating through the |window_list_|.
-  std::unique_ptr<OverviewItem> tmp = std::move(*iter);
+  std::unique_ptr<OverviewItemBase> tmp = std::move(*iter);
   window_list_.erase(std::next(iter).base());
   tmp.reset();
 
@@ -834,8 +904,8 @@ void OverviewGrid::RemoveItem(OverviewItem* overview_item,
     // currently overview dragged window, if there is one. Note: this does not
     // update the grid bounds if the window being dragged from the top or shelf,
     // the former being handled in TabletModeWindowDragDelegate's destructor.
-    base::flat_set<OverviewItem*> ignored_items;
-    OverviewItem* dragged_item =
+    base::flat_set<OverviewItemBase*> ignored_items;
+    OverviewItemBase* dragged_item =
         overview_session_->GetCurrentDraggedOverviewItem();
     if (dragged_item)
       ignored_items.insert(dragged_item);
@@ -870,10 +940,9 @@ void OverviewGrid::RemoveAllItemsForSavedDeskLaunch() {
 }
 
 void OverviewGrid::AddDropTargetForDraggingFromThisGrid(
-    OverviewItem* dragged_item) {
-  DCHECK(!drop_target_widget_);
-  drop_target_widget_ =
-      CreateDropTargetWidget(root_window_, dragged_item->GetWindow());
+    OverviewItemBase* dragged_item) {
+  CHECK(!drop_target_widget_);
+  drop_target_widget_ = CreateDropTargetWidget(root_window_);
   const size_t position = GetOverviewItemIndex(dragged_item) + 1u;
   // TODO(b/277979324): Consider avoid creating overview item for drop target
   // widget.
@@ -886,7 +955,7 @@ void OverviewGrid::AddDropTargetNotForDraggingFromThisGrid(
     aura::Window* dragged_window,
     bool animate) {
   DCHECK(!drop_target_widget_);
-  drop_target_widget_ = CreateDropTargetWidget(root_window_, dragged_window);
+  drop_target_widget_ = CreateDropTargetWidget(root_window_);
   aura::Window* drop_target_window = drop_target_widget_->GetNativeWindow();
   if (animate) {
     drop_target_widget_->SetOpacity(0.f);
@@ -903,14 +972,14 @@ void OverviewGrid::AddDropTargetNotForDraggingFromThisGrid(
 
 void OverviewGrid::RemoveDropTarget() {
   DCHECK(drop_target_widget_);
-  OverviewItem* drop_target = GetDropTarget();
+  OverviewItemBase* drop_target = GetDropTarget();
   overview_session_->RemoveItem(drop_target);
   drop_target_widget_.reset();
 }
 
 void OverviewGrid::SetBoundsAndUpdatePositions(
     const gfx::Rect& bounds_in_screen,
-    const base::flat_set<OverviewItem*>& ignored_items,
+    const base::flat_set<OverviewItemBase*>& ignored_items,
     bool animate) {
   const bool bounds_updated = bounds_in_screen != bounds_;
   bounds_ = bounds_in_screen;
@@ -922,9 +991,9 @@ void OverviewGrid::SetBoundsAndUpdatePositions(
 }
 
 void OverviewGrid::RearrangeDuringDrag(
-    OverviewItem* dragged_item,
+    OverviewItemBase* dragged_item,
     SplitViewDragIndicators::WindowDraggingState window_dragging_state) {
-  OverviewItem* drop_target = GetDropTarget();
+  OverviewItemBase* drop_target = GetDropTarget();
 
   // Update the drop target visibility according to |window_dragging_state|.
   if (drop_target) {
@@ -939,7 +1008,7 @@ void OverviewGrid::RearrangeDuringDrag(
       root_window_, absl::make_optional(window_dragging_state),
       /*divider_changed=*/false, /*account_for_hotseat=*/true);
   if (bounds_ != wanted_grid_bounds) {
-    base::flat_set<OverviewItem*> ignored_items;
+    base::flat_set<OverviewItemBase*> ignored_items;
     if (dragged_item)
       ignored_items.insert(dragged_item);
     SetBoundsAndUpdatePositions(wanted_grid_bounds, ignored_items,
@@ -983,27 +1052,27 @@ bool OverviewGrid::MaybeUpdateDesksWidgetBounds() {
 }
 
 void OverviewGrid::UpdateDropTargetBackgroundVisibility(
-    OverviewItem* dragged_item,
+    OverviewItemBase* dragged_item,
     const gfx::PointF& location_in_screen) {
-  DCHECK(drop_target_widget_);
-  aura::Window* target_window =
-      GetTargetWindowOnLocation(location_in_screen, dragged_item);
+  CHECK(drop_target_widget_);
   DropTargetView* drop_target_view =
       static_cast<DropTargetView*>(drop_target_widget_->GetContentsView());
-  DCHECK(drop_target_view);
+  CHECK(drop_target_view);
+  aura::Window* target_window =
+      GetTargetWindowOnLocation(location_in_screen, dragged_item);
   drop_target_view->UpdateBackgroundVisibility(
-      target_window && IsDropTargetWindow(target_window));
+      target_window && target_window == drop_target_widget_->GetNativeWindow());
 }
 
-void OverviewGrid::OnSelectorItemDragStarted(OverviewItem* item) {
+void OverviewGrid::OnOverviewItemDragStarted(OverviewItemBase* item) {
   CommitNameChanges();
   for (auto& overview_mode_item : window_list_)
-    overview_mode_item->OnSelectorItemDragStarted(item);
+    overview_mode_item->OnOverviewItemDragStarted(item);
 }
 
-void OverviewGrid::OnSelectorItemDragEnded(bool snap) {
+void OverviewGrid::OnOverviewItemDragEnded(bool snap) {
   for (auto& overview_mode_item : window_list_)
-    overview_mode_item->OnSelectorItemDragEnded(snap);
+    overview_mode_item->OnOverviewItemDragEnded(snap);
 }
 
 void OverviewGrid::OnWindowDragStarted(aura::Window* dragged_window,
@@ -1013,7 +1082,7 @@ void OverviewGrid::OnWindowDragStarted(aura::Window* dragged_window,
   // Stack the |dragged_window| at top during drag.
   dragged_window->parent()->StackChildAtTop(dragged_window);
   // Called to set caption and title visibility during dragging.
-  OnSelectorItemDragStarted(/*item=*/nullptr);
+  OnOverviewItemDragStarted(/*item=*/nullptr);
 }
 
 void OverviewGrid::OnWindowDragContinued(
@@ -1045,27 +1114,24 @@ void OverviewGrid::OnWindowDragEnded(aura::Window* dragged_window,
   RemoveDropTarget();
 
   // Called to reset caption and title visibility after dragging.
-  OnSelectorItemDragEnded(snap);
+  OnOverviewItemDragEnded(snap);
 
   // Update the grid bounds and reposition windows. Since the grid bounds might
   // be updated based on the preview area during drag, but the window finally
   // didn't be snapped to the preview area.
-  SetBoundsAndUpdatePositions(GetGridBoundsInScreen(root_window_),
-                              /*ignored_items=*/{},
-                              /*animate=*/true);
+  RefreshGridBounds(/*animate=*/true);
 }
 
 void OverviewGrid::MergeWindowIntoOverviewForWebUITabStrip(
     aura::Window* dragged_window) {
   AddDraggedWindowIntoOverviewOnDragEnd(dragged_window);
-  SetBoundsAndUpdatePositions(GetGridBoundsInScreen(root_window_),
-                              /*ignored_items=*/{},
-                              /*animate=*/true);
+  RefreshGridBounds(/*animate=*/true);
 }
 
 void OverviewGrid::SetVisibleDuringWindowDragging(bool visible, bool animate) {
-  for (const auto& window_item : window_list_)
-    window_item->SetVisibleDuringWindowDragging(visible, animate);
+  for (const auto& window_item : window_list_) {
+    window_item->SetVisibleDuringItemDragging(visible, animate);
+  }
 
   // Update |desks_widget_|.
   if (desks_widget_) {
@@ -1085,12 +1151,12 @@ void OverviewGrid::SetVisibleDuringWindowDragging(bool visible, bool animate) {
   }
 }
 
-bool OverviewGrid::IsDropTargetWindow(aura::Window* window) const {
-  return drop_target_widget_ &&
-         drop_target_widget_->GetNativeWindow() == window;
+bool OverviewGrid::IsDropTargetItem(OverviewItemBase* item) const {
+  return item && drop_target_widget_ &&
+         item->Contains(drop_target_widget_->GetNativeWindow());
 }
 
-OverviewItem* OverviewGrid::GetDropTarget() {
+OverviewItemBase* OverviewGrid::GetDropTarget() {
   return drop_target_widget_
              ? GetOverviewItemContaining(drop_target_widget_->GetNativeWindow())
              : nullptr;
@@ -1106,8 +1172,7 @@ void OverviewGrid::OnDisplayMetricsChanged() {
   // updated in |OnSplitViewDividerPositionChanged|.
   if (SplitViewController::Get(root_window_)->InSplitViewMode())
     return;
-  SetBoundsAndUpdatePositions(GetGridBoundsInScreen(root_window_),
-                              /*ignored_items=*/{}, /*animate=*/false);
+  RefreshGridBounds(/*animate=*/false);
 }
 
 void OverviewGrid::OnUserWorkAreaInsetsChanged(aura::Window* root_window) {
@@ -1115,8 +1180,7 @@ void OverviewGrid::OnUserWorkAreaInsetsChanged(aura::Window* root_window) {
   if (!desks_widget_)
     return;
 
-  SetBoundsAndUpdatePositions(GetGridBoundsInScreen(root_window_),
-                              /*ignored_items=*/{}, /*animate=*/false);
+  RefreshGridBounds(/*animate=*/false);
 }
 
 void OverviewGrid::OnStartingAnimationComplete(bool canceled) {
@@ -1133,7 +1197,7 @@ void OverviewGrid::OnStartingAnimationComplete(bool canceled) {
 }
 
 void OverviewGrid::CalculateWindowListAnimationStates(
-    OverviewItem* selected_item,
+    OverviewItemBase* selected_item,
     OverviewTransition transition,
     const std::vector<gfx::RectF>& target_bounds) {
   using OverviewTransition = OverviewTransition;
@@ -1152,7 +1216,7 @@ void OverviewGrid::CalculateWindowListAnimationStates(
 
   // On top items are items that are higher up on the z-order, or in the always
   // on top or float containers.
-  auto is_on_top_item = [](OverviewItem* item) -> bool {
+  auto is_on_top_item = [](OverviewItemBase* item) -> bool {
     DCHECK(item);
     if (item->GetWindow()->GetProperty(aura::client::kZOrderingKey) !=
         ui::ZOrderLevel::kNormal) {
@@ -1167,11 +1231,11 @@ void OverviewGrid::CalculateWindowListAnimationStates(
 
   // Create a copy of `window_list_` which has the selected item and on top
   // windows in the front.
-  std::vector<OverviewItem*> on_top_items;
-  std::vector<OverviewItem*> regular_items;
-  for (const std::unique_ptr<OverviewItem>& item : window_list_) {
-    OverviewItem* item_ptr = item.get();
-    DCHECK(item_ptr);
+  std::vector<OverviewItemBase*> on_top_items;
+  std::vector<OverviewItemBase*> regular_items;
+  for (const std::unique_ptr<OverviewItemBase>& item : window_list_) {
+    OverviewItemBase* item_ptr = item.get();
+    CHECK(item_ptr);
     // Skip the selected item, it will be inserted into the front.
     if (item_ptr == selected_item)
       continue;
@@ -1188,7 +1252,7 @@ void OverviewGrid::CalculateWindowListAnimationStates(
   //   3) Selected window which is not on top.
   //   4) Regular window.
   // Windows in the same group maintain their ordering from `window_list`.
-  std::vector<OverviewItem*> items;
+  std::vector<OverviewItemBase*> items;
   if (selected_item && is_on_top_item(selected_item))
     items.insert(items.begin(), selected_item);
   items.insert(items.end(), on_top_items.begin(), on_top_items.end());
@@ -1216,7 +1280,8 @@ void OverviewGrid::CalculateWindowListAnimationStates(
     }
   }
 
-  // TODO(sammiequon): Investigate the bounds used here.
+  // TODO(sammiequon): Investigate the bounds used here and if we need to
+  // consider tucked windows.
   gfx::Rect grid_bounds = GetGridEffectiveBounds();
   for (size_t i = 0; i < items.size(); ++i) {
     const bool minimized =
@@ -1243,7 +1308,7 @@ void OverviewGrid::CalculateWindowListAnimationStates(
         // translation applied to it, so use |bounds()| and
         // |ConvertRectToScreen()| to get the true target bounds.
         src_bounds_temp = items[i]->GetWindow()->bounds();
-        ::wm::ConvertRectToScreen(items[i]->root_window(), &src_bounds_temp);
+        wm::ConvertRectToScreen(items[i]->root_window(), &src_bounds_temp);
       }
       src_bounds_temp.Intersect(grid_bounds);
     }
@@ -1288,7 +1353,7 @@ void OverviewGrid::SetWindowListNotAnimatedWhenExiting() {
     item->set_should_animate_when_exiting(false);
 }
 
-void OverviewGrid::StartNudge(OverviewItem* item) {
+void OverviewGrid::StartNudge(OverviewItemBase* item) {
   // When there is one window left, there is no need to nudge.
   if (window_list_.size() <= 1) {
     nudge_data_.clear();
@@ -1418,11 +1483,11 @@ void OverviewGrid::StartNudge(OverviewItem* item) {
   }
 }
 
-void OverviewGrid::UpdateNudge(OverviewItem* item, double value) {
-  for (const auto& data : nudge_data_) {
+void OverviewGrid::UpdateNudge(OverviewItemBase* item, double value) {
+  for (const OverviewNudgeData& data : nudge_data_) {
     DCHECK_LT(data.index, window_list_.size());
 
-    OverviewItem* nudged_item = window_list_[data.index].get();
+    OverviewItemBase* nudged_item = window_list_[data.index].get();
     double nudge_param = value * value / 30.0;
     nudge_param = std::clamp(nudge_param, 0.0, 1.0);
     gfx::RectF bounds =
@@ -1437,8 +1502,8 @@ void OverviewGrid::EndNudge() {
 
 aura::Window* OverviewGrid::GetTargetWindowOnLocation(
     const gfx::PointF& location_in_screen,
-    OverviewItem* ignored_item) {
-  for (std::unique_ptr<OverviewItem>& item : window_list_) {
+    OverviewItemBase* ignored_item) {
+  for (std::unique_ptr<OverviewItemBase>& item : window_list_) {
     if (item.get() == ignored_item)
       continue;
     if (item->target_bounds().Contains(location_in_screen))
@@ -1490,7 +1555,7 @@ bool OverviewGrid::IntersectsWithDesksBar(const gfx::Point& screen_location,
 
 bool OverviewGrid::MaybeDropItemOnDeskMiniViewOrNewDeskButton(
     const gfx::Point& screen_location,
-    OverviewItem* drag_item) {
+    OverviewItemBase* drag_item) {
   DCHECK(desks_util::ShouldDesksBarBeCreated());
 
   aura::Window* const dragged_window = drag_item->GetWindow();
@@ -1585,39 +1650,27 @@ void OverviewGrid::MaybeShrinkDesksBarView() {
 void OverviewGrid::StartScroll() {
   Shell::Get()->overview_controller()->PauseOcclusionTracker();
 
-  // Users are not allowed to scroll past the bounds of the items on screen in
-  // the grid. `scroll_offset_min_` is the amount needed to fit either the
-  // rightmost window (tablet) or the bottommost window (clamshell) into
-  // `total_bounds`. The max is zero (default) because windows are aligned
-  // either to the left (tablet) or at the top (clamshell) from the beginning.
-
-  // Logic involving `OverviewScrollLayoutForClamshell` replicates the tablet
-  // scroll behavior but also in the vertical direction in addition to
-  // horizontal.
+  // Users are not allowed to scroll past the leftmost or rightmost bounds of
+  // the items on screen in the grid. |scroll_offset_min_| is the amount needed
+  // to fit the rightmost window into |total_bounds|. The max is zero which is
+  // default because windows are aligned to the left from the beginning.
   gfx::Rect total_bounds = GetGridEffectiveBounds();
   total_bounds.Inset(GetGridInsetsImpl(total_bounds));
 
-  float outer_window_edge = 0;
+  float rightmost_window_right = 0;
   for (const auto& item : window_list_) {
     const gfx::RectF bounds = item->target_bounds();
-    // In tablet mode, the window with the furthest edge is the rightmost
-    // window but in clamshell it is the bottommost window.
-    float outer_bounds_edge =
-        ShouldUseTabletModeGridLayout() ? bounds.right() : bounds.bottom();
-    if (outer_window_edge < outer_bounds_edge) {
-      outer_window_edge = outer_bounds_edge;
+    if (rightmost_window_right < bounds.right()) {
+      rightmost_window_right = bounds.right();
     }
 
     item->set_scrolling_bounds(bounds);
   }
 
-  // `outer_window_edge` may have been modified by an earlier scroll.
-  // `scroll_offset_` is added to adjust for that.
-  outer_window_edge -= scroll_offset_;
-  scroll_offset_min_ =
-      (ShouldUseTabletModeGridLayout() ? total_bounds.right()
-                                       : total_bounds.bottom()) -
-      outer_window_edge;
+  // |rightmost_window_right| may have been modified by an earlier scroll.
+  // |scroll_offset_| is added to adjust for that.
+  rightmost_window_right -= scroll_offset_;
+  scroll_offset_min_ = total_bounds.right() - rightmost_window_right;
   if (scroll_offset_min_ > 0.f)
     scroll_offset_min_ = 0.f;
 
@@ -1632,7 +1685,7 @@ bool OverviewGrid::UpdateScrollOffset(float delta) {
   new_scroll_offset = std::clamp(new_scroll_offset, scroll_offset_min_, 0.f);
 
   // For flings, we want to return false if we hit one of the edges, which is
-  // when `new_scroll_offset` is exactly 0.f or `scroll_offset_min_`.
+  // when |new_scroll_offset| is exactly 0.f or |scroll_offset_min_|.
   const bool in_range =
       new_scroll_offset < 0.f && new_scroll_offset > scroll_offset_min_;
   if (new_scroll_offset == scroll_offset_)
@@ -1649,20 +1702,12 @@ bool OverviewGrid::UpdateScrollOffset(float delta) {
     }
     const gfx::RectF previous_bounds = scrolling_bounds_optional.value();
     gfx::RectF new_bounds = previous_bounds;
-    // Apply the offset to the axis we are scrolling on.
-    ShouldUseTabletModeGridLayout()
-        ? new_bounds.Offset(new_scroll_offset - scroll_offset_, 0.f)
-        : new_bounds.Offset(0.f, new_scroll_offset - scroll_offset_);
+    new_bounds.Offset(new_scroll_offset - scroll_offset_, 0.f);
     item->set_scrolling_bounds(new_bounds);
     if (gfx::RectF(GetGridEffectiveBounds()).Intersects(new_bounds) ||
         gfx::RectF(GetGridEffectiveBounds()).Intersects(previous_bounds)) {
       item->SetBounds(new_bounds, OVERVIEW_ANIMATION_NONE);
     }
-  }
-  // If in clamshell mode, restack the desk bar above the windows.
-  // Not needed in tablet as horizontal scrolls never overlap with desk bar.
-  if (desks_widget() && !ShouldUseTabletModeGridLayout()) {
-    desks_widget_->StackAtTop();
   }
 
   scroll_offset_ = new_scroll_offset;
@@ -1683,52 +1728,54 @@ void OverviewGrid::EndScroll() {
     PositionWindows(/*animate=*/false);
 }
 
-int OverviewGrid::CalculateWidthAndMaybeSetUnclippedBounds(OverviewItem* item,
-                                                           int height) {
+int OverviewGrid::CalculateWidthAndMaybeSetUnclippedBounds(
+    OverviewItemBase* item,
+    int height) {
   const gfx::Size item_size(0, height);
   gfx::SizeF target_size = item->GetTargetBoundsInScreen().size();
   float scale = item->GetItemScale(item_size);
   OverviewGridWindowFillMode grid_fill_mode = item->GetWindowDimensionsType();
 
   // The drop target, unlike the other windows has its bounds set directly, so
-  // |GetTargetBoundsInScreen()| won't return the value we want. Instead, get
-  // the scale from the window it was meant to be a placeholder for.
-  if (IsDropTargetWindow(item->GetWindow())) {
-    aura::Window* dragged_window = nullptr;
-    OverviewItem* grid_dragged_item =
-        overview_session_->window_drag_controller()
-            ? overview_session_->window_drag_controller()->item()
-            : nullptr;
-    if (grid_dragged_item)
-      dragged_window = grid_dragged_item->GetWindow();
-    else if (dragged_window_)
-      dragged_window = dragged_window_;
-    if (dragged_window && dragged_window->parent()) {
+  // `GetTargetBoundsInScreen()` won't return the value we want. Instead, get
+  // the scale from the window(s) it was meant to be a placeholder for.
+  if (IsDropTargetItem(item)) {
+    auto* window_drag_controller = overview_session_->window_drag_controller();
+    OverviewItemBase* grid_dragged_item =
+        window_drag_controller ? window_drag_controller->item() : nullptr;
+    aura::Window::Windows dragged_windows =
+        GetWindowsAssociatedWithDragging(grid_dragged_item, dragged_window_);
+    if (AreDraggedWindowsValid(dragged_windows)) {
       const gfx::Size work_area_size =
           screen_util::GetDisplayWorkAreaBoundsInScreenForActiveDeskContainer(
               root_window_)
               .size();
-      if (WindowState::Get(dragged_window)->IsMaximized()) {
+      if (AreAllWindowsMaximized(dragged_windows)) {
+        // When dragging a maximized window across displays, when dragging over
+        // this grid, the drop target size should reflect the maximized window
+        // size on this grid's display (i.e. this display's work area size)
+        // which can be different than the source display's work area size.
         grid_fill_mode = ScopedOverviewTransformWindow::GetWindowDimensionsType(
             work_area_size);
         target_size = gfx::SizeF(work_area_size);
       } else {
-        gfx::Size dragged_window_size = dragged_window->bounds().size();
-        // If the drag started from a different root window, |dragged_window|
-        // may not fit into the work area of |root_window_|. Then if
-        // |dragged_window| is dropped into this grid, |dragged_window| will
+        // If the drag started from a different root window, `dragged_windows`
+        // may not fit into the work area of `root_window_`. Then if the
+        // `dragged_windows` is dropped into this grid, `dragged_windows` will
         // shrink to fit into this work area. The drop target shall reflect
         // that.
-        dragged_window_size.SetToMin(work_area_size);
+        gfx::Size dragged_item_size =
+            GetTotalDraggedWindowsSize(dragged_windows);
+        dragged_item_size.SetToMin(work_area_size);
         grid_fill_mode = ScopedOverviewTransformWindow::GetWindowDimensionsType(
-            dragged_window_size);
-        target_size = ::ash::GetTargetBoundsInScreen(dragged_window).size();
+            dragged_item_size);
+        target_size = GetTotalUnionSizeIncludingTransients(dragged_windows);
         target_size.SetToMin(gfx::SizeF(work_area_size));
       }
+
       const gfx::SizeF inset_size(0, height);
       scale = ScopedOverviewTransformWindow::GetItemScale(
-          target_size, inset_size,
-          dragged_window->GetProperty(aura::client::kTopViewInset),
+          target_size, inset_size, GetTopViewInset(dragged_windows),
           kHeaderHeightDp);
     }
   }
@@ -1949,7 +1996,9 @@ bool OverviewGrid::IsSavedDeskNameBeingModified() const {
   return false;
 }
 
-void OverviewGrid::UpdateNoWindowsWidget(bool no_items) {
+void OverviewGrid::UpdateNoWindowsWidget(bool no_items,
+                                         bool animate,
+                                         bool is_continuous_enter) {
   // Hide the widget if there is an item in overview or the saved desk grid is
   // visible.
   if (!no_items || IsShowingSavedDeskLibrary()) {
@@ -1968,19 +2017,22 @@ void OverviewGrid::UpdateNoWindowsWidget(bool no_items) {
     params.message_id = IDS_ASH_OVERVIEW_NO_RECENT_ITEMS;
     params.parent =
         root_window_->GetChildById(desks_util::GetActiveDeskContainerId());
-    if (overview_session_ &&
-        overview_session_->ShouldEnterWithoutAnimations()) {
-      params.disable_default_visibility_animation = true;
-    }
+    params.disable_default_visibility_animation = !animate;
+
     no_windows_widget_ = std::make_unique<RoundedLabelWidget>();
     no_windows_widget_->Init(std::move(params));
 
     aura::Window* widget_window = no_windows_widget_->GetNativeWindow();
     widget_window->parent()->StackChildAtBottom(widget_window);
     widget_window->SetId(kShellWindowId_OverviewNoWindowsLabelWindow);
-    ScopedOverviewAnimationSettings settings(OVERVIEW_ANIMATION_NO_RECENTS_FADE,
-                                             widget_window);
-    no_windows_widget_->SetOpacity(1.f);
+
+    ScopedOverviewAnimationSettings settings(
+        animate && !is_continuous_enter ? OVERVIEW_ANIMATION_NO_RECENTS_FADE
+                                        : OVERVIEW_ANIMATION_NONE,
+        widget_window);
+    // Start the opacity at zero for continuous enter. Its opacity will change
+    // with the trackpad events as they come.
+    no_windows_widget_->SetOpacity(is_continuous_enter ? 0.f : 1.f);
   }
 
   RefreshNoWindowsWidgetBounds(/*animate=*/false);
@@ -1991,6 +2043,11 @@ void OverviewGrid::RefreshNoWindowsWidgetBounds(bool animate) {
     return;
 
   no_windows_widget_->SetBoundsCenteredIn(GetGridEffectiveBounds(), animate);
+}
+
+void OverviewGrid::RefreshGridBounds(bool animate) {
+  SetBoundsAndUpdatePositions(GetGridBoundsInScreen(root_window_),
+                              /*ignored_items=*/{}, animate);
 }
 
 void OverviewGrid::UpdateSaveDeskButtons() {
@@ -2129,13 +2186,10 @@ void OverviewGrid::UpdateSaveDeskButtons() {
   // animation. If the visibility has changed, skip the bounds animation and use
   // the fade animation from above. Align the widget so it is visually aligned
   // with the first overview item.
-  // If `ShouldUseScrollingLayout()`, don't animate because it becomes
-  // distracting to the user to have the button animate behind moving windows.
-  const bool animate = !visibility_changed && !in_desk_animation &&
-                       !ShouldUseScrollingLayout(/*ignored_items_size=*/0);
   ScopedOverviewAnimationSettings settings(
-      animate ? OVERVIEW_ANIMATION_LAYOUT_OVERVIEW_ITEMS_IN_OVERVIEW
-              : OVERVIEW_ANIMATION_NONE,
+      visibility_changed || in_desk_animation
+          ? OVERVIEW_ANIMATION_NONE
+          : OVERVIEW_ANIMATION_LAYOUT_OVERVIEW_ITEMS_IN_OVERVIEW,
       save_desk_button_container_widget_->GetNativeWindow());
   gfx::Point available_origin =
       gfx::ToRoundedPoint(first_overview_item_bounds.origin()) +
@@ -2235,8 +2289,7 @@ void OverviewGrid::OnSplitViewStateChanged(
 
   // Update the cannot snap warnings and adjust the grid bounds.
   UpdateCannotSnapWarningVisibility(/*animate=*/true);
-  SetBoundsAndUpdatePositions(GetGridBoundsInScreen(root_window_),
-                              /*ignored_items=*/{}, /*animate=*/false);
+  RefreshGridBounds(/*animate=*/false);
 
   // If split view mode was ended, then activate the overview focus window, to
   // match the behavior of entering overview mode in the beginning.
@@ -2276,6 +2329,24 @@ void OverviewGrid::OnWallpaperChanging() {
 
 void OverviewGrid::OnWallpaperChanged() {
   grid_event_handler_ = std::make_unique<OverviewGridEventHandler>(this);
+}
+
+void OverviewGrid::OnOverviewItemWindowDestroying(OverviewItem* overview_item,
+                                                  bool reposition) {
+  // `this` will be the delegate to handle the window destroying if the
+  // underlying window represented by the corresponding overview item is a
+  // single window.
+  // Remove the item from `overview_session_` which will remove it from the
+  // grid. If `overview_session_` is not available then remove it from the grid
+  // directly.
+  // TODO(b/299391958): Investigate why `overview_session_` might be unavailable
+  // while grid is still alive.
+  if (overview_session_) {
+    overview_session_->RemoveItem(overview_item, /*item_destroying=*/true,
+                                  reposition);
+  } else {
+    RemoveItem(overview_item, /*item_destroying=*/true, reposition);
+  }
 }
 
 SavedDeskLibraryView* OverviewGrid::GetSavedDeskLibraryView() const {
@@ -2321,7 +2392,7 @@ void OverviewGrid::MaybeInitDesksWidget() {
 }
 
 std::vector<gfx::RectF> OverviewGrid::GetWindowRects(
-    const base::flat_set<OverviewItem*>& ignored_items) {
+    const base::flat_set<OverviewItemBase*>& ignored_items) {
   gfx::Rect total_bounds = GetGridEffectiveBounds();
 
   // Windows occupy vertically centered area with additional vertical insets.
@@ -2425,26 +2496,8 @@ std::vector<gfx::RectF> OverviewGrid::GetWindowRects(
   return rects;
 }
 
-void OverviewGrid::HandleMouseWheelScrollEvent(int scroll_offset) {
-  // Avoid unnecessary scrolling.
-  // TODO(sammiequon): Fix handling of ignored items. For now, pass 0 as the
-  // number of ignored items as there is at most one drop target per grid.
-  if (ShouldUseScrollingLayout(/*ignored_items_size=*/0)) {
-    StartScroll();
-    UpdateScrollOffset(scroll_offset);
-    EndScroll();
-  }
-}
-
 std::vector<gfx::RectF> OverviewGrid::GetWindowRectsForScrollingLayout(
-    const base::flat_set<OverviewItem*>& ignored_items) {
-  return ShouldUseTabletModeGridLayout()
-             ? GetRectsForTabletScroll(ignored_items)
-             : GetRectsForClamshellScroll(ignored_items);
-}
-
-std::vector<gfx::RectF> OverviewGrid::GetRectsForClamshellScroll(
-    const base::flat_set<OverviewItem*>& ignored_items) {
+    const base::flat_set<OverviewItemBase*>& ignored_items) {
   gfx::Rect total_bounds = GetGridEffectiveBounds();
   // Windows occupy vertically centered area with additional vertical insets.
   total_bounds.Inset(GetGridInsetsImpl(total_bounds));
@@ -2453,89 +2506,7 @@ std::vector<gfx::RectF> OverviewGrid::GetRectsForClamshellScroll(
 
   // `scroll_offset_min_` may be changed on positioning (either by closing
   // windows or display changes). Recalculate it and clamp `scroll_offset_`, so
-  // items are always vertically aligned.
-  float bottommost_window_bottom_edge = 0;
-  for (const auto& item : window_list_) {
-    if (ShouldExcludeItemFromGridLayout(item.get(), ignored_items)) {
-      continue;
-    }
-    bottommost_window_bottom_edge =
-        std::max(bottommost_window_bottom_edge, item->target_bounds().bottom());
-  }
-
-  // `bottommost_window_bottom_edge` may have been modified by an earlier
-  // scroll. `scroll_offset_` is added to adjust for that. If
-  // `bottommost_window_bottom_edge` is less than `total_bounds.bottom()`,
-  // the grid cannot be scrolled. Set `scroll_offset_min_` to 0 so that
-  // `std::clamp()` is happy.
-  bottommost_window_bottom_edge -= scroll_offset_;
-  scroll_offset_min_ = total_bounds.bottom() - bottommost_window_bottom_edge;
-  if (scroll_offset_min_ > 0.f) {
-    scroll_offset_min_ = 0.f;
-  }
-
-  scroll_offset_ = std::clamp(scroll_offset_, scroll_offset_min_, 0.f);
-
-  // Map which contains `curr_num_rows` entries with information on the last
-  // items right bound per row. Used to place the next item directly next to the
-  // last item. The key is the y-value of the row and the value is the rightmost
-  // x-value.
-  int curr_num_rows = 1;
-  base::flat_map<float, float> right_edge_map;
-
-  // There is no restriction on the number of rows. Need feedback from UX on
-  // window sizes for this new layout. For now, use the same logic as in tablet
-  // mode for calculating the height of each window. The most recently used
-  // windows are displayed first. When the dragged item becomes an
-  // `ignored_item`, move the other windows accordingly. `window_position`
-  // matches the positions of the windows' indexes from `window_list_`.
-  // However, if a window turns out to be an ignored item, `window_position`
-  // remains where the item was as to then reposition the other window's bounds
-  // in place of that item.
-  const int height = (total_bounds.height() - ((kClamshellScrollRow - 1) *
-                                               kVerticalSpaceBetweenItemsDp)) /
-                     kClamshellScrollRow;
-  std::vector<gfx::RectF> rects;
-  for (const auto& window : window_list_) {
-    OverviewItem* item = window.get();
-    if (ShouldExcludeItemFromGridLayout(item, ignored_items)) {
-      rects.emplace_back();
-      continue;
-    }
-
-    // Calculate the width, x, and y of the item.
-    const int width = CalculateWidthAndMaybeSetUnclippedBounds(item, height);
-    int y = (height + kVerticalSpaceBetweenItemsDp) * (curr_num_rows - 1) +
-            total_bounds.y() + scroll_offset_;
-    int x = right_edge_map.contains(y) ? right_edge_map[y] : total_bounds.x();
-
-    // The windows should not exceed the right edge of `total_bounds`.
-    if ((x + width + kHorizontalSpaceBetweenItemsDp) > total_bounds.right()) {
-      curr_num_rows++;
-      y += height + kVerticalSpaceBetweenItemsDp;
-      x = total_bounds.x();
-    }
-
-    // Update `right_edge_map` for calculating x and y for the next item.
-    right_edge_map[y] = x + width + kHorizontalSpaceBetweenItemsDp;
-    CHECK_LE(static_cast<int>(right_edge_map.size()), curr_num_rows);
-    rects.emplace_back(x, y, width, height);
-  }
-
-  return rects;
-}
-
-std::vector<gfx::RectF> OverviewGrid::GetRectsForTabletScroll(
-    const base::flat_set<OverviewItem*>& ignored_items) {
-  gfx::Rect total_bounds = GetGridEffectiveBounds();
-  // Windows occupy vertically centered area with additional vertical insets.
-  total_bounds.Inset(GetGridInsetsImpl(total_bounds));
-  total_bounds.Inset(
-      gfx::Insets::TLBR(kTabletModeOverviewItemTopPaddingDp, 0, 0, 0));
-
-  // `scroll_offset_min_` may be changed on positioning (either by closing
-  // windows or display changes). Recalculate it and clamp `scroll_offset_`, so
-  // items are always aligned left or right.
+  // that the items are always aligned left or right.
   float rightmost_window_right = 0;
   for (const auto& item : window_list_) {
     if (ShouldExcludeItemFromGridLayout(item.get(), ignored_items))
@@ -2555,26 +2526,26 @@ std::vector<gfx::RectF> OverviewGrid::GetRectsForTabletScroll(
 
   scroll_offset_ = std::clamp(scroll_offset_, scroll_offset_min_, 0.f);
 
-  // Map which contains up to `kTabletLayoutRow` entries with information on the
-  // last items right bound per row. Used so we can place the next item directly
-  // next to the last item. The key is the y-value of the row, and the value is
-  // the rightmost x-value.
+  // Map which contains up to |kScrollingLayoutRow| entries with information on
+  // the last items right bound per row. Used so we can place the next item
+  // directly next to the last item. The key is the y-value of the row, and the
+  // value is the rightmost x-value.
   base::flat_map<float, float> right_edge_map;
 
   // Since the number of rows is limited, windows are laid out column-wise so
   // that the most recently used windows are displayed first. When the dragged
-  // item becomes an `ignored_item`, move the other windows accordingly.
-  // `window_position` matches the positions of the windows' indexes from
-  // `window_list_`. However, if a window turns out to be an ignored item,
-  // `window_position` remains where the item was as to then reposition the
+  // item becomes an |ignored_item|, move the other windows accordingly.
+  // |window_position| matches the positions of the windows' indexes from
+  // |window_list_|. However, if a window turns out to be an ignored item,
+  // |window_position| remains where the item was as to then reposition the
   // other window's bounds in place of that item.
-  const int height = (total_bounds.height() -
-                      ((kTabletLayoutRow - 1) * kVerticalSpaceBetweenItemsDp)) /
-                     kTabletLayoutRow;
+  const int height = (total_bounds.height() - ((kScrollingLayoutRow - 1) *
+                                               kVerticalSpaceBetweenItemsDp)) /
+                     kScrollingLayoutRow;
   int window_position = 0;
   std::vector<gfx::RectF> rects;
   for (const auto& window : window_list_) {
-    OverviewItem* item = window.get();
+    OverviewItemBase* item = window.get();
     if (ShouldExcludeItemFromGridLayout(item, ignored_items)) {
       rects.emplace_back();
       continue;
@@ -2583,7 +2554,7 @@ std::vector<gfx::RectF> OverviewGrid::GetRectsForTabletScroll(
     // Calculate the width and y position of the item.
     const int width = CalculateWidthAndMaybeSetUnclippedBounds(item, height);
     const int y = (height + kVerticalSpaceBetweenItemsDp) *
-                      (window_position % kTabletLayoutRow) +
+                      (window_position % kScrollingLayoutRow) +
                   total_bounds.y();
 
     // Use the right bounds of the item next to in the row as the x position, if
@@ -2592,7 +2563,7 @@ std::vector<gfx::RectF> OverviewGrid::GetRectsForTabletScroll(
                       ? right_edge_map[y]
                       : total_bounds.x() + scroll_offset_;
     right_edge_map[y] = x + width + kHorizontalSpaceBetweenItemsDp;
-    DCHECK_LE(static_cast<int>(right_edge_map.size()), kTabletLayoutRow);
+    DCHECK_LE(static_cast<int>(right_edge_map.size()), kScrollingLayoutRow);
 
     const gfx::RectF bounds(x, y, width, height);
     rects.push_back(bounds);
@@ -2605,7 +2576,7 @@ std::vector<gfx::RectF> OverviewGrid::GetRectsForTabletScroll(
 bool OverviewGrid::FitWindowRectsInBounds(
     const gfx::Rect& bounds,
     int height,
-    const base::flat_set<OverviewItem*>& ignored_items,
+    const base::flat_set<OverviewItemBase*>& ignored_items,
     std::vector<gfx::RectF>* out_rects,
     int* out_max_bottom,
     int* out_min_right,
@@ -2628,11 +2599,12 @@ bool OverviewGrid::FitWindowRectsInBounds(
   // All elements are of same height and only the height is necessary to
   // determine each item's scale.
   for (size_t i = 0u; i < window_count; ++i) {
-    if (ShouldExcludeItemFromGridLayout(window_list_[i].get(), ignored_items))
+    const auto& item = window_list_[i];
+    if (ShouldExcludeItemFromGridLayout(item.get(), ignored_items)) {
       continue;
+    }
 
-    int width =
-        CalculateWidthAndMaybeSetUnclippedBounds(window_list_[i].get(), height);
+    int width = CalculateWidthAndMaybeSetUnclippedBounds(item.get(), height);
 
     if ((left + width + kHorizontalSpaceBetweenItemsDp) > bounds.right()) {
       // Move to the next row if possible.
@@ -2670,9 +2642,9 @@ bool OverviewGrid::FitWindowRectsInBounds(
   return true;
 }
 
-size_t OverviewGrid::GetOverviewItemIndex(OverviewItem* item) const {
+size_t OverviewGrid::GetOverviewItemIndex(OverviewItemBase* item) const {
   auto iter = base::ranges::find(window_list_, item,
-                                 &std::unique_ptr<OverviewItem>::get);
+                                 &std::unique_ptr<OverviewItemBase>::get);
   DCHECK(iter != window_list_.end());
   return iter - window_list_.begin();
 }
@@ -2687,12 +2659,16 @@ size_t OverviewGrid::FindInsertionIndex(const aura::Window* window) {
   // when we reach the next window in this grid.
   size_t grid_item_index = 0, mru_window_index = 0;
   while (grid_item_index < size() && mru_window_index < mru_windows.size()) {
-    aura::Window* grid_item_window = window_list_[grid_item_index]->GetWindow();
+    OverviewItemBase* grid_item = window_list_[grid_item_index].get();
     aura::Window* mru_window = mru_windows[mru_window_index];
-    if (IsDropTargetWindow(grid_item_window) || mru_window == window)
+    if (IsDropTargetItem(grid_item) || mru_window == window) {
       return grid_item_index;
-    if (mru_window == grid_item_window)
+    }
+
+    if (grid_item->Contains(mru_window)) {
       grid_item_index++;
+    }
+
     mru_window_index++;
   }
 
@@ -2770,15 +2746,17 @@ void OverviewGrid::OnSavedDeskGridFadedOut() {
   desks_bar_view_->UpdateButtonsForSavedDeskGrid();
   desks_bar_view_->OnSavedDeskLibraryHidden();
   UpdateSaveDeskButtons();
-  UpdateNoWindowsWidget(/*no_items=*/empty());
+  UpdateNoWindowsWidget(/*no_items=*/empty(), /*animate=*/true,
+                        /*is_continuous_enter=*/false);
 }
 
 void OverviewGrid::OnSaveDeskButtonContainerFadedOut() {
   save_desk_button_container_widget_->Hide();
 }
 
-void OverviewGrid::UpdateNumSavedDeskUnsupportedWindows(aura::Window* window,
-                                                        bool increment) {
+void OverviewGrid::UpdateNumSavedDeskUnsupportedWindows(
+    const std::vector<aura::Window*>& windows,
+    bool increment) {
   if (!saved_desk_util::IsSavedDesksEnabled())
     return;
 
@@ -2786,14 +2764,16 @@ void OverviewGrid::UpdateNumSavedDeskUnsupportedWindows(aura::Window* window,
 
   // Track the number of unsupported and incognito windows. The saved desk
   // buttons are disabled if there are no supported or non-incognito windows.
-  if (IsUnsupportedWindow(window)) {
-    num_unsupported_windows_ += addend;
-  } else if (IsIncognitoWindow(window)) {
-    num_incognito_windows_ += addend;
+  for (auto* window : windows) {
+    if (IsUnsupportedWindow(window)) {
+      num_unsupported_windows_ += addend;
+    } else if (IsIncognitoWindow(window)) {
+      num_incognito_windows_ += addend;
+    }
   }
 
-  DCHECK_GE(num_unsupported_windows_, 0);
-  DCHECK_GE(num_incognito_windows_, 0);
+  CHECK_GE(num_unsupported_windows_, 0);
+  CHECK_GE(num_incognito_windows_, 0);
 }
 
 int OverviewGrid::GetDesksBarHeight() const {
@@ -2803,6 +2783,15 @@ int OverviewGrid::GetDesksBarHeight() const {
                                            LegacyDeskBarView::Type::kOverview);
   return LegacyDeskBarView::GetPreferredBarHeight(
       root_window_, LegacyDeskBarView::Type::kOverview, state);
+}
+
+bool OverviewGrid::ShouldUseScrollingLayout(size_t ignored_items_size) const {
+  if (Shell::Get()->IsInTabletMode()) {
+    return window_list_.size() - ignored_items_size >=
+           kMinimumItemsForScrollingLayout;
+  }
+
+  return false;
 }
 
 }  // namespace ash

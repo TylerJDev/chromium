@@ -554,7 +554,7 @@ void SyncServiceCrypto::OnPassphraseTypeChanged(PassphraseType type,
   state_.cached_explicit_passphrase_time = passphrase_time;
 
   // TODO(crbug.com/1466401): Also pass along the passphrase time?
-  delegate_->SetPassphraseType(type);
+  delegate_->PassphraseTypeChanged(type);
 
   // Clear recoverability degraded state in case a custom passphrase was set.
   // Note that the opposite transition (into degraded recoverability) isn't
@@ -765,6 +765,13 @@ void SyncServiceCrypto::RefreshIsRecoverabilityDegraded() {
 
 void SyncServiceCrypto::GetIsRecoverabilityDegradedCompleted(
     bool is_recoverability_degraded) {
+  // |engine| could have been reset.
+  if (!state_.engine) {
+    DCHECK_EQ(state_.required_user_action,
+              RequiredUserAction::kUnknownDuringInitialization);
+    return;
+  }
+
   // The passphrase type could have changed.
   if (GetPassphraseType() != PassphraseType::kTrustedVaultPassphrase) {
     DCHECK_NE(state_.required_user_action,

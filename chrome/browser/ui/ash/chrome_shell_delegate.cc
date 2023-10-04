@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "ash/accelerators/accelerator_prefs_delegate.h"
 #include "ash/constants/app_types.h"
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_switches.h"
@@ -15,6 +16,7 @@
 #include "ash/public/cpp/assistant/assistant_state.h"
 #include "ash/public/cpp/new_window_delegate.h"
 #include "ash/public/cpp/system_sounds_delegate.h"
+#include "ash/shell_delegate.h"
 #include "ash/wm/window_state.h"
 #include "base/check.h"
 #include "base/command_line.h"
@@ -39,10 +41,11 @@
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/ui/ash/back_gesture_contextual_nudge_delegate.h"
 #include "chrome/browser/ui/ash/capture_mode/chrome_capture_mode_delegate.h"
+#include "chrome/browser/ui/ash/chrome_accelerator_prefs_delegate.h"
 #include "chrome/browser/ui/ash/chrome_accessibility_delegate.h"
+#include "chrome/browser/ui/ash/clipboard_history_controller_delegate_impl.h"
 #include "chrome/browser/ui/ash/desks/chrome_saved_desk_delegate.h"
 #include "chrome/browser/ui/ash/game_dashboard/chrome_game_dashboard_delegate.h"
-#include "chrome/browser/ui/ash/glanceables/chrome_glanceables_delegate.h"
 #include "chrome/browser/ui/ash/global_media_controls/media_notification_provider_impl.h"
 #include "chrome/browser/ui/ash/keyboard/chrome_keyboard_ui.h"
 #include "chrome/browser/ui/ash/session_util.h"
@@ -64,6 +67,7 @@
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_switches.h"
+#include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
 #include "chromeos/ash/services/multidevice_setup/multidevice_setup_service.h"
 #include "components/ui_devtools/devtools_server.h"
 #include "components/user_manager/user_manager.h"
@@ -71,6 +75,7 @@
 #include "components/version_info/version_info.h"
 #include "content/public/browser/chromeos/multi_capture_service.h"
 #include "content/public/browser/device_service.h"
+#include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/media_session_service.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
@@ -112,9 +117,13 @@ content::WebContents* GetActiveWebContentsForNativeBrowserWindow(
 chrome::FeedbackSource ToChromeFeedbackSource(
     ash::ShellDelegate::FeedbackSource source) {
   switch (source) {
+    case ash::ShellDelegate::FeedbackSource::kGameDashboard:
+      return chrome::FeedbackSource::kFeedbackSourceGameDashboard;
     case ash::ShellDelegate::FeedbackSource::kWindowLayoutMenu:
       return chrome::FeedbackSource::kFeedbackSourceWindowLayoutMenu;
   }
+  NOTREACHED_NORETURN()
+      << "Unable to retrieve FeedbackSource due to unknown source type.";
 }
 
 }  // namespace
@@ -134,15 +143,19 @@ ChromeShellDelegate::CreateCaptureModeDelegate() const {
   return std::make_unique<ChromeCaptureModeDelegate>();
 }
 
+std::unique_ptr<ash::ClipboardHistoryControllerDelegate>
+ChromeShellDelegate::CreateClipboardHistoryControllerDelegate() const {
+  return std::make_unique<ClipboardHistoryControllerDelegateImpl>();
+}
+
 std::unique_ptr<ash::GameDashboardDelegate>
 ChromeShellDelegate::CreateGameDashboardDelegate() const {
   return std::make_unique<ChromeGameDashboardDelegate>();
 }
 
-std::unique_ptr<ash::GlanceablesDelegate>
-ChromeShellDelegate::CreateGlanceablesDelegate(
-    ash::GlanceablesController* controller) const {
-  return std::make_unique<ChromeGlanceablesDelegate>(controller);
+std::unique_ptr<ash::AcceleratorPrefsDelegate>
+ChromeShellDelegate::CreateAcceleratorPrefsDelegate() const {
+  return std::make_unique<ChromeAcceleratorPrefsDelegate>();
 }
 
 ash::AccessibilityDelegate* ChromeShellDelegate::CreateAccessibilityDelegate() {
@@ -237,12 +250,10 @@ bool ChromeShellDelegate::ShouldWaitForTouchPressAck(gfx::NativeWindow window) {
 }
 
 bool ChromeShellDelegate::IsTabDrag(const ui::OSExchangeData& drop_data) {
-  DCHECK(ash::features::IsWebUITabStripTabDragIntegrationEnabled());
   return tab_strip_ui::IsDraggedTab(drop_data);
 }
 
 int ChromeShellDelegate::GetBrowserWebUITabStripHeight() {
-  DCHECK(ash::features::IsWebUITabStripTabDragIntegrationEnabled());
   return TabStripUILayout::GetContainerHeight();
 }
 
@@ -273,8 +284,19 @@ ChromeShellDelegate::GetMediaSessionService() {
 }
 
 bool ChromeShellDelegate::IsSessionRestoreInProgress() const {
-  Profile* profile = ProfileManager::GetActiveUserProfile();
-  return SessionRestore::IsRestoring(profile);
+  // Must be called with an active user.
+  const user_manager::User* active_user =
+      user_manager::UserManager::Get()->GetActiveUser();
+  CHECK(active_user);
+
+  // User profile is not yet loaded. Consider loading user profile is part of
+  // session restore.
+  if (!active_user->is_profile_created()) {
+    return true;
+  }
+
+  return SessionRestore::IsRestoring(Profile::FromBrowserContext(
+      ash::BrowserContextHelper::Get()->GetBrowserContextByUser(active_user)));
 }
 
 void ChromeShellDelegate::SetUpEnvironmentForLockedFullscreen(

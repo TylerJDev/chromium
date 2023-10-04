@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ash/constants/ash_features.h"
+#include "ash/constants/ash_pref_names.h"
 #include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -3042,7 +3043,7 @@ TEST_F(DeviceStatusCollectorTest, TestGraphicsStatus) {
     em::DisplayInfo* display_info = fakeGraphicsStatus.add_displays();
     display_info->set_resolution_width(1920 * i);
     display_info->set_resolution_height(1080 * i);
-    display_info->set_refresh_rate(60 * i);
+    display_info->set_refresh_rate(60.0f * i);
     display_info->set_is_internal(i == 1);
   }
 
@@ -3854,9 +3855,10 @@ TEST_F(DeviceStatusCollectorTest, DemoModeDimensions) {
   scoped_stub_install_attributes_.Get()->SetDemoMode();
   scoped_feature_list_.InitAndEnableFeature(
       ash::features::kFeatureManagementFeatureAwareDeviceDemoMode);
-  scoped_local_state_.Get()->SetString(prefs::kDemoModeCountry, "CA");
-  scoped_local_state_.Get()->SetString(prefs::kDemoModeRetailerId, "retailer");
-  scoped_local_state_.Get()->SetString(prefs::kDemoModeStoreId, "1234");
+  scoped_local_state_.Get()->SetString(ash::prefs::kDemoModeCountry, "CA");
+  scoped_local_state_.Get()->SetString(ash::prefs::kDemoModeRetailerId,
+                                       "retailer");
+  scoped_local_state_.Get()->SetString(ash::prefs::kDemoModeStoreId, "1234");
 
   expected.set_country("CA");
   expected.set_retailer_name("retailer");

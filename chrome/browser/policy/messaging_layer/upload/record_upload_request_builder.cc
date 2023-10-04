@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/base64.h"
+#include "base/feature_list.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/token.h"
 #include "base/values.h"
@@ -23,6 +24,9 @@ namespace {
 // UploadEncryptedReportingRequestBuilder list key
 constexpr char kEncryptedRecordListKey[] = "encryptedRecord";
 constexpr char kAttachEncryptionSettingsKey[] = "attachEncryptionSettings";
+constexpr std::string_view kConfigurationFileVersion =
+    "configurationFileVersion";
+constexpr char kSourcePath[] = "source";
 
 // EncryptedRecordDictionaryBuilder strings
 constexpr char kEncryptedWrappedRecord[] = "encryptedWrappedRecord";
@@ -41,11 +45,37 @@ constexpr char kCompressionAlgorithmKey[] = "compressionAlgorithm";
 
 }  // namespace
 
+// Feature that controls if the configuration file should be requested
+// from the server.
+BASE_FEATURE(kShouldRequestConfigurationFile,
+             "ShouldRequestConfigurationFile",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Feature used in the tast tests to let the server know that the events are
+// coming from an automated client test. Only used in tast tests.
+BASE_FEATURE(kClientAutomatedTest,
+             "ClientAutomatedTest",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 UploadEncryptedReportingRequestBuilder::UploadEncryptedReportingRequestBuilder(
-    bool attach_encryption_settings) {
+    bool attach_encryption_settings,
+    int config_file_version) {
   result_.emplace();
   if (attach_encryption_settings) {
     result_->Set(GetAttachEncryptionSettingsPath(), true);
+  }
+
+  // Only attach the configuration file version to the request if the feature
+  // is enabled. The server will only return the configuration file if there is
+  // a mismatch between the version in the request and the version that it
+  // holds.
+  if (base::FeatureList::IsEnabled(kShouldRequestConfigurationFile)) {
+    result_->Set(GetConfigurationFileVersionPath(), config_file_version);
+  }
+
+  // This feature signals the server that this is an automated client test.
+  if (base::FeatureList::IsEnabled(kClientAutomatedTest)) {
+    result_->Set(GetSourcePath(), "tast");
   }
 }
 
@@ -120,6 +150,17 @@ UploadEncryptedReportingRequestBuilder::GetEncryptedRecordListPath() {
 std::string_view
 UploadEncryptedReportingRequestBuilder::GetAttachEncryptionSettingsPath() {
   return kAttachEncryptionSettingsKey;
+}
+
+// static
+std::string_view
+UploadEncryptedReportingRequestBuilder::GetConfigurationFileVersionPath() {
+  return kConfigurationFileVersion;
+}
+
+// static
+std::string_view UploadEncryptedReportingRequestBuilder::GetSourcePath() {
+  return kSourcePath;
 }
 
 EncryptedRecordDictionaryBuilder::EncryptedRecordDictionaryBuilder(

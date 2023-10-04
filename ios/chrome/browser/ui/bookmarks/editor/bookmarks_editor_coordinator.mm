@@ -10,14 +10,14 @@
 #import "base/metrics/user_metrics_action.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/bookmarks/browser/bookmark_node.h"
-#import "ios/chrome/browser/bookmarks/account_bookmark_model_factory.h"
-#import "ios/chrome/browser/bookmarks/local_or_syncable_bookmark_model_factory.h"
+#import "ios/chrome/browser/bookmarks/model/account_bookmark_model_factory.h"
+#import "ios/chrome/browser/bookmarks/model/local_or_syncable_bookmark_model_factory.h"
 #import "ios/chrome/browser/shared/coordinator/alert/action_sheet_coordinator.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
 #import "ios/chrome/browser/shared/ui/table_view/table_view_navigation_controller.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/ui/bookmarks/bookmark_utils_ios.h"
 #import "ios/chrome/browser/ui/bookmarks/editor/bookmarks_editor_coordinator_delegate.h"
 #import "ios/chrome/browser/ui/bookmarks/editor/bookmarks_editor_mediator.h"
@@ -101,6 +101,7 @@
                               browserState:browserState];
   _mediator.consumer = _viewController;
   _mediator.delegate = self;
+  _mediator.snackbarCommandsHandler = _snackbarCommandsHandler;
   _viewController.mutator = _mediator;
 
   _navigationController =
@@ -120,6 +121,7 @@
   [_mediator disconnect];
   [self dismissActionSheetCoordinator];
   _mediator.consumer = nil;
+  _mediator.snackbarCommandsHandler = nil;
   _mediator = nil;
   _viewController.delegate = nil;
   _viewController.mutator = nil;
@@ -249,10 +251,6 @@
 
 - (void)bookmarkDidMoveToParent:(const bookmarks::BookmarkNode*)newParent {
   [_folderChooserCoordinator setSelectedFolder:newParent];
-}
-
-- (void)showSnackbarMessage:(MDCSnackbarMessage*)message {
-  [_snackbarCommandsHandler showSnackbarMessage:message];
 }
 
 - (void)bookmarkEditorWillCommitTitleOrURLChange:

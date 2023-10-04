@@ -182,7 +182,7 @@ std::pair<Browser*, int> GetBrowserAndTabForDisposition(
   Profile* profile = params.initiating_profile;
 
   if (params.open_pwa_window_if_possible) {
-    absl::optional<web_app::AppId> app_id =
+    absl::optional<webapps::AppId> app_id =
         web_app::FindInstalledAppWithUrlInScope(profile, params.url,
                                                 /*window_only=*/true);
     if (!app_id && params.force_open_pwa_window) {
@@ -297,8 +297,10 @@ std::pair<Browser*, int> GetBrowserAndTabForDisposition(
             browser_window ? screen->GetDisplayNearestWindow(native_window)
                            : screen->GetDisplayForNewWindows();
 
-        browser_params.initial_bounds = PictureInPictureWindowManager::
-            CalculateInitialPictureInPictureWindowBounds(*pip_options, display);
+        browser_params.initial_bounds =
+            PictureInPictureWindowManager::GetInstance()
+                ->CalculateInitialPictureInPictureWindowBounds(*pip_options,
+                                                               display);
 
         browser_params.omit_from_session_restore = true;
 
@@ -653,15 +655,33 @@ base::WeakPtr<content::NavigationHandle> Navigate(NavigateParams* params) {
   // the window to function correctly. If we have no source contents to work
   // with (e.g. if an extension popup attempts to open a PiP window), we should
   // cancel the navigation.
-  if (!params->source_contents &&
-      params->disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
-    return nullptr;
+  //
+  // If it does have source contents, only allow the navigation if the scheme of
+  // the URL in the omnibox is either https:// or file://, otherwise the omnibox
+  // displayed in the PiP window may be misleading in certain scenarios (see
+  // https://crbug.com/1460025)
+  if (params->disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
+    const GURL& url = params->source_contents
+                          ? params->source_contents->GetLastCommittedURL()
+                          : GURL();
+    if (!url.SchemeIs(url::kHttpsScheme) && !url.SchemeIsFile()) {
+      return nullptr;
+    }
   }
 
-  // If no source WebContents was specified, we use the selected one from
-  // the target browser. This must happen first, before
-  // GetBrowserAndTabForDisposition() has a chance to replace |params->browser|
-  // with another one.
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  const GURL& source_url =
+      params->source_contents ? params->source_contents->GetURL() : GURL();
+  if (lacros_url_handling::IsNavigationInterceptable(*params, source_url) &&
+      lacros_url_handling::MaybeInterceptNavigation(params->url)) {
+    return nullptr;
+  }
+#endif
+
+  // If no source WebContents was specified, we use the selected one from the
+  // target browser. This must happen before GetBrowserAndTabForDisposition()
+  // has a chance to replace |params->browser| with another one, but after the
+  // above check that relies on the original source_contents value.
   if (!params->source_contents && params->browser) {
     params->source_contents =
         params->browser->tab_strip_model()->GetActiveWebContents();
@@ -740,14 +760,8 @@ base::WeakPtr<content::NavigationHandle> Navigate(NavigateParams* params) {
   }
 #endif
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-  const GURL& source_url =
-      params->source_contents ? params->source_contents->GetURL() : GURL();
-  if (lacros_url_handling::IsNavigationInterceptable(*params, source_url) &&
-      lacros_url_handling::MaybeInterceptNavigation(params->url)) {
-    return nullptr;
-  }
-  // If Lacros comes here with an internal os:// redirect scheme to Ash, and Ash
-  // does not accept the URL, we convert it into a blocked url instead.
+  // If Lacros gets here with an internal os:// redirect scheme to Ash, Ash
+  // did not accept the URL. Convert it into a blocked URL instead.
   if (crosapi::gurl_os_handler_utils::IsAshOsUrl(params->url)) {
     params->url = GURL(content::kBlockedURL);
   }

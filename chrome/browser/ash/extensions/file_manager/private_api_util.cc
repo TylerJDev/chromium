@@ -409,12 +409,14 @@ void SingleEntryPropertiesGetterForDriveFs::OnGetFileInfo(
   properties_->hosted = drivefs::IsHosted(metadata->type);
 
   properties_->available_offline =
-      metadata->available_offline || *properties_->hosted;
+      metadata->available_offline ||
+      drive::util::IsEncryptedMimeType(metadata->content_mime_type) ||
+      *properties_->hosted;
   properties_->available_when_metered =
       metadata->available_offline || *properties_->hosted;
   properties_->pinned = metadata->pinned;
 
-  if (drive::util::IsDriveFsBulkPinningEnabled(running_profile_)) {
+  if (drive::util::IsDriveFsBulkPinningAvailable(running_profile_)) {
     properties_->available_offline =
         (drivefs::IsHosted(metadata->type) &&
          !drive::util::IsPinnableGDocMimeType(metadata->content_mime_type))
@@ -715,26 +717,15 @@ base::FilePath GetLocalPathFromURL(content::RenderFrameHost* render_frame_host,
   return filesystem_url.path();
 }
 
-void GetSelectedFileInfo(content::RenderFrameHost* render_frame_host,
-                         Profile* profile,
-                         const std::vector<GURL>& file_urls,
+void GetSelectedFileInfo(Profile* profile,
+                         std::vector<base::FilePath> local_paths,
                          GetSelectedFileInfoLocalPathOption local_path_option,
                          GetSelectedFileInfoCallback callback) {
-  DCHECK(render_frame_host);
-  DCHECK(profile);
-
   std::unique_ptr<GetSelectedFileInfoParams> params =
       std::make_unique<GetSelectedFileInfoParams>();
   params->local_path_option = local_path_option;
   params->callback = std::move(callback);
-
-  for (const GURL& url : file_urls) {
-    base::FilePath path = GetLocalPathFromURL(render_frame_host, profile, url);
-    if (!path.empty()) {
-      DVLOG(1) << "Selected: file path: " << path;
-      params->file_paths.push_back(std::move(path));
-    }
-  }
+  params->file_paths = std::move(local_paths);
 
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
@@ -747,7 +738,7 @@ drive::EventLogger* GetLogger(Profile* profile) {
   }
   drive::DriveIntegrationService* service =
       drive::DriveIntegrationServiceFactory::FindForProfile(profile);
-  return service ? service->event_logger() : nullptr;
+  return service ? service->GetLogger() : nullptr;
 }
 
 std::vector<fmp::MountableGuest> CreateMountableGuestList(Profile* profile) {
@@ -807,6 +798,7 @@ fmp::BulkPinProgress BulkPinProgressToJs(
   result.bytes_to_pin = progress.bytes_to_pin;
   result.pinned_bytes = progress.pinned_bytes;
   result.files_to_pin = progress.files_to_pin;
+  result.listed_files = progress.listed_files;
   result.remaining_seconds = !progress.remaining_time.is_inf()
                                  ? progress.remaining_time.InSecondsF()
                                  : 0;

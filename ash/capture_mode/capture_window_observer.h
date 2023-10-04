@@ -6,6 +6,7 @@
 #define ASH_CAPTURE_MODE_CAPTURE_WINDOW_OBSERVER_H_
 
 #include "ash/ash_export.h"
+#include "ash/wm/desks/desks_controller.h"
 #include "base/memory/raw_ptr.h"
 #include "ui/aura/window_observer.h"
 #include "ui/gfx/geometry/point.h"
@@ -22,7 +23,8 @@ class CaptureModeSession;
 
 // Class to observe the current selected to-be-captured window.
 class ASH_EXPORT CaptureWindowObserver : public aura::WindowObserver,
-                                         public ::wm::ActivationChangeObserver {
+                                         public ::wm::ActivationChangeObserver,
+                                         public DesksController::Observer {
  public:
   explicit CaptureWindowObserver(CaptureModeSession* capture_mode_session);
   CaptureWindowObserver(const CaptureWindowObserver&) = delete;
@@ -40,11 +42,16 @@ class ASH_EXPORT CaptureWindowObserver : public aura::WindowObserver,
 
   // Sets the given `window` as the current observed `window_`. `window` will be
   // ignored if it's a child of the wallpaper container or it's the home
-  // launcher window. If `bar_anchored_to_window` is true, the capture bar will
+  // launcher window.
+  // If `a11y_alert_again` is true, the a11y alert that announces the selected
+  // window will be triggered again even if `window` is the same as the
+  // currently selected window.
+  // If `bar_anchored_to_window` is true, the capture bar will
   // be anchored to `window_` and it will not be allowed to be altered through
   // the entire capture mode session.
   void SetSelectedWindow(aura::Window* window,
-                         bool bar_anchored_to_window = false);
+                         bool a11y_alert_again,
+                         bool bar_anchored_to_window);
 
   // aura::WindowObserver:
   void OnWindowBoundsChanged(aura::Window* window,
@@ -60,6 +67,10 @@ class ASH_EXPORT CaptureWindowObserver : public aura::WindowObserver,
   void OnWindowActivated(ActivationReason reason,
                          aura::Window* gained_active,
                          aura::Window* lost_active) override;
+
+  // DesksController::Observer:
+  void OnDeskActivationChanged(const Desk* activated,
+                               const Desk* deactivated) override;
 
  private:
   void StartObserving(aura::Window* window);

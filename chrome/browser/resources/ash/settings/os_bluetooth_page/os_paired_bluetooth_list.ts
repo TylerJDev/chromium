@@ -18,7 +18,7 @@ import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bu
 
 import {getTemplate} from './os_paired_bluetooth_list.html.js';
 
-interface SettingsPairedBluetoothListElement {
+export interface SettingsPairedBluetoothListElement {
   $: {
     tooltip: PaperTooltipElement,
   };
@@ -27,7 +27,7 @@ interface SettingsPairedBluetoothListElement {
 const SettingsPairedBluetoothListElementBase =
     CrScrollableMixin(PolymerElement);
 
-class SettingsPairedBluetoothListElement extends
+export class SettingsPairedBluetoothListElement extends
     SettingsPairedBluetoothListElementBase {
   static get is() {
     return 'os-settings-paired-bluetooth-list' as const;
@@ -87,9 +87,9 @@ class SettingsPairedBluetoothListElement extends
    */
   private onManagedTooltipStateChange_(
       e: CustomEvent<
-          {address: string, show: boolean, element: HTMLElement|null}>) {
+          {address: string, show: boolean, element: HTMLElement|null}>): void {
     const target = e.detail.element;
-    const hide = () => {
+    const hide = (): void => {
       this.$.tooltip.hide();
       this.$.tooltip.removeEventListener('mouseenter', hide);
       this.currentTooltipDeviceAddress_ = undefined;

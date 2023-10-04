@@ -35,6 +35,19 @@ BASE_DECLARE_FEATURE(kSyncTrustedVaultVerifyDeviceRegistration);
 BASE_DECLARE_FEATURE(kSetClientEncryptionKeysJsApi);
 #endif
 
+#if BUILDFLAG(IS_CHROMEOS)
+// If enabled - trusted vault error pages will be opened in WebUI dialog instead
+// of browser tab. In Ash this behavioral change additionally guarded by
+// LacrosOnly mode.
+BASE_DECLARE_FEATURE(kChromeOSTrustedVaultUseWebUIDialog);
+
+// Enables sharing of TrustedVaultClient between Ash and Lacros main profile via
+// Crosapi: Ash will keep a stateful TrustedVaultClient and Lacros will use it
+// via IPC to implement stateless TrustedVaultClient.
+BASE_DECLARE_FEATURE(kChromeOSTrustedVaultClientShared);
+
+#endif
+
 }  // namespace trusted_vault
 
 #endif  // COMPONENTS_TRUSTED_VAULT_FEATURES_H_

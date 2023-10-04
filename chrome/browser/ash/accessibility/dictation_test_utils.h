@@ -80,7 +80,7 @@ class DictationTestUtils {
   std::vector<base::test::FeatureRef> GetDisabledFeatures();
 
   // Script-related methods.
-  std::string ExecuteAccessibilityCommonScript(const std::string& script);
+  void ExecuteAccessibilityCommonScript(const std::string& script);
   void DisablePumpkin();
 
   // Methods for interacting with the editable.
@@ -93,6 +93,10 @@ class DictationTestUtils {
   // Retrieves the number of times commit text is updated.
   int GetCommitTextCallCount();
   void WaitForCommitText(const std::u16string& value);
+
+  // TODO(b:259352600): Instead of disabling the observer, change this to
+  // allow specific messages.
+  void DisableConsoleObserver() { console_observer_.reset(); }
 
   // Sets whether or not we should wait for the accessibility common extension
   // to load when enabling Dictation. This should be true in almost all cases.
@@ -110,13 +114,15 @@ class DictationTestUtils {
   // Set up helper methods.
   void SetUpPumpkinDir();
   void SetUpTestSupport();
+  void WaitForDictationJSReady();
+  void WaitForEditableFocus();
   void WaitForPumpkinTaggerReady();
   void WaitForFocusHandler();
 
   bool wait_for_accessibility_common_extension_load_;
   speech::SpeechRecognitionType speech_recognition_type_;
   EditableType editable_type_;
-  raw_ptr<Profile, ExperimentalAsh> profile_;
+  raw_ptr<Profile, DanglingUntriaged | ExperimentalAsh> profile_;
   std::unique_ptr<SpeechRecognitionTestHelper> test_helper_;
   std::unique_ptr<ExtensionConsoleErrorObserver> console_observer_;
   std::unique_ptr<ui::test::EventGenerator> generator_;

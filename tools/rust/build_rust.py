@@ -79,10 +79,20 @@ EXCLUDED_TESTS = [
     # https://github.com/rust-lang/rust/issues/94322 large output from
     # compiletests is breaking json parsing of the results.
     os.path.join('tests', 'ui', 'numeric', 'numeric-cast.rs'),
+    # https://github.com/rust-lang/rust/pull/116018
+    # disable temporarily for the clang roll
+    os.path.join('tests', 'codegen', 'simd', 'simd-wide-sum.rs'),
 ]
 EXCLUDED_TESTS_WINDOWS = [
     # https://github.com/rust-lang/rust/issues/96464
     os.path.join('tests', 'codegen', 'vec-shrink-panik.rs'),
+]
+EXCLUDED_TESTS_MAC = [
+    # https://crbug.com/1479875 This fails on Mac. It relates to the large code
+    # model which we don't use, so suppress it for now.
+    os.path.join('tests', 'ui', 'thread-local', 'thread-local-issue-37508.rs'),
+    # https://crbug.com/1486137 Fails on Mac. Probably not critical.
+    os.path.join('tests', 'ui', 'abi', 'stack-probes-lto.rs'),
 ]
 
 CLANG_SCRIPTS_DIR = os.path.join(CHROMIUM_DIR, 'tools', 'clang', 'scripts')
@@ -477,6 +487,10 @@ def GetTestArgs():
         for excluded in EXCLUDED_TESTS_WINDOWS:
             args.append('--exclude')
             args.append(excluded)
+    if sys.platform == 'darwin':
+        for excluded in EXCLUDED_TESTS_MAC:
+            args.append('--exclude')
+            args.append(excluded)
     return args
 
 
@@ -540,6 +554,8 @@ def BuildLLVMLibraries(skip_build, build_mac_arm):
             # PIC needed for Rust build (links LLVM into shared object)
             '--pic',
             '--with-ml-inliner-model=',
+            # Not using this in Rust yet, see also crbug.com/1476464.
+            '--without-zstd',
         ]
         if sys.platform.startswith('linux'):
             build_cmd.append('--without-android')
@@ -589,6 +605,18 @@ def BuildLLVMLibraries(skip_build, build_mac_arm):
         aarch64_llvm_config = os.path.join(target_llvm_install_dir, 'bin',
                                            'llvm-config')
     return (x86_64_llvm_config, aarch64_llvm_config, target_llvm_install_dir)
+
+
+def GitCherryPick(git_repository, commit):
+    print(f'Cherry-picking {commit} in {git_repository}')
+    if RunCommand([
+            'git', '-C', git_repository, 'merge-base', '--is-ancestor', commit,
+            'HEAD'
+    ],
+                  fail_hard=False):
+        print('Commit already an ancestor; skipping.')
+        return
+    RunCommand(['git', '-C', git_repository, 'cherry-pick', commit])
 
 
 def main():
@@ -719,6 +747,10 @@ def main():
 
     if not args.skip_checkout:
         CheckoutGitRepo('Rust', RUST_GIT_URL, checkout_revision, RUST_SRC_DIR)
+
+        # Cherry-picks: for LLVM API changes:
+        # llvm-wrapper: adapt for LLVM API change
+        GitCherryPick(RUST_SRC_DIR, 'af401b0ca366edd7d0df061b7a635c06e6481f18')
 
         path = FetchBetaPackage('cargo', checkout_revision)
         if sys.platform == 'win32':

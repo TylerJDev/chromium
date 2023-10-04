@@ -6,13 +6,13 @@ import("//build/buildflag_header.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/features.gni")
 import("//build/config/freetype/freetype.gni")
+import("//build/config/rust.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/rust/rust_static_library.gni")
 import("//gpu/vulkan/features.gni")
 import("//testing/test.gni")
 import("//third_party/skia/gn/shared_sources.gni")
 import("//third_party/skia/modules/skcms/skcms.gni")
-import("//tools/grit/grit_rule.gni")
 import("features.gni")
 
 if (current_cpu == "arm") {
@@ -43,9 +43,9 @@ if (use_typeface_fontations) {
     cxx_bindings = [ "//third_party/skia/src/ports/fontations/src/ffi.rs" ]
     deps = [
       ":path_bridge",
-      "//third_party/rust/font_types/v0_3:lib",
-      "//third_party/rust/read_fonts/v0_10:lib",
-      "//third_party/rust/skrifa/v0_9:lib",
+      "//third_party/rust/font_types/v0_4:lib",
+      "//third_party/rust/read_fonts/v0_11:lib",
+      "//third_party/rust/skrifa/v0_10:lib",
     ]
     configs -= [ "//build/config/compiler:chromium_code" ]
     configs += [
@@ -74,6 +74,10 @@ config("skia_config") {
     "SK_DISABLE_LEGACY_IMAGE_RELEASE_PROCS",
     "SK_DISABLE_LEGACY_GL_BACKEND_SURFACE",
     "SK_DISABLE_LEGACY_INIT_DECODERS",
+    "SK_DISABLE_LEGACY_GRDIRECTCONTEXT_FLUSH",
+    "SK_DISABLE_LEGACY_GRDIRECTCONTEXT_BOOLS",
+    "SK_DISABLE_LEGACY_GL_GRDIRECTCONTEXT_FACTORIES",
+    "SK_DISABLE_LEGACY_PNG_WRITEBUFFER",
   ]
 
   include_dirs = [
@@ -370,7 +374,6 @@ component("skia") {
   # The imported Skia gni source paths are made absolute by gn.
   defines = []
   sources += skia_sksl_sources
-  sources += skia_needs_sksl_sources
   sources += skia_codec_core
   sources += skia_utils_private
   sources += skia_xps_sources
@@ -455,8 +458,6 @@ component("skia") {
     deps += [
       ":bridge_rust_side",
       ":path_bridge",
-      "//third_party/rust/read_fonts/v0_10:lib",
-      "//third_party/rust/skrifa/v0_9:lib",
     ]
   }
 
@@ -623,15 +624,6 @@ component("skia") {
     public_deps += [ ":skia_graphite_public" ]
     deps += [ ":skia_graphite_private" ]
 
-    # Even though we only use Dawn and Metal with Graphite, we need to build the
-    # Ganesh sources, since both Ganesh and Graphite use the same defines for
-    # enabling backends, otherwise we'll get undefined symbol errors in Ganesh.
-    if (skia_use_dawn) {
-      # It's ok to not make these public since they aren't meant to be used
-      # outside of Skia.
-      sources += skia_gpu_dawn_public
-      sources += skia_gpu_dawn_private
-    }
     if (skia_use_metal) {
       deps += [ ":skia_ganesh_metal" ]
     }
@@ -721,7 +713,6 @@ skia_source_set("skia_core_and_effects") {
   defines = []
   sources = skia_core_sources
   sources += skia_colorfilters_sources
-  sources += skia_colorfilters_sksl_sources
   sources += skia_effects_sources
   sources += skia_effects_imagefilter_sources
   if (skia_support_gpu) {
@@ -1022,17 +1013,4 @@ if (!is_ios) {
 
 group("fuzzers") {
   deps = [ "//skia/tools/fuzzers" ]
-}
-
-grit("skia_resources") {
-  source = "skia_resources.grd"
-
-  outputs = [
-    "grit/skia_resources.h",
-    "grit/skia_resources_map.cc",
-    "grit/skia_resources_map.h",
-    "skia_resources.pak",
-  ]
-
-  deps = [ "//skia/public/mojom:mojom_js__generator" ]
 }

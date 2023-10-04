@@ -17,6 +17,7 @@
 #include "third_party/blink/renderer/core/layout/ng/grid/layout_ng_grid.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_block_node.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_break_appeal.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_constraint_space.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_early_break.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_floats_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_fragment.h"
@@ -136,10 +137,10 @@ class CORE_EXPORT NGLayoutResult final
   }
 
   // How much an annotation box overflow from this box.
-  // This is for LayoutNGRubyRun and line boxes.
+  // This is for LayoutRubyColumn and line boxes.
   // 0 : No overflow
   // -N : Overflowing by N px at block-start side
-  //      This happens only for LayoutRubyRun.
+  //      This happens only for LayoutRubyColumn.
   // N : Overflowing by N px at block-end side
   LayoutUnit AnnotationOverflow() const {
     return rare_data_ ? rare_data_->annotation_overflow : LayoutUnit();
@@ -515,7 +516,7 @@ class CORE_EXPORT NGLayoutResult final
     }
 
     void SetPositionFallbackResult(
-        wtf_size_t fallback_index,
+        absl::optional<wtf_size_t> fallback_index,
         const Vector<NonOverflowingScrollRange>& non_overflowing_ranges) {
       layout_result_->EnsureRareData()->SetPositionFallbackResult(
           fallback_index, non_overflowing_ranges);
@@ -825,16 +826,13 @@ class CORE_EXPORT NGLayoutResult final
     }
 
     void SetPositionFallbackResult(
-        wtf_size_t fallback_index,
+        absl::optional<wtf_size_t> fallback_index,
         const Vector<NonOverflowingScrollRange>& non_overflowing_ranges) {
       position_fallback_index = fallback_index;
       position_fallback_non_overflowing_ranges = non_overflowing_ranges;
       set_position_fallback_result_is_set(true);
     }
     absl::optional<wtf_size_t> PositionFallbackIndex() const {
-      if (!position_fallback_result_is_set()) {
-        return absl::nullopt;
-      }
       return position_fallback_index;
     }
     const Vector<NonOverflowingScrollRange>*
@@ -883,8 +881,9 @@ class CORE_EXPORT NGLayoutResult final
     // Only valid if line_box_bfc_block_offset_is_set
     LayoutUnit line_box_bfc_block_offset;
 
+    absl::optional<wtf_size_t> position_fallback_index;
+
     // Only valid if position_fallback_result_is_set
-    wtf_size_t position_fallback_index;
     Vector<NonOverflowingScrollRange> position_fallback_non_overflowing_ranges;
 
     // Only valid if oof_positioned_offset_is_set

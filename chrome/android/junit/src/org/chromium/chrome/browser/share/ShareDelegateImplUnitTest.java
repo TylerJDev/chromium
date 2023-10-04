@@ -48,19 +48,18 @@ import org.chromium.chrome.browser.share.android_share_sheet.AndroidShareSheetCo
 import org.chromium.chrome.browser.share.share_sheet.ShareSheetCoordinator;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
-import org.chromium.chrome.browser.ui.signin.DeviceLockActivityLauncher;
 import org.chromium.chrome.modules.image_editor.ImageEditorModuleProvider;
 import org.chromium.chrome.test.util.browser.Features;
 import org.chromium.chrome.test.util.browser.Features.DisableFeatures;
 import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.device_lock.DeviceLockActivityLauncher;
 import org.chromium.components.browser_ui.share.ShareParams;
 import org.chromium.components.favicon.LargeIconBridge;
 import org.chromium.components.favicon.LargeIconBridgeJni;
 import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -193,16 +192,17 @@ public class ShareDelegateImplUnitTest {
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_link() {
-        ShareParams params = new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL)
-                                     .setBypassFixingDomDistillerUrl(true)
-                                     .build();
+        ShareParams params =
+                new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL.getSpec())
+                        .setBypassFixingDomDistillerUrl(true)
+                        .build();
         ChromeShareExtras extras = new ChromeShareExtras.Builder().build();
         Assert.assertEquals("Expected ShareContentType.LINK.", ShareContentType.LINK,
                 ShareDelegateImpl.getShareContentType(params, extras));
 
-        params = new ShareParams.Builder(mWindowAndroid, "title", JUnitTestGURLs.EXAMPLE_URL)
+        params = new ShareParams
+                         .Builder(mWindowAndroid, "title", JUnitTestGURLs.EXAMPLE_URL.getSpec())
                          .setPreviewImageUri(Uri.parse("content://path/to/preview"))
                          .setBypassFixingDomDistillerUrl(true)
                          .build();
@@ -213,18 +213,19 @@ public class ShareDelegateImplUnitTest {
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_linkWithText() {
-        ShareParams params = new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL)
-                                     .setBypassFixingDomDistillerUrl(true)
-                                     .setText("text")
-                                     .build();
+        ShareParams params =
+                new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL.getSpec())
+                        .setBypassFixingDomDistillerUrl(true)
+                        .setText("text")
+                        .build();
         ChromeShareExtras extras = new ChromeShareExtras.Builder().build();
         Assert.assertEquals("Expected ShareContentType.TEXT_WITH_LINK.",
                 ShareContentType.TEXT_WITH_LINK,
                 ShareDelegateImpl.getShareContentType(params, extras));
 
-        params = new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.TEXT_FRAGMENT_URL)
+        params = new ShareParams
+                         .Builder(mWindowAndroid, "", JUnitTestGURLs.TEXT_FRAGMENT_URL.getSpec())
                          .setBypassFixingDomDistillerUrl(true)
                          .setText("text")
                          .setLinkToTextSuccessful(true)
@@ -238,7 +239,6 @@ public class ShareDelegateImplUnitTest {
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_Image() {
         ShareParams params = new ShareParams.Builder(mWindowAndroid, "", "")
                                      .setBypassFixingDomDistillerUrl(true)
@@ -265,14 +265,14 @@ public class ShareDelegateImplUnitTest {
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_imageWithLink() {
-        ShareParams params = new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL)
-                                     .setBypassFixingDomDistillerUrl(true)
-                                     .setSingleImageUri(Uri.parse("content://path/to/image1"))
-                                     .setFileContentType("image/png")
-                                     .setText("text") // text is ignored.
-                                     .build();
+        ShareParams params =
+                new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL.getSpec())
+                        .setBypassFixingDomDistillerUrl(true)
+                        .setSingleImageUri(Uri.parse("content://path/to/image1"))
+                        .setFileContentType("image/png")
+                        .setText("text") // text is ignored.
+                        .build();
         ChromeShareExtras extras = new ChromeShareExtras.Builder().build();
         Assert.assertEquals("Expected ShareContentType.IMAGE_WITH_LINK.",
                 ShareContentType.IMAGE_WITH_LINK,
@@ -280,21 +280,20 @@ public class ShareDelegateImplUnitTest {
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_files() {
-        ShareParams params = new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL)
-                                     .setBypassFixingDomDistillerUrl(true)
-                                     .setSingleImageUri(Uri.parse("content://path/to/video1"))
-                                     .setFileContentType("video/mp4")
-                                     .setText("text") // text is ignored.
-                                     .build();
+        ShareParams params =
+                new ShareParams.Builder(mWindowAndroid, "", JUnitTestGURLs.EXAMPLE_URL.getSpec())
+                        .setBypassFixingDomDistillerUrl(true)
+                        .setSingleImageUri(Uri.parse("content://path/to/video1"))
+                        .setFileContentType("video/mp4")
+                        .setText("text") // text is ignored.
+                        .build();
         ChromeShareExtras extras = new ChromeShareExtras.Builder().build();
         Assert.assertEquals("Expected ShareContentType.FILES.", ShareContentType.FILES,
                 ShareDelegateImpl.getShareContentType(params, extras));
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_text() {
         ShareParams params = new ShareParams.Builder(mWindowAndroid, "", "")
                                      .setBypassFixingDomDistillerUrl(true)
@@ -308,7 +307,6 @@ public class ShareDelegateImplUnitTest {
     }
 
     @Test
-    @Config(shadows = ShadowGURL.class)
     public void testGetShareContentType_unknown() {
         ShareParams params = new ShareParams.Builder(mWindowAndroid, "", "")
                                      .setBypassFixingDomDistillerUrl(true)

@@ -6,6 +6,7 @@
 
 #import <UIKit/UIKit.h>
 
+#import "base/containers/contains.h"
 #import "base/functional/bind.h"
 #import "base/functional/callback.h"
 #import "base/memory/ptr_util.h"
@@ -141,6 +142,10 @@ void OverlayPresentationContextImpl::SetUIDisabled(bool disabled) {
       observer.OverlayPresentationContextDidEnableUI(this);
     }
   }
+}
+
+bool OverlayPresentationContextImpl::IsUIDisabled() {
+  return ui_disabled_;
 }
 
 #pragma mark OverlayPresentationContext
@@ -289,8 +294,9 @@ UIViewController* OverlayPresentationContextImpl::GetBaseViewController(
 
 OverlayRequestUIState* OverlayPresentationContextImpl::GetRequestUIState(
     OverlayRequest* request) const {
-  if (!request || states_.find(request) == states_.end())
+  if (!request || !base::Contains(states_, request)) {
     return nullptr;
+  }
   return states_.at(request).get();
 }
 

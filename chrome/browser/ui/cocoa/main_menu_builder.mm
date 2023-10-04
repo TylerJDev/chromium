@@ -13,7 +13,7 @@
 #include "chrome/browser/ui/commander/commander.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/strings/grit/components_strings.h"
@@ -273,7 +273,7 @@ NSMenuItem* BuildViewMenu(NSApplication* nsapp,
                 Item(IDS_ENTER_FULLSCREEN_MAC)
                     .action(@selector(toggleFullScreen:))
                     .is_alternate()
-                    .remove_if(base::mac::IsAtMostOS11())
+                    .remove_if(base::mac::MacOSMajorVersion() <= 11)
                     .key_equivalent(@"f", NSEventModifierFlagCommand |
                                               NSEventModifierFlagControl),
                 Item(IDS_TEXT_DEFAULT_MAC).command_id(IDC_ZOOM_NORMAL),

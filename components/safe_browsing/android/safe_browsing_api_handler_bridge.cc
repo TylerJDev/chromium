@@ -14,7 +14,9 @@
 #include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "components/safe_browsing/android/jni_headers/SafeBrowsingApiBridge_jni.h"
 #include "components/safe_browsing/android/safe_browsing_api_handler_util.h"
@@ -52,21 +54,55 @@ void ReportUmaResult(UmaRemoteCallResult result) {
                             UmaRemoteCallResult::MAX_VALUE);
 }
 
-// Validate the values returned from SafeBrowsing API are defined in enum. The
-// response can be out of range if there is version mismatch between Chrome and
-// the GMSCore APK, or the enums between c++ and java are not aligned.
-bool IsResponseFromJavaValid(SafeBrowsingApiLookupResult lookup_result,
-                             SafeBrowsingJavaThreatType threat_type,
-                             const std::vector<int>& threat_attributes) {
+void ReportSafeBrowsingJavaValidationResult(
+    SafeBrowsingJavaValidationResult validation_result) {
+  base::UmaHistogramEnumeration(
+      "SafeBrowsing.GmsSafeBrowsingApi.JavaValidationResult",
+      validation_result);
+}
+
+void ReportSafeBrowsingJavaResponse(
+    SafeBrowsingApiLookupResult lookup_result,
+    SafeBrowsingJavaThreatType threat_type,
+    const std::vector<int>& threat_attributes,
+    SafeBrowsingJavaResponseStatus response_status) {
+  base::UmaHistogramSparse("SafeBrowsing.GmsSafeBrowsingApi.LookupResult",
+                           static_cast<int>(lookup_result));
+  if (lookup_result != SafeBrowsingApiLookupResult::SUCCESS) {
+    // Do not log other histograms if the lookup failed, since the other values
+    // will all be dummy values.
+    return;
+  }
+  base::UmaHistogramSparse("SafeBrowsing.GmsSafeBrowsingApi.ThreatType",
+                           static_cast<int>(threat_type));
+  base::UmaHistogramCounts100(
+      "SafeBrowsing.GmsSafeBrowsingApi.ThreatAttributeCount",
+      threat_attributes.size());
+  for (int threat_attribute : threat_attributes) {
+    base::UmaHistogramSparse("SafeBrowsing.GmsSafeBrowsingApi.ThreatAttribute",
+                             threat_attribute);
+  }
+  base::UmaHistogramSparse("SafeBrowsing.GmsSafeBrowsingApi.ResponseStatus",
+                           static_cast<int>(response_status));
+}
+
+SafeBrowsingJavaValidationResult GetJavaValidationResult(
+    SafeBrowsingApiLookupResult lookup_result,
+    SafeBrowsingJavaThreatType threat_type,
+    const std::vector<int>& threat_attributes,
+    SafeBrowsingJavaResponseStatus response_status) {
   bool is_lookup_result_recognized = false;
   switch (lookup_result) {
     case SafeBrowsingApiLookupResult::SUCCESS:
     case SafeBrowsingApiLookupResult::FAILURE:
+    case SafeBrowsingApiLookupResult::FAILURE_API_CALL_TIMEOUT:
+    case SafeBrowsingApiLookupResult::FAILURE_API_UNSUPPORTED:
+    case SafeBrowsingApiLookupResult::FAILURE_API_NOT_AVAILABLE:
       is_lookup_result_recognized = true;
       break;
   }
   if (!is_lookup_result_recognized) {
-    return false;
+    return SafeBrowsingJavaValidationResult::INVALID_LOOKUP_RESULT;
   }
 
   bool is_threat_type_recognized = false;
@@ -81,7 +117,7 @@ bool IsResponseFromJavaValid(SafeBrowsingApiLookupResult lookup_result,
       break;
   }
   if (!is_threat_type_recognized) {
-    return false;
+    return SafeBrowsingJavaValidationResult::INVALID_THREAT_TYPE;
   }
 
   for (int threat_attribute : threat_attributes) {
@@ -95,15 +131,53 @@ bool IsResponseFromJavaValid(SafeBrowsingApiLookupResult lookup_result,
         break;
     }
     if (!is_threat_attribute_recognized) {
-      return false;
+      return SafeBrowsingJavaValidationResult::INVALID_THREAT_ATTRIBUTE;
     }
   }
 
-  // Not checking response_status here. This is to avoid the
-  // API adding a new success response_status while we haven't integrated the
-  // new value yet. In this case, we still want to return the threat_type.
-  // TODO(crbug.com/1444511): Add a histogram to track unrecognized status.
-  return true;
+  bool is_reponse_status_recognized = false;
+  switch (response_status) {
+    case SafeBrowsingJavaResponseStatus::SUCCESS_WITH_LOCAL_BLOCKLIST:
+    case SafeBrowsingJavaResponseStatus::SUCCESS_WITH_REAL_TIME:
+    case SafeBrowsingJavaResponseStatus::SUCCESS_FALLBACK_REAL_TIME_TIMEOUT:
+    case SafeBrowsingJavaResponseStatus::SUCCESS_FALLBACK_REAL_TIME_THROTTLED:
+    case SafeBrowsingJavaResponseStatus::FAILURE_NETWORK_UNAVAILABLE:
+    case SafeBrowsingJavaResponseStatus::FAILURE_BLOCK_LIST_UNAVAILABLE:
+      is_reponse_status_recognized = true;
+      break;
+  }
+  if (!is_reponse_status_recognized) {
+    return SafeBrowsingJavaValidationResult::
+        VALID_WITH_UNRECOGNIZED_RESPONSE_STATUS;
+  }
+
+  return SafeBrowsingJavaValidationResult::VALID;
+}
+
+// Validate the values returned from SafeBrowsing API are defined in enum. The
+// response can be out of range if there is version mismatch between Chrome and
+// the GMSCore APK, or the enums between c++ and java are not aligned.
+bool IsResponseFromJavaValid(SafeBrowsingApiLookupResult lookup_result,
+                             SafeBrowsingJavaThreatType threat_type,
+                             const std::vector<int>& threat_attributes,
+                             SafeBrowsingJavaResponseStatus response_status) {
+  SafeBrowsingJavaValidationResult validation_result = GetJavaValidationResult(
+      lookup_result, threat_type, threat_attributes, response_status);
+  ReportSafeBrowsingJavaValidationResult(validation_result);
+
+  switch (validation_result) {
+    case SafeBrowsingJavaValidationResult::VALID:
+    // Not returning false if response_status is unrecognized. This is to avoid
+    // the API adding a new success response_status while we haven't integrated
+    // the new value yet. In this case, we still want to return the threat_type.
+    case SafeBrowsingJavaValidationResult::
+        VALID_WITH_UNRECOGNIZED_RESPONSE_STATUS:
+      return true;
+    case SafeBrowsingJavaValidationResult::INVALID_LOOKUP_RESULT:
+    case SafeBrowsingJavaValidationResult::INVALID_THREAT_TYPE:
+    case SafeBrowsingJavaValidationResult::INVALID_THREAT_ATTRIBUTE:
+      return false;
+  }
 }
 
 bool IsLookupSuccessful(SafeBrowsingApiLookupResult lookup_result,
@@ -114,6 +188,9 @@ bool IsLookupSuccessful(SafeBrowsingApiLookupResult lookup_result,
       is_lookup_result_success = true;
       break;
     case SafeBrowsingApiLookupResult::FAILURE:
+    case SafeBrowsingApiLookupResult::FAILURE_API_CALL_TIMEOUT:
+    case SafeBrowsingApiLookupResult::FAILURE_API_UNSUPPORTED:
+    case SafeBrowsingApiLookupResult::FAILURE_API_NOT_AVAILABLE:
       break;
   }
   if (!is_lookup_result_success) {
@@ -138,6 +215,18 @@ bool IsLookupSuccessful(SafeBrowsingApiLookupResult lookup_result,
       break;
   }
   return is_response_status_success;
+}
+
+bool IsSafeBrowsingNonRecoverable(SafeBrowsingApiLookupResult lookup_result) {
+  switch (lookup_result) {
+    case SafeBrowsingApiLookupResult::FAILURE_API_UNSUPPORTED:
+    case SafeBrowsingApiLookupResult::FAILURE_API_NOT_AVAILABLE:
+      return true;
+    case SafeBrowsingApiLookupResult::SUCCESS:
+    case SafeBrowsingApiLookupResult::FAILURE:
+    case SafeBrowsingApiLookupResult::FAILURE_API_CALL_TIMEOUT:
+      return false;
+  }
 }
 
 // Convert a SBThreatType to a Java SafetyNet API threat type.  We only support
@@ -388,6 +477,8 @@ void OnUrlCheckDoneOnSBThreadBySafeBrowsingApi(
   DCHECK_CURRENTLY_ON(base::FeatureList::IsEnabled(kSafeBrowsingOnUIThread)
                           ? content::BrowserThread::UI
                           : content::BrowserThread::IO);
+  ReportSafeBrowsingJavaResponse(lookup_result, threat_type, threat_attributes,
+                                 response_status);
 
   PendingCallbacksMap& pending_callbacks =
       GetPendingSafeBrowsingCallbacksMapOnSBThread();
@@ -402,12 +493,17 @@ void OnUrlCheckDoneOnSBThreadBySafeBrowsingApi(
       std::move((pending_callbacks)[callback_id]);
   pending_callbacks.erase(callback_id);
 
-  if (!IsResponseFromJavaValid(lookup_result, threat_type, threat_attributes)) {
+  if (!IsResponseFromJavaValid(lookup_result, threat_type, threat_attributes,
+                               response_status)) {
     std::move(*callback).Run(SB_THREAT_TYPE_SAFE, ThreatMetadata());
     return;
   }
 
   if (!IsLookupSuccessful(lookup_result, response_status)) {
+    if (IsSafeBrowsingNonRecoverable(lookup_result)) {
+      SafeBrowsingApiHandlerBridge::GetInstance()
+          .OnSafeBrowsingApiNonRecoverableFailure();
+    }
     std::move(*callback).Run(SB_THREAT_TYPE_SAFE, ThreatMetadata());
     return;
   }
@@ -430,8 +526,8 @@ void OnUrlCheckDoneOnSBThreadBySafeBrowsingApi(
 // @LookupResult from SafeBrowsingApiHandler.java. |j_threat_type| is the threat
 // type that matched against the URL. |j_threat_attributes| is the threat
 // attributes that matched against the URL. |j_response_status| reflects how the
-// API gets the response. |check_delta_ms| is the number of microseconds it
-// took to look up the URL reputation from GmsCore.
+// API gets the response. |check_delta_microseconds| is the number of
+// microseconds it took to look up the URL reputation from GmsCore.
 //
 // Careful note: this can be called on multiple threads, so make sure there is
 // nothing thread unsafe happening here.
@@ -442,8 +538,10 @@ void JNI_SafeBrowsingApiBridge_OnUrlCheckDoneBySafeBrowsingApi(
     jint j_threat_type,
     const JavaParamRef<jintArray>& j_threat_attributes,
     jint j_response_status,
-    jlong check_delta_ms) {
-  // TODO(crbug.com/1444511): Add a histogram to log check_delta_ms.
+    jlong check_delta_microseconds) {
+  base::UmaHistogramMicrosecondsTimes(
+      "SafeBrowsing.GmsSafeBrowsingApi.CheckDelta",
+      base::Microseconds(check_delta_microseconds));
   auto task_runner =
       base::FeatureList::IsEnabled(safe_browsing::kSafeBrowsingOnUIThread)
           ? content::GetUIThreadTaskRunner({})
@@ -532,13 +630,16 @@ void SafeBrowsingApiHandlerBridge::StartUrlCheckBySafeBrowsing(
   DCHECK_CURRENTLY_ON(base::FeatureList::IsEnabled(kSafeBrowsingOnUIThread)
                           ? content::BrowserThread::UI
                           : content::BrowserThread::IO);
+
+  base::UmaHistogramBoolean("SafeBrowsing.GmsSafeBrowsingApi.IsAvailable",
+                            is_safe_browsing_api_available_);
+  if (!is_safe_browsing_api_available_) {
+    // Fall back to SafetyNet if SafeBrowsing API is not available.
+    StartUrlCheckBySafetyNet(std::move(callback), url, threat_types);
+    return;
+  }
+
   JNIEnv* env = AttachCurrentThread();
-
-  // TODO(crbug.com/1444511): Check if the device has required GMSCore version.
-  // If not, fall back to hash database check through SafetyNet API. Also add a
-  // histogram to track the proportion of users who don't have required version
-  // to inform when we can remove the fallback.
-
   jlong callback_id = next_safe_browsing_callback_id_++;
   GetPendingSafeBrowsingCallbacksMapOnSBThread().insert(
       {callback_id, std::move(callback)});
@@ -558,6 +659,14 @@ bool SafeBrowsingApiHandlerBridge::StartCSDAllowlistCheck(const GURL& url) {
   if (interceptor_for_testing_)
     return false;
   return StartAllowlistCheck(url, safe_browsing::SB_THREAT_TYPE_CSD_ALLOWLIST);
+}
+
+void SafeBrowsingApiHandlerBridge::OnSafeBrowsingApiNonRecoverableFailure() {
+  DCHECK_CURRENTLY_ON(base::FeatureList::IsEnabled(kSafeBrowsingOnUIThread)
+                          ? content::BrowserThread::UI
+                          : content::BrowserThread::IO);
+
+  is_safe_browsing_api_available_ = false;
 }
 
 }  // namespace safe_browsing

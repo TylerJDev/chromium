@@ -121,7 +121,8 @@ class LocationBarView : public LocationBar,
       SkColor background_color,
       SkColor stroke_color,
       SkBlendMode blend_mode = SkBlendMode::kSrcOver,
-      bool antialias = true) const;
+      bool antialias = true,
+      bool should_border_scale = false) const;
 
   // Returns the delegate.
   Delegate* delegate() const { return delegate_; }
@@ -201,7 +202,7 @@ class LocationBarView : public LocationBar,
   SkColor GetIconLabelBubbleBackgroundColor() const override;
 
   // ContentSettingImageView::Delegate:
-  bool ShouldHideContentSettingImage(ImageType type) override;
+  bool ShouldHideContentSettingImage() override;
   content::WebContents* GetContentSettingWebContents() override;
   ContentSettingBubbleModelDelegate* GetContentSettingBubbleModelDelegate()
       override;

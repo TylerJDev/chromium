@@ -3136,6 +3136,18 @@ void MaxShaderCompilerThreadsKHR(GLuint count) {
   }
 }
 
+void TexImage2DSharedImageCHROMIUMImmediate(GLuint texture,
+                                            const GLbyte* mailbox) {
+  const uint32_t size =
+      gles2::cmds::TexImage2DSharedImageCHROMIUMImmediate::ComputeSize();
+  gles2::cmds::TexImage2DSharedImageCHROMIUMImmediate* c =
+      GetImmediateCmdSpaceTotalSize<
+          gles2::cmds::TexImage2DSharedImageCHROMIUMImmediate>(size);
+  if (c) {
+    c->Init(texture, mailbox);
+  }
+}
+
 void CreateAndTexStorage2DSharedImageINTERNALImmediate(GLuint texture,
                                                        const GLbyte* mailbox) {
   const uint32_t size = gles2::cmds::
@@ -3178,7 +3190,11 @@ void ConvertRGBAToYUVAMailboxesINTERNALImmediate(GLenum planes_yuv_color_space,
   }
 }
 
-void ConvertYUVAMailboxesToRGBINTERNALImmediate(GLenum planes_yuv_color_space,
+void ConvertYUVAMailboxesToRGBINTERNALImmediate(GLint src_x,
+                                                GLint src_y,
+                                                GLsizei width,
+                                                GLsizei height,
+                                                GLenum planes_yuv_color_space,
                                                 GLenum plane_config,
                                                 GLenum subsampling,
                                                 const GLbyte* mailboxes) {
@@ -3188,7 +3204,8 @@ void ConvertYUVAMailboxesToRGBINTERNALImmediate(GLenum planes_yuv_color_space,
       GetImmediateCmdSpaceTotalSize<
           gles2::cmds::ConvertYUVAMailboxesToRGBINTERNALImmediate>(size);
   if (c) {
-    c->Init(planes_yuv_color_space, plane_config, subsampling, mailboxes);
+    c->Init(src_x, src_y, width, height, planes_yuv_color_space, plane_config,
+            subsampling, mailboxes);
   }
 }
 
@@ -3481,6 +3498,29 @@ void GetFramebufferPixelLocalStorageParameterivANGLE(
       gles2::cmds::GetFramebufferPixelLocalStorageParameterivANGLE>();
   if (c) {
     c->Init(plane, pname, params_shm_id, params_shm_offset);
+  }
+}
+
+void ClipControlEXT(GLenum origin, GLenum depth) {
+  gles2::cmds::ClipControlEXT* c = GetCmdSpace<gles2::cmds::ClipControlEXT>();
+  if (c) {
+    c->Init(origin, depth);
+  }
+}
+
+void PolygonModeANGLE(GLenum face, GLenum mode) {
+  gles2::cmds::PolygonModeANGLE* c =
+      GetCmdSpace<gles2::cmds::PolygonModeANGLE>();
+  if (c) {
+    c->Init(face, mode);
+  }
+}
+
+void PolygonOffsetClampEXT(GLfloat factor, GLfloat units, GLfloat clamp) {
+  gles2::cmds::PolygonOffsetClampEXT* c =
+      GetCmdSpace<gles2::cmds::PolygonOffsetClampEXT>();
+  if (c) {
+    c->Init(factor, units, clamp);
   }
 }
 

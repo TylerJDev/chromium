@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import android.view.View;
 import android.view.ViewGroup;
@@ -27,7 +26,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.robolectric.annotation.Config;
 
 import org.chromium.base.supplier.UnownedUserDataSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
@@ -51,13 +49,12 @@ import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.share.ShareDelegate;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.components.url_formatter.UrlFormatter;
-import org.chromium.components.url_formatter.UrlFormatterJni;
 import org.chromium.ui.base.TestActivity;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.widget.ButtonCompat;
+import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,7 +63,6 @@ import java.util.List;
  * Tests for {@link CreatorCoordinator}.
  */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(shadows = {ShadowGURL.class})
 public class CreatorCoordinatorTest {
     @Mock
     private WebFeedBridge.Natives mWebFeedBridgeJniMock;
@@ -102,13 +98,12 @@ public class CreatorCoordinatorTest {
             new ActivityScenarioRule<>(TestActivity.class);
     @Rule
     public JniMocker mJniMocker = new JniMocker();
-    @Mock
-    private UrlFormatter.Natives mUrlFormatterJniMock;
+
+    private static final GURL DEFAULT_URL = JUnitTestGURLs.EXAMPLE_URL;
+    private static final GURL TEST_URL = JUnitTestGURLs.URL_1;
 
     private final byte[] mWebFeedIdDefault = "webFeedId".getBytes();
     private final boolean mFollowingDefault = false;
-    private final String mUrlDefault = JUnitTestGURLs.EXAMPLE_URL;
-    private final String mTestUrl = JUnitTestGURLs.URL_1;
     private final int mEntryPointDefault = SingleWebFeedEntryPoint.OTHER;
     private TestActivity mActivity;
 
@@ -121,31 +116,27 @@ public class CreatorCoordinatorTest {
         mJniMocker.mock(FeedReliabilityLoggingBridge.getTestHooksForTesting(),
                 mFeedReliabilityLoggingBridgeJniMock);
 
-        mJniMocker.mock(UrlFormatterJni.TEST_HOOKS, mUrlFormatterJniMock);
-        when(mUrlFormatterJniMock.formatUrlForDisplayOmitSchemePathAndTrivialSubdomains(any()))
-                .thenReturn(JUnitTestGURLs.URL_1);
-
         mActivityScenarioRule.getScenario().onActivity(activity -> mActivity = activity);
     }
 
     private CreatorCoordinator newCreatorCoordinator(
-            String url, byte[] webFeedId, int entryPoint, boolean following) {
+            GURL url, byte[] webFeedId, int entryPoint, boolean following) {
         return new CreatorCoordinator(mActivity, webFeedId, mSnackbarManager, mWindowAndroid,
-                mProfile, url, mCreatorWebContents, mCreatorOpenTab, mShareDelegateSupplier,
-                entryPoint, following, mSignInInterstitialInitiator);
+                mProfile, url == null ? null : url.getSpec(), mCreatorWebContents, mCreatorOpenTab,
+                mShareDelegateSupplier, entryPoint, following, mSignInInterstitialInitiator);
     }
 
     @Test
     public void testCreatorCoordinatorConstruction() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         assertNotNull("Could not construct CreatorCoordinator", creatorCoordinator);
     }
 
     @Test
     public void testActionBar() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         View outerView = creatorCoordinator.getView();
         ViewGroup actionBar = (ViewGroup) outerView.findViewById(R.id.action_bar);
         assertNotNull("Could not retrieve ActionBar", actionBar);
@@ -154,7 +145,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testOnChangeListener_noError() {
         CreatorCoordinator coordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         coordinator.setStreamForTest(mStreamMock);
         ContentChangedListener listener = coordinator.new ContentChangedListener();
 
@@ -171,7 +162,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testOnChangeListener_error() {
         CreatorCoordinator coordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         coordinator.setStreamForTest(mStreamMock);
         ContentChangedListener listener = coordinator.new ContentChangedListener();
 
@@ -191,7 +182,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testOnChangeListener_RemoveHeader() {
         CreatorCoordinator coordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         coordinator.setStreamForTest(mStreamMock);
         ContentChangedListener listener = coordinator.new ContentChangedListener();
 
@@ -211,7 +202,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorModel_Creation() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         assertNotNull("Could not retrieve CreatorModel", creatorModel);
     }
@@ -219,7 +210,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorModel_DefaultFollowing() {
         CreatorCoordinator creatorCoordinator =
-                newCreatorCoordinator(mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, true);
+                newCreatorCoordinator(DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, true);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         assertTrue(creatorModel.get(CreatorProperties.IS_FOLLOWED_KEY));
 
@@ -233,23 +224,24 @@ public class CreatorCoordinatorTest {
     }
     @Test
     public void testCreatorModel_DefaultUrl() {
-        String creatorUrl = mTestUrl;
+        GURL creatorUrl = TEST_URL;
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
                 creatorUrl, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         String modelUrl = creatorModel.get(CreatorProperties.URL_KEY);
-        assertEquals(creatorUrl, modelUrl);
+        assertEquals(creatorUrl.getSpec(), modelUrl);
 
         View creatorProfileView = creatorCoordinator.getProfileView();
         TextView urlView = creatorProfileView.findViewById(R.id.creator_url);
-        assertEquals(creatorUrl, urlView.getText());
+        assertEquals(UrlFormatter.formatUrlForDisplayOmitSchemePathAndTrivialSubdomains(creatorUrl),
+                urlView.getText());
     }
 
     @Test
     public void testCreatorModel_DefaultWebFeedId() {
         byte[] creatorWebFeedId = "creatorWebFeedId".getBytes();
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, creatorWebFeedId, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, creatorWebFeedId, mEntryPointDefault, mFollowingDefault);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         byte[] modelWebFeedId = creatorModel.get(CreatorProperties.WEB_FEED_ID_KEY);
         assertEquals(creatorWebFeedId, modelWebFeedId);
@@ -258,7 +250,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorModel_NewTitle() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         String newTitle = "creatorTitle 2.0";
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         creatorModel.set(CreatorProperties.TITLE_KEY, newTitle);
@@ -277,8 +269,8 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorModel_NewUrl() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
-        String newUrl = mTestUrl;
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+        String newUrl = TEST_URL.getSpec();
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         creatorModel.set(CreatorProperties.URL_KEY, newUrl);
         String url = creatorModel.get(CreatorProperties.URL_KEY);
@@ -286,13 +278,15 @@ public class CreatorCoordinatorTest {
 
         View creatorProfileView = creatorCoordinator.getProfileView();
         TextView urlView = creatorProfileView.findViewById(R.id.creator_url);
-        assertEquals(newUrl, urlView.getText());
+        assertEquals(
+                UrlFormatter.formatUrlForDisplayOmitSchemePathAndTrivialSubdomains(DEFAULT_URL),
+                urlView.getText());
     }
 
     @Test
     public void testCreatorModel_ToolbarVisibility() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         View creatorView = creatorCoordinator.getView();
         FrameLayout mButtonsContainer = creatorView.findViewById(R.id.creator_all_buttons_toolbar);
@@ -305,7 +299,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorModel_IsFollowedStatus() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         View creatorProfileView = creatorCoordinator.getProfileView();
         ButtonCompat followButton = creatorProfileView.findViewById(R.id.creator_follow_button);
@@ -334,7 +328,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorCoordinator_QueryFeed_nullWebFeedId() {
         CreatorCoordinator creatorCoordinator =
-                newCreatorCoordinator(mUrlDefault, null, mEntryPointDefault, mFollowingDefault);
+                newCreatorCoordinator(DEFAULT_URL, null, mEntryPointDefault, mFollowingDefault);
         PropertyModel creatorModel = creatorCoordinator.getCreatorModel();
         creatorCoordinator.queryFeedStream(
                 mFeedActionDelegate, mHelpAndFeedbackLauncher, mShareDelegateSupplier);
@@ -344,7 +338,7 @@ public class CreatorCoordinatorTest {
     @Test
     public void testCreatorCoordinator_InitializeBottomSheetView() {
         CreatorCoordinator creatorCoordinator = newCreatorCoordinator(
-                mUrlDefault, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
+                DEFAULT_URL, mWebFeedIdDefault, mEntryPointDefault, mFollowingDefault);
         ViewGroup creatorViewGroup = creatorCoordinator.getView();
         assertEquals(creatorViewGroup.getChildCount(), 2);
         View contentPreviewsBottomSheet =

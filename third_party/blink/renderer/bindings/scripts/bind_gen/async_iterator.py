@@ -1,4 +1,4 @@
-# Copyright 2023 The Chromium Authors. All rights reserved.
+# Copyright 2023 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,11 +30,11 @@ def make_constructors(cg_context):
 
     decls = ListNode([
         CxxFuncDefNode(name=cg_context.class_name,
-                       arg_decls=["IterationSourceBase* source", "Kind kind"],
+                       arg_decls=["IterationSourceBase* source"],
                        return_type="",
                        explicit=True,
                        member_initializer_list=[
-                           "${base_class_name}(source, kind)",
+                           "${base_class_name}(source)",
                        ]),
         CxxFuncDeclNode(name="~AsyncIterator",
                         arg_decls=[],

@@ -11,7 +11,7 @@
 #import "ios/chrome/browser/ui/settings/password/password_details/password_details_table_view_constants.h"
 #import "ios/chrome/browser/ui/settings/password/password_manager_egtest_utils.h"
 #import "ios/chrome/browser/ui/settings/password/password_settings_app_interface.h"
-#import "ios/chrome/grit/ios_chromium_strings.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
@@ -643,7 +643,7 @@ NSString* LeakedPasswordDescription() {
 
   // Enter edit mode and delete the password.
   password_manager_test_utils::TapNavigationBarEditButton();
-  DeleteCredential(username, @"concrete password");
+  DeleteCredential(username, @"https://example.com/");
 
   // Wait until the details view is dismissed.
   [ChromeEarlGreyUI waitForAppToIdle];
@@ -719,7 +719,7 @@ NSString* LeakedPasswordDescription() {
 
   // Enter edit mode and change the password to something that's not weak.
   password_manager_test_utils::TapNavigationBarEditButton();
-  DeleteCredential(username, @"concrete password");
+  DeleteCredential(username, @"https://example1.com/");
 
   // Wait until the details view is dismissed.
   [ChromeEarlGreyUI waitForAppToIdle];
@@ -837,7 +837,7 @@ NSString* LeakedPasswordDescription() {
 }
 
 // Tests the details page of a credential that is both weak and compromised when
-// openend from the weak issues page.
+// opened from the weak issues page.
 - (void)testCompromisedAndWeakPasswordOpenedInWeakContext {
   SaveCompromisedPasswordForm(/*password=*/@"1");
 
@@ -865,7 +865,7 @@ NSString* LeakedPasswordDescription() {
 }
 
 // Tests the details page of a credential that is both reused and compromised
-// when openend from the reused issues page.
+// when opened from the reused issues page.
 - (void)testCompromisedAndReusedPasswordOpenedInReusedContext {
   SaveCompromisedPasswordForm(/*password=*/@"reused password");
   SaveReusedPasswordForms();

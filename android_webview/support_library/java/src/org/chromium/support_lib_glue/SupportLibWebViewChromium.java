@@ -63,8 +63,12 @@ class SupportLibWebViewChromium implements WebViewProviderBoundaryInterface {
 
     @Override
     public /* WebMessagePort */ InvocationHandler[] createWebMessageChannel() {
-        return SupportLibWebMessagePortAdapter.fromMessagePorts(
-                mSharedWebViewChromium.createWebMessageChannel());
+        try (TraceEvent event =
+                        TraceEvent.scoped("WebView.APICall.AndroidX.CREATE_WEB_MESSAGE_CHANNEL")) {
+            recordApiCall(ApiCall.CREATE_WEB_MESSAGE_CHANNEL);
+            return SupportLibWebMessagePortAdapter.fromMessagePorts(
+                    mSharedWebViewChromium.createWebMessageChannel());
+        }
     }
 
     @Override
@@ -168,6 +172,23 @@ class SupportLibWebViewChromium implements WebViewProviderBoundaryInterface {
             mSharedWebViewChromium.setWebViewRendererClientAdapter(webViewRendererClient != null
                             ? new SupportLibWebViewRendererClientAdapter(webViewRendererClient)
                             : null);
+        }
+    }
+
+    @Override
+    public void setProfile(String profileName) {
+        try (TraceEvent event = TraceEvent.scoped("WebView.APICall.AndroidX.SET_WEBVIEW_PROFILE")) {
+            recordApiCall(ApiCall.SET_WEBVIEW_PROFILE);
+            mSharedWebViewChromium.setProfile(profileName);
+        }
+    }
+
+    @Override
+    public /* Profile */ InvocationHandler getProfile() {
+        try (TraceEvent event = TraceEvent.scoped("WebView.APICall.AndroidX.GET_WEBVIEW_PROFILE")) {
+            recordApiCall(ApiCall.GET_WEBVIEW_PROFILE);
+            return BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
+                    new SupportLibProfile(mSharedWebViewChromium.getProfile()));
         }
     }
 }

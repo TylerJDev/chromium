@@ -57,6 +57,8 @@ namespace policy {
 //     }
 //   ],
 //   "attachEncryptionSettings": true,  // optional field
+//   "configurationFileVersion": 123456, // optional field
+//   "source": "SomeString", // optional field - used only by tast tests
 //   "requestId": "SomeString",
 //   "device": {
 //     "client_id": "abcdef1234",
@@ -128,7 +130,7 @@ class POLICY_EXPORT EncryptedReportingJobConfiguration
   std::string GetUmaString() const override;
 
  private:
-  std::set<std::string> GetTopLevelKeyAllowList();
+  static const base::flat_set<std::string>& GetTopLevelKeyAllowList();
   const bool is_device_managed_;
 
   // Parameters populated from the payload_.

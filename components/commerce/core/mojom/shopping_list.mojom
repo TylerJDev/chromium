@@ -126,6 +126,9 @@ interface ShoppingListHandler {
   // Returns if the user is eligible for price tracking.
   IsShoppingListEligible() => (bool eligible);
 
+  // Returns the ID of the shopping collection bookmark folder (not the UUID).
+  GetShoppingCollectionBookmarkFolderId() => (int64 collectionId);
+
   // Returns the price tracking status of the current URL.
   GetPriceTrackingStatusForCurrentUrl() => (bool tracked);
 
@@ -164,4 +167,8 @@ interface Page {
   // untrack price.
   OperationFailedForBookmark(BookmarkProductInfo bookmark_product,
                              bool attempted_track);
+
+  // Callback when a product bookmark is observed to be moved and
+  // pass along the BookmarkProductInfo of the product.
+  OnProductBookmarkMoved(BookmarkProductInfo bookmark_product);
 };

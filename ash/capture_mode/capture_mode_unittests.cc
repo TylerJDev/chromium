@@ -50,6 +50,7 @@
 #include "ash/root_window_controller.h"
 #include "ash/shell.h"
 #include "ash/style/icon_button.h"
+#include "ash/style/tab_slider_button.h"
 #include "ash/system/status_area_widget.h"
 #include "ash/test/ash_test_base.h"
 #include "ash/test/test_widget_builder.h"
@@ -77,6 +78,7 @@
 #include "chromeos/ash/services/recording/recording_service_test_api.h"
 #include "chromeos/dbus/power/fake_power_manager_client.h"
 #include "chromeos/dbus/power_manager/suspend.pb.h"
+#include "chromeos/ui/frame/frame_header.h"
 #include "components/account_id/account_id.h"
 #include "components/user_manager/user_type.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -200,12 +202,9 @@ class CaptureModeTest : public AshTestBase {
   CaptureModeTest& operator=(const CaptureModeTest&) = delete;
   ~CaptureModeTest() override = default;
 
-  bool demo_tools_enabled() const { return demo_tools_enabled_; }
-
   // AshTestBase:
   void SetUp() override {
     AshTestBase::SetUp();
-    demo_tools_enabled_ = features::AreCaptureModeDemoToolsEnabled();
   }
 
   views::Widget* GetCaptureModeLabelWidget() const {
@@ -352,8 +351,6 @@ class CaptureModeTest : public AshTestBase {
     return child;
   }
 
- private:
-  bool demo_tools_enabled_ = false;
 };
 
 class CaptureSessionWidgetClosed {
@@ -462,11 +459,11 @@ TEST_F(CaptureModeTest, StartWithMostRecentTypeAndSource) {
   controller->Start(CaptureModeEntryType::kQuickSettings);
   EXPECT_TRUE(controller->IsActive());
 
-  EXPECT_FALSE(GetImageToggleButton()->toggled());
-  EXPECT_TRUE(GetVideoToggleButton()->toggled());
-  EXPECT_TRUE(GetFullscreenToggleButton()->toggled());
-  EXPECT_FALSE(GetRegionToggleButton()->toggled());
-  EXPECT_FALSE(GetWindowToggleButton()->toggled());
+  EXPECT_FALSE(GetImageToggleButton()->selected());
+  EXPECT_TRUE(GetVideoToggleButton()->selected());
+  EXPECT_TRUE(GetFullscreenToggleButton()->selected());
+  EXPECT_FALSE(GetRegionToggleButton()->selected());
+  EXPECT_FALSE(GetWindowToggleButton()->selected());
 
   ClickOnView(GetCloseButton(), GetEventGenerator());
   EXPECT_FALSE(controller->IsActive());
@@ -477,24 +474,24 @@ TEST_F(CaptureModeTest, ChangeTypeAndSourceFromUI) {
   controller->Start(CaptureModeEntryType::kQuickSettings);
   EXPECT_TRUE(controller->IsActive());
 
-  EXPECT_TRUE(GetImageToggleButton()->toggled());
-  EXPECT_FALSE(GetVideoToggleButton()->toggled());
+  EXPECT_TRUE(GetImageToggleButton()->selected());
+  EXPECT_FALSE(GetVideoToggleButton()->selected());
   auto* event_generator = GetEventGenerator();
   ClickOnView(GetVideoToggleButton(), event_generator);
-  EXPECT_FALSE(GetImageToggleButton()->toggled());
-  EXPECT_TRUE(GetVideoToggleButton()->toggled());
+  EXPECT_FALSE(GetImageToggleButton()->selected());
+  EXPECT_TRUE(GetVideoToggleButton()->selected());
   EXPECT_EQ(controller->type(), CaptureModeType::kVideo);
 
   ClickOnView(GetWindowToggleButton(), event_generator);
-  EXPECT_FALSE(GetFullscreenToggleButton()->toggled());
-  EXPECT_FALSE(GetRegionToggleButton()->toggled());
-  EXPECT_TRUE(GetWindowToggleButton()->toggled());
+  EXPECT_FALSE(GetFullscreenToggleButton()->selected());
+  EXPECT_FALSE(GetRegionToggleButton()->selected());
+  EXPECT_TRUE(GetWindowToggleButton()->selected());
   EXPECT_EQ(controller->source(), CaptureModeSource::kWindow);
 
   ClickOnView(GetFullscreenToggleButton(), event_generator);
-  EXPECT_TRUE(GetFullscreenToggleButton()->toggled());
-  EXPECT_FALSE(GetRegionToggleButton()->toggled());
-  EXPECT_FALSE(GetWindowToggleButton()->toggled());
+  EXPECT_TRUE(GetFullscreenToggleButton()->selected());
+  EXPECT_FALSE(GetRegionToggleButton()->selected());
+  EXPECT_FALSE(GetWindowToggleButton()->selected());
   EXPECT_EQ(controller->source(), CaptureModeSource::kFullscreen);
 }
 
@@ -662,7 +659,7 @@ TEST_F(CaptureModeTest, CaptureRegionEdgeResizeBehavior) {
 
   // For each edge point try dragging to several points and verify that the
   // capture region is as expected.
-  struct {
+  struct DragEdgeCase {
     std::string trace;
     gfx::Point drag_point;
     // True if horizontal direction (left, right). Height stays the same while
@@ -672,19 +669,34 @@ TEST_F(CaptureModeTest, CaptureRegionEdgeResizeBehavior) {
     // |drag_point|. For example, if |drag_point| is the left center of
     // |target_region|, then |anchor_edge| is the right edge.
     int anchor_edge;
-  } kDragEdgeCases[] = {
+  };
+
+  // Cases where the drag starts in the center of the edge, i.e., at the
+  // indicator circles.
+  std::vector<DragEdgeCase> drag_edge_cases = {
       {"left", target_region.left_center(), true, target_region.right()},
       {"top", target_region.top_center(), false, target_region.bottom()},
       {"right", target_region.right_center(), true, target_region.x()},
       {"bottom", target_region.bottom_center(), false, target_region.y()},
   };
 
+  // Append cases where the drag starts along the edge but not at the circles.
+  std::vector<DragEdgeCase> offset_cases = {};
+  for (auto center_case : drag_edge_cases) {
+    DragEdgeCase new_case(center_case);
+    center_case.horizontal ? new_case.drag_point.Offset(0, 25)
+                           : new_case.drag_point.Offset(25, 0);
+    offset_cases.push_back(new_case);
+  }
+  drag_edge_cases.insert(drag_edge_cases.end(), offset_cases.begin(),
+                         offset_cases.end());
+
   // Drag to a couple of points that change both x and y. In all these cases,
   // only the width or height should change.
   auto drag_test_points = {gfx::Point(150, 150), gfx::Point(350, 350),
                            gfx::Point(450, 450)};
   auto* event_generator = GetEventGenerator();
-  for (auto test_case : kDragEdgeCases) {
+  for (auto test_case : drag_edge_cases) {
     SCOPED_TRACE(test_case.trace);
     event_generator->set_current_screen_location(test_case.drag_point);
     event_generator->PressLeftButton();
@@ -750,7 +762,7 @@ TEST_F(CaptureModeTest, CaptureRegionCoversCaptureModeBar) {
   auto* controller = StartImageRegionCapture();
 
   // Select a region such that the capture mode bar is covered.
-  SelectRegion(gfx::Rect(5, 5, 795, 795));
+  SelectRegion(gfx::Rect(5, 5, 795, 695));
   EXPECT_TRUE(controller->user_capture_region().Contains(
       GetCaptureModeBarView()->GetBoundsInScreen()));
 
@@ -834,10 +846,11 @@ TEST_F(CaptureModeTest, CaptureRegionMagnifierWhenFineTuning) {
   struct {
     std::string trace;
     FineTunePosition position;
-  } kFineTunePositions[] = {{"top_left", FineTunePosition::kTopLeft},
-                            {"top_right", FineTunePosition::kTopRight},
-                            {"bottom_right", FineTunePosition::kBottomRight},
-                            {"bottom_left", FineTunePosition::kBottomLeft}};
+  } kFineTunePositions[] = {
+      {"top_left_vertex", FineTunePosition::kTopLeftVertex},
+      {"top_right_vertex", FineTunePosition::kTopRightVertex},
+      {"bottom_right_vertex", FineTunePosition::kBottomRightVertex},
+      {"bottom_left_vertex", FineTunePosition::kBottomLeftVertex}};
   for (const auto& fine_tune_position : kFineTunePositions) {
     SCOPED_TRACE(fine_tune_position.trace);
     const gfx::Point drag_affordance_location =
@@ -901,7 +914,7 @@ TEST_F(CaptureModeTest, CaptureRegionDimensionsLabelLocation) {
   // Create a new capture region close to the bottom side of the screen.
   // The label should now appear inside the capture region, just above the
   // bottom edge. It should be above the bottom of the screen as well.
-  capture_region.SetRect(100, 700, 600, 790);
+  capture_region.SetRect(100, 700, 600, 100);
   SelectRegion(capture_region, /*release_mouse=*/false);
   EXPECT_EQ(800 - CaptureModeSession::kSizeLabelYDistanceFromRegionDp,
             GetDimensionsLabelWindow()->bounds().bottom());
@@ -983,7 +996,7 @@ TEST_F(CaptureModeTest, CaptureRegionCaptureButtonDoesNotIntersectCaptureBar) {
   event_generator->set_current_screen_location(gfx::Point());
   event_generator->ClickLeftButton();
   SelectRegion(gfx::Rect(capture_bar_midpoint_x, capture_bar_bounds.bottom(),
-                         20, 800 - capture_bar_bounds.bottom()));
+                         20, 700 - capture_bar_bounds.bottom()));
   EXPECT_FALSE(capture_bar_bounds.Intersects(
       GetCaptureModeLabelWidget()->GetWindowBoundsInScreen()));
 
@@ -992,7 +1005,7 @@ TEST_F(CaptureModeTest, CaptureRegionCaptureButtonDoesNotIntersectCaptureBar) {
   // region.
   event_generator->set_current_screen_location(gfx::Point());
   event_generator->ClickLeftButton();
-  SelectRegion(gfx::Rect(20, 800));
+  SelectRegion(gfx::Rect(20, 700));
   EXPECT_GT(GetCaptureModeLabelWidget()->GetWindowBoundsInScreen().x(), 20);
 }
 
@@ -1057,6 +1070,30 @@ TEST_F(CaptureModeTest, WindowCapture) {
   // Stop the capture session to avoid CaptureModeSession from receiving more
   // events during test tearing down.
   controller->Stop();
+}
+
+TEST_F(CaptureModeTest, WindowCaptureConfineBoundsDoNotOverlapWindowCaption) {
+  std::unique_ptr<aura::Window> window(CreateTestWindow(gfx::Rect(200, 200)));
+  auto* controller =
+      StartCaptureSession(CaptureModeSource::kWindow, CaptureModeType::kVideo);
+  GetEventGenerator()->MoveMouseToCenterOf(window.get());
+  auto* capture_mode_session = controller->capture_mode_session();
+  EXPECT_EQ(capture_mode_session->GetSelectedWindow(), window.get());
+
+  auto* frame_header = capture_mode_util::GetWindowFrameHeader(window.get());
+  auto* caption_button_container = frame_header->caption_button_container();
+
+  // While the session is still active, the calculated confine bounds should not
+  // overlap with the frame caption.
+  EXPECT_FALSE(controller->GetCaptureSurfaceConfineBounds().Intersects(
+      caption_button_container->bounds()));
+
+  // Start recording and expect that the confine bounds calculated during
+  // recording still do not overlap with the frame caption.
+  StartVideoRecordingImmediately();
+  WaitForRecordingToStart();
+  EXPECT_FALSE(controller->GetCaptureSurfaceConfineBounds().Intersects(
+      caption_button_container->bounds()));
 }
 
 // Tests that the capture bar is located on the root with the cursor when
@@ -2572,15 +2609,13 @@ TEST_F(CaptureModeTest, RefreshCaptureRegionInOverviewForKWindow) {
 
   auto* event_generator = GetEventGenerator();
   event_generator->MoveMouseToCenterOf(window.get());
-  gfx::Rect capture_region = session->GetCaptureSurfaceConfineBounds();
-  wm::ConvertRectToScreen(session->GetSelectedWindow(), &capture_region);
-  EXPECT_EQ(capture_region, window->GetBoundsInScreen());
+  EXPECT_EQ(window.get(), session->GetSelectedWindow());
 
   // Start overview and verify that the capture region is refreshed correctly.
   auto* overview_controller = Shell::Get()->overview_controller();
   overview_controller->StartOverview(OverviewStartAction::kTests);
   ASSERT_TRUE(overview_controller->InOverviewSession());
-  OverviewItem* overview_item =
+  auto* overview_item =
       overview_controller->overview_session()->GetOverviewItemForWindow(
           window.get());
   const auto target_bounds = overview_item->target_bounds();
@@ -3535,6 +3570,40 @@ TEST_F(CaptureModeTest, NumberOfCaptureRegionAdjustmentsHistogram) {
   histogram_tester.ExpectBucketCount(kTabletHistogram, 0, 1);
 }
 
+TEST_F(CaptureModeTest, ResizeRegionBoundedByDisplay) {
+  UpdateDisplay("800x700");
+
+  auto* controller = StartImageRegionCapture();
+  ASSERT_TRUE(controller->IsActive());
+  ASSERT_EQ(CaptureModeSource::kRegion, controller->source());
+
+  // Attempt to create a new region that goes outside of the display bounds.
+  gfx::Rect target_region(gfx::Rect(200, 200, 800, 800));
+  auto* event_generator = GetEventGenerator();
+  event_generator->set_current_screen_location(target_region.origin());
+  event_generator->PressLeftButton();
+  event_generator->MoveMouseTo(target_region.bottom_right());
+  event_generator->ReleaseLeftButton();
+
+  // The region should stay within the display bounds.
+  ASSERT_TRUE(
+      controller->capture_mode_session()->current_root()->bounds().Contains(
+          controller->user_capture_region()));
+  EXPECT_EQ(gfx::Rect(200, 200, 600, 500), controller->user_capture_region());
+
+  // Attempt to adjust the existing region outside of the display bounds.
+  event_generator->set_current_screen_location(target_region.origin());
+  event_generator->PressLeftButton();
+  event_generator->MoveMouseTo(gfx::Point(-100, -100));
+  event_generator->ReleaseLeftButton();
+
+  // The region should stay within the display bounds.
+  ASSERT_TRUE(
+      controller->capture_mode_session()->current_root()->bounds().Contains(
+          controller->user_capture_region()));
+  EXPECT_EQ(gfx::Rect(0, 0, 800, 700), controller->user_capture_region());
+}
+
 TEST_F(CaptureModeTest, FullscreenCapture) {
   ui::ScopedAnimationDurationScaleMode animation_scale(
       ui::ScopedAnimationDurationScaleMode::NON_ZERO_DURATION);
@@ -3963,6 +4032,94 @@ TEST_F(CaptureModeTest, KeyboardNavigationDefaultRegion) {
   EXPECT_EQ(gfx::Rect(), controller->user_capture_region());
 }
 
+TEST_F(CaptureModeTest, A11yEnterWithNoFocus) {
+  auto* controller = StartImageRegionCapture();
+  SelectRegion(gfx::Rect(20, 20, 200, 200));
+  CaptureModeSessionTestApi test_api(controller->capture_mode_session());
+  ASSERT_EQ(CaptureModeSessionFocusCycler::FocusGroup::kNone,
+            test_api.GetCurrentFocusGroup());
+
+  // When nothing is focused, the `Enter` key should perform the capture.
+  auto* event_generator = GetEventGenerator();
+  SendKey(ui::VKEY_RETURN, event_generator);
+  EXPECT_FALSE(controller->IsActive());
+}
+
+TEST_F(CaptureModeTest, A11yEnterWithFocusOnRegionKnob) {
+  auto* controller = StartImageRegionCapture();
+  SelectRegion(gfx::Rect(20, 20, 200, 200));
+  CaptureModeSessionTestApi test_api(controller->capture_mode_session());
+
+  // Tab until you reach the region adjustment focus group.
+  auto* event_generator = GetEventGenerator();
+  while (test_api.GetCurrentFocusGroup() !=
+         CaptureModeSessionFocusCycler::FocusGroup::kSelection) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
+  // Tab twice more to be on one of the knobs.
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE, /*count=*/2);
+  ASSERT_EQ(CaptureModeSessionFocusCycler::FocusGroup::kSelection,
+            test_api.GetCurrentFocusGroup());
+
+  // Enter should perform capture.
+  SendKey(ui::VKEY_RETURN, event_generator);
+  EXPECT_FALSE(controller->IsActive());
+}
+
+TEST_F(CaptureModeTest, A11yEnterWithFocusOnWindow) {
+  auto window = CreateTestWindow(gfx::Rect(200, 200));
+  auto* controller =
+      StartCaptureSession(CaptureModeSource::kWindow, CaptureModeType::kImage);
+
+  CaptureModeSessionTestApi test_api(controller->capture_mode_session());
+
+  // Tab until you reach the window to be captured.
+  auto* event_generator = GetEventGenerator();
+  while (test_api.GetCurrentFocusGroup() !=
+         CaptureModeSessionFocusCycler::FocusGroup::kCaptureWindow) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
+  // Enter should perform capture.
+  SendKey(ui::VKEY_RETURN, event_generator);
+  EXPECT_FALSE(controller->IsActive());
+}
+
+TEST_F(CaptureModeTest, A11yEnterWithFocusOnFullscreenButton) {
+  auto* controller = StartImageRegionCapture();
+  EXPECT_EQ(controller->source(), CaptureModeSource::kRegion);
+  CaptureModeSessionTestApi test_api(controller->capture_mode_session());
+
+  // Tab once to enter focus into the bar.
+  auto* event_generator = GetEventGenerator();
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  ASSERT_EQ(CaptureModeSessionFocusCycler::FocusGroup::kTypeSource,
+            test_api.GetCurrentFocusGroup());
+
+  // Tab until you reach the fullscreen toggle button.
+  auto* fullscreen_toggle_button = test_api.GetCaptureModeBarView()
+                                       ->GetCaptureSourceView()
+                                       ->fullscreen_toggle_button();
+  while (test_api.GetCurrentFocusedView()->GetView() !=
+         fullscreen_toggle_button) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
+  // The first Enter will switch the source to `kFullscreen`.
+  SendKey(ui::VKEY_RETURN, event_generator);
+  EXPECT_TRUE(controller->IsActive());
+  EXPECT_EQ(controller->source(), CaptureModeSource::kFullscreen);
+
+  // The focus should not change.
+  EXPECT_EQ(test_api.GetCurrentFocusedView()->GetView(),
+            fullscreen_toggle_button);
+
+  // The second Enter should perform capture.
+  SendKey(ui::VKEY_RETURN, event_generator);
+  EXPECT_FALSE(controller->IsActive());
+}
+
 // Tests that the UAF issue caused by `NotifyAccessibilityEvent` after the
 // button been destroyed has been handled without leading to a crash.
 TEST_F(CaptureModeTest, KeyboardNavigationButtonDestroyedAfterBeenActivated) {
@@ -4337,14 +4494,14 @@ TEST_F(CaptureModeTest, CannotDoMultipleRecordings) {
   controller->Start(CaptureModeEntryType::kQuickSettings);
   EXPECT_TRUE(controller->IsActive());
   EXPECT_EQ(CaptureModeType::kImage, controller->type());
-  EXPECT_TRUE(GetImageToggleButton()->toggled());
-  EXPECT_FALSE(GetVideoToggleButton()->toggled());
+  EXPECT_TRUE(GetImageToggleButton()->selected());
+  EXPECT_FALSE(GetVideoToggleButton()->selected());
   EXPECT_FALSE(GetVideoToggleButton()->GetEnabled());
 
   // Clicking on the video button should do nothing.
   ClickOnView(GetVideoToggleButton(), GetEventGenerator());
-  EXPECT_TRUE(GetImageToggleButton()->toggled());
-  EXPECT_FALSE(GetVideoToggleButton()->toggled());
+  EXPECT_TRUE(GetImageToggleButton()->selected());
+  EXPECT_FALSE(GetVideoToggleButton()->selected());
   EXPECT_EQ(CaptureModeType::kImage, controller->type());
 
   // Things should go back to normal when there's no recording going on.
@@ -4352,8 +4509,8 @@ TEST_F(CaptureModeTest, CannotDoMultipleRecordings) {
   controller->EndVideoRecording(EndRecordingReason::kStopRecordingButton);
   StartCaptureSession(CaptureModeSource::kFullscreen, CaptureModeType::kVideo);
   EXPECT_EQ(CaptureModeType::kVideo, controller->type());
-  EXPECT_FALSE(GetImageToggleButton()->toggled());
-  EXPECT_TRUE(GetVideoToggleButton()->toggled());
+  EXPECT_FALSE(GetImageToggleButton()->selected());
+  EXPECT_TRUE(GetVideoToggleButton()->selected());
   EXPECT_TRUE(GetVideoToggleButton()->GetEnabled());
 }
 
@@ -5421,7 +5578,7 @@ TEST_F(ProjectorCaptureModeIntegrationTests, BarButtonsState) {
   // button should be enabled and active.
   EXPECT_FALSE(GetImageToggleButton());
   EXPECT_TRUE(GetVideoToggleButton()->GetEnabled());
-  EXPECT_TRUE(GetVideoToggleButton()->toggled());
+  EXPECT_TRUE(GetVideoToggleButton()->selected());
 }
 
 TEST_F(ProjectorCaptureModeIntegrationTests, StartEndRecording) {
@@ -6732,9 +6889,13 @@ TEST_F(CaptureModeSettingsTest, SwitchWhichFolderToUserFromOptions) {
 TEST_F(CaptureModeSettingsTest, CaptureLabelViewNotOverlapsWithSettingsView) {
   // Update the display size to make sure capture label widget will not
   // overlap with settings widget
-  UpdateDisplay("1200x1000");
+  UpdateDisplay("800x600");
 
-  auto* controller = StartImageRegionCapture();
+  auto* controller = CaptureModeController::Get();
+  // Set the region at an area far away from where the settings menu shows.
+  controller->SetUserCaptureRegion(gfx::Rect(200, 200), /*by_user=*/true);
+
+  StartImageRegionCapture();
   auto* event_generator = GetEventGenerator();
 
   // Tests that the capture label widget doesn't overlap with settings widget.
@@ -6833,12 +6994,19 @@ TEST_F(CaptureModeSettingsTest, PressingEnterSelectsFocusedItem) {
   EXPECT_EQ(FocusGroup::kPendingSettings,
             session_test_api.GetCurrentFocusGroup());
 
+  // Tab once to enter focus into the settings menu.
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  ASSERT_EQ(FocusGroup::kSettingsMenu, session_test_api.GetCurrentFocusGroup());
+
+  // Tab until focus reaches the `kAudioMicrophone` option.
   CaptureModeSettingsTestApi settings_test_api;
+  auto* mic_option = settings_test_api.GetMicrophoneOption();
+  while (session_test_api.GetCurrentFocusedView()->GetView() != mic_option) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
   CaptureModeMenuGroup* audio_input_menu_group =
       settings_test_api.GetAudioInputMenuGroup();
-
-  // Tab 3 times to reach the `kAudioMicrophone` option.
-  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE, /*count=*/3);
   EXPECT_TRUE(audio_input_menu_group->IsOptionChecked(kAudioOff));
   EXPECT_FALSE(audio_input_menu_group->IsOptionChecked(kAudioMicrophone));
 
@@ -6881,37 +7049,48 @@ TEST_F(CaptureModeSettingsTest, KeyboardNavigationForSettingsMenu) {
   EXPECT_EQ(FocusGroup::kSettingsMenu, session_test_api.GetCurrentFocusGroup());
   EXPECT_EQ(0u, session_test_api.GetCurrentFocusIndex());
 
-  // Tab once to focus on the `Off` option on the settings menu. Check `Off`
-  // option is the checked option not the `Microphone`.
-  SendKey(ui::VKEY_TAB, event_generator);
+  // Tab once to enter focus into the settings menu.
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  ASSERT_EQ(FocusGroup::kSettingsMenu, session_test_api.GetCurrentFocusGroup());
+
+  // Check that the `Off` option is the checked option not the `Microphone`.
   EXPECT_TRUE(audio_input_menu_group->IsOptionChecked(kAudioOff));
   EXPECT_FALSE(audio_input_menu_group->IsOptionChecked(kAudioMicrophone));
 
-  // Now tab once to focus on the `Microphone` option and enter space to enable
-  // it. Check now `Microphone` option is the checked option.
-  SendKey(ui::VKEY_TAB, event_generator);
+  // Tab until focus reaches the `kAudioMicrophone` option.
+  auto* mic_option = settings_test_api.GetMicrophoneOption();
+  while (session_test_api.GetCurrentFocusedView()->GetView() != mic_option) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
+  // Enter space, and check that now the `Microphone` option is checked.
   SendKey(ui::VKEY_SPACE, event_generator);
   EXPECT_FALSE(audio_input_menu_group->IsOptionChecked(kAudioOff));
   EXPECT_TRUE(audio_input_menu_group->IsOptionChecked(kAudioMicrophone));
 
-  Switch* toggle_button = CaptureModeSettingsTestApi()
-                              .GetDemoToolsMenuToggleButton()
-                              ->toggle_button();
+  Switch* toggle_button =
+      settings_test_api.GetDemoToolsMenuToggleButton()->toggle_button();
 
-  if (demo_tools_enabled()) {
     // The demo tools toggle button will be disabled by default.
     EXPECT_FALSE(toggle_button->GetIsOn());
 
-    // Tab once to focus on the demo tools toggle button and enter space to
-    // enable the toggle button.
-    SendKey(ui::VKEY_TAB, event_generator);
+    // Tab until focus reaches the demo tools toggle button and enter space to
+    // enable it.
+    while (session_test_api.GetCurrentFocusedView()->GetView() !=
+           toggle_button) {
+      SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+    }
     SendKey(ui::VKEY_SPACE, event_generator);
     EXPECT_TRUE(toggle_button->GetIsOn());
+
+  // Tab until focus reaches the `Select folder...` menu item.
+  auto* select_folder_option = settings_test_api.GetSelectFolderMenuItem();
+  while (session_test_api.GetCurrentFocusedView()->GetView() !=
+         select_folder_option) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
   }
 
-  // Tab three times to focus on the `Select folder...` menu item and enter
-  // space to open the folder selection window.
-  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE, /*count=*/3);
+  // Enter space to open the folder selection window.
   SendKey(ui::VKEY_SPACE, event_generator);
   auto* dialog_factory = FakeFolderSelectionDialogFactory::Get();
   EXPECT_TRUE(IsFolderSelectionDialogShown());
@@ -6968,11 +7147,17 @@ TEST_F(CaptureModeSettingsTest,
       highlightable_items, custom_folder_view,
       &CaptureModeSessionFocusCycler::HighlightableView::GetView));
 
-  // Tab `count` times to focus on the default `Downloads` option.
-  const int count = demo_tools_enabled() ? 6 : 5;
-  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE, count);
-  EXPECT_EQ(session_test_api.GetCurrentFocusedView()->GetView(),
-            settings_test_api.GetDefaultDownloadsOption());
+  // Tab once to enter focus into the settings menu.
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  ASSERT_EQ(FocusGroup::kSettingsMenu, session_test_api.GetCurrentFocusGroup());
+
+  // Tab until the focus is on the default `Downloads` option.
+  auto* downloads_option = settings_test_api.GetDefaultDownloadsOption();
+  ASSERT_TRUE(downloads_option);
+  while (session_test_api.GetCurrentFocusedView()->GetView() !=
+         downloads_option) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
 
   // Tab once to check the disabled `kCustomFolder` option is skipped and now
   // the `Select folder...` menu item gets focused.
@@ -7006,15 +7191,20 @@ TEST_F(CaptureModeSettingsTest,
   CaptureModeSettingsView* settings_menu = GetCaptureModeSettingsView();
   ASSERT_TRUE(settings_menu);
 
-  // Tab `count` times to focus on the `Select folder...` menu item and enter
-  // space to open the folder selection window.
-  const int count = demo_tools_enabled() ? 8 : 7;
-  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE, count);
+  // Tab once to enter focus into the settings menu.
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  ASSERT_EQ(FocusGroup::kSettingsMenu, test_api.GetCurrentFocusGroup());
+
+  // Tab until focus reaches the `Select folder...` menu item.
+  CaptureModeSettingsTestApi settings_test_api;
+  auto* select_folder_option = settings_test_api.GetSelectFolderMenuItem();
+  while (test_api.GetCurrentFocusedView()->GetView() != select_folder_option) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
+  // Enter space to open the folder selection window.
   SendKey(ui::VKEY_SPACE, event_generator);
   EXPECT_TRUE(IsFolderSelectionDialogShown());
-
-  EXPECT_EQ(FocusGroup::kSettingsMenu, test_api.GetCurrentFocusGroup());
-  EXPECT_EQ(demo_tools_enabled() ? 7u : 6u, test_api.GetCurrentFocusIndex());
 
   // Select the default `Downloads` folder as the custom folder which will
   // have custom folder option get removed.
@@ -7058,16 +7248,21 @@ TEST_F(CaptureModeSettingsTest, KeyboardNavigationForAddingCustomFolderOption) {
   CaptureModeSettingsView* settings_menu = GetCaptureModeSettingsView();
   ASSERT_TRUE(settings_menu);
 
-  // Tab `count` times to focus on the `Select folder...` menu item and enter
-  // space to open the folder selection window.
-  const int count = demo_tools_enabled() ? 7 : 6;
-  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE, count);
+  // Tab once to enter focus into the settings menu.
+  SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  ASSERT_EQ(FocusGroup::kSettingsMenu, session_test_api.GetCurrentFocusGroup());
+
+  // Tab until focus reaches the `Select folder...` menu item.
+  CaptureModeSettingsTestApi settings_test_api;
+  auto* select_folder_option = settings_test_api.GetSelectFolderMenuItem();
+  while (session_test_api.GetCurrentFocusedView()->GetView() !=
+         select_folder_option) {
+    SendKey(ui::VKEY_TAB, event_generator, ui::EF_NONE);
+  }
+
+  // Enter space to open the folder selection window.
   SendKey(ui::VKEY_SPACE, event_generator);
   EXPECT_TRUE(IsFolderSelectionDialogShown());
-
-  EXPECT_EQ(FocusGroup::kSettingsMenu, session_test_api.GetCurrentFocusGroup());
-  EXPECT_EQ(demo_tools_enabled() ? 6u : 5u,
-            session_test_api.GetCurrentFocusIndex());
 
   // Select the custom folder and wait for the settings menu to be refreshed.
   // The custom folder option should be added to the settings menu and checked.
@@ -7077,7 +7272,6 @@ TEST_F(CaptureModeSettingsTest, KeyboardNavigationForAddingCustomFolderOption) {
   auto* dialog_factory = FakeFolderSelectionDialogFactory::Get();
   dialog_factory->AcceptPath(custom_folder);
   WaitForSettingsMenuToBeRefreshed();
-  CaptureModeSettingsTestApi settings_test_api;
   EXPECT_TRUE(settings_test_api.GetCustomFolderOptionIfAny());
 
   // Press space to ensure the folder selection window can be opened after the

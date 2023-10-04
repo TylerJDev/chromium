@@ -11,47 +11,67 @@
 #include "components/content_settings/core/common/content_settings.h"
 #include "url/gurl.h"
 
+namespace content {
+class WebContents;
+}  // namespace content
+
 namespace views {
 class View;
 }  // namespace views
+
+class HostContentSettingsMap;
 
 // Helper class to manage the content setting for AutoPiP, including the
 // permissions embargo.
 class AutoPipSettingHelper {
  public:
+  using ResultCb =
+      base::OnceCallback<void(AutoPipSettingView::UiResult result)>;
+  // Convenience function.
+  static std::unique_ptr<AutoPipSettingHelper> CreateForWebContents(
+      content::WebContents* web_contents,
+      base::OnceClosure close_pip_cb);
+
   // We'll use `close_pip_cb` to close the pip window as needed.  It should be
-  // safe to call at any time.
-  AutoPipSettingHelper(GURL origin, base::OnceClosure close_pip_cb);
+  // safe to call at any time.  It is up to our caller to make sure that we are
+  // destroyed if `settings_map` is.
+  AutoPipSettingHelper(const GURL& origin,
+                       HostContentSettingsMap* settings_map,
+                       base::OnceClosure close_pip_cb);
   ~AutoPipSettingHelper();
 
   AutoPipSettingHelper(const AutoPipSettingHelper&) = delete;
   AutoPipSettingHelper(AutoPipSettingHelper&&) = delete;
 
-  // Create a views::View that should be used as the overlay view when the
-  // content setting is ASK.  This view will call back to us, so we should
-  // outlive it.  Will return nullptr if no UI is needed, and will optionally
-  // call `close_pip_cb_` if AutoPiP is blocked.
-  std::unique_ptr<views::View> CreateOverlayViewIfNeeded();
+  // Create an AutoPipSettingOverlayView that should be used as the overlay view
+  // when the content setting is ASK.  This view will call back to us, so we
+  // should outlive it.  Will return nullptr if no UI is needed, and will
+  // optionally call `close_pip_cb_` if AutoPiP is blocked.
+  std::unique_ptr<AutoPipSettingOverlayView> CreateOverlayViewIfNeeded(
+      const gfx::Rect& browser_view_overridden_bounds,
+      views::View* anchor_view,
+      views::BubbleBorder::Arrow arrow);
 
-  // If called, pretend that the content setting is `setting`.  This is
-  // temporary until we actually check content settings.
-  void override_content_setting_for_testing(ContentSetting setting) {
-    content_setting_override_ = setting;
-  }
+  // Only used for testing. Having access to the result callback during testing
+  // allows us to test the behaviour of clicking the various UI buttons, without
+  // the need to perform clicks.
+  ResultCb take_result_cb_for_testing() { return std::move(result_cb_); }
 
  private:
   // Returns the content setting, modified as needed by any embargo.
   ContentSetting GetEffectiveContentSetting();
 
+  // Update the content setting to `new_setting`, and clear any embargo.
+  void UpdateContentSetting(ContentSetting new_setting);
+
   // Notify us that the user has interacted with the content settings UI that's
   // displayed in the pip window.
-  void OnUiResult(AutoPipSettingOverlayView::UiResult result);
+  void OnUiResult(AutoPipSettingView::UiResult result);
 
   GURL origin_;
+  const raw_ptr<HostContentSettingsMap> settings_map_ = nullptr;
   base::OnceClosure close_pip_cb_;
-
-  // Set for testing.
-  absl::optional<ContentSetting> content_setting_override_;
+  ResultCb result_cb_;
 
   base::WeakPtrFactory<AutoPipSettingHelper> weak_factory_{this};
 };

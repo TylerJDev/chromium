@@ -412,9 +412,13 @@ GetDisplayInfosAndInvalidCrtcs(const DrmWrapper& drm) {
       continue;
     }
 
-    if (connector->connection == DRM_MODE_CONNECTED &&
-        connector->count_modes != 0) {
-      available_connectors.push_back(connector.get());
+    if (connector->connection == DRM_MODE_CONNECTED) {
+      if (connector->count_modes != 0) {
+        available_connectors.push_back(connector.get());
+      } else {
+        LOG(WARNING) << "[CONNECTOR:" << connector->connector_id
+                     << "] is connected but has no modes. Connector ignored.";
+      }
     }
 
     connectors.emplace_back(std::move(connector));
@@ -492,8 +496,9 @@ bool SameMode(const drmModeModeInfo& lhs, const drmModeModeInfo& rhs) {
 std::unique_ptr<display::DisplayMode> CreateDisplayMode(
     const drmModeModeInfo& mode) {
   return std::make_unique<display::DisplayMode>(
-      gfx::Size(mode.hdisplay, mode.vdisplay),
-      mode.flags & DRM_MODE_FLAG_INTERLACE, GetRefreshRate(mode));
+      gfx::Size{mode.hdisplay, mode.vdisplay},
+      mode.flags & DRM_MODE_FLAG_INTERLACE, GetRefreshRate(mode), mode.htotal,
+      mode.vtotal, mode.clock);
 }
 
 display::DisplaySnapshot::DisplayModeList ExtractDisplayModes(
@@ -648,7 +653,7 @@ std::unique_ptr<display::DisplaySnapshot> CreateDisplaySnapshot(
 
 int GetFourCCFormatForOpaqueFramebuffer(gfx::BufferFormat format) {
   // DRM atomic interface doesn't currently support specifying an alpha
-  // blending. We can simulate disabling alpha bleding creating an fb
+  // blending. We can simulate disabling alpha blending creating an fb
   // with a format without the alpha channel.
   switch (format) {
     case gfx::BufferFormat::RGBA_8888:

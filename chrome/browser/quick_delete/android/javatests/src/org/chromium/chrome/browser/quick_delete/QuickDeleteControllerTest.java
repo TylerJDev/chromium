@@ -41,6 +41,7 @@ import org.mockito.MockitoAnnotations;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.JniMocker;
@@ -57,7 +58,7 @@ import org.chromium.chrome.browser.layouts.LayoutTestUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.settings.SettingsActivity;
 import org.chromium.chrome.browser.tab.Tab;
-import org.chromium.chrome.browser.tab.state.CriticalPersistedTabData;
+import org.chromium.chrome.browser.tab.TabImpl;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuTestSupport;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -106,7 +107,7 @@ public class QuickDeleteControllerTest {
         // Set the time for the initial tab to outside of the quick delete timespan.
         Tab initialTab = mActivityTestRule.getActivity().getActivityTab();
         TestThreadUtils.runOnUiThreadBlocking(() -> {
-            CriticalPersistedTabData.from(initialTab)
+            ((TabImpl) initialTab)
                     .setLastNavigationCommittedTimestampMillis(
                             System.currentTimeMillis() - FIFTEEN_MINUTES_IN_MS);
         });
@@ -191,6 +192,7 @@ public class QuickDeleteControllerTest {
 
     @Test
     @MediumTest
+    @DisabledTest(message = "https://crbug.com/1477790")
     public void testSnackbarShown_WhenClickingDelete_AllTimeSelected() {
         openQuickDeleteDialog();
         onView(withId(R.id.quick_delete_spinner)).check(matches(isDisplayed()));
@@ -292,8 +294,13 @@ public class QuickDeleteControllerTest {
         openQuickDeleteDialog();
 
         HistogramWatcher histogramWatcher =
-                HistogramWatcher.newSingleRecordWatcher(QuickDeleteMetricsDelegate.HISTOGRAM_NAME,
-                        QuickDeleteMetricsDelegate.QuickDeleteAction.MORE_OPTIONS_CLICKED);
+                HistogramWatcher.newBuilder()
+                        .expectIntRecord(QuickDeleteMetricsDelegate.HISTOGRAM_NAME,
+                                QuickDeleteMetricsDelegate.QuickDeleteAction.MORE_OPTIONS_CLICKED)
+                        .expectIntRecord(QuickDeleteMetricsDelegate.HISTOGRAM_NAME,
+                                QuickDeleteMetricsDelegate.QuickDeleteAction
+                                        .DIALOG_DISMISSED_IMPLICITLY)
+                        .build();
 
         onViewWaiting(withId(R.id.quick_delete_more_options)).perform(click());
 

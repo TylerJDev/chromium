@@ -11,9 +11,9 @@
 #include "ash/accessibility/accessibility_observer.h"
 #include "ash/public/cpp/session/session_observer.h"
 #include "ash/system/tray/tray_detailed_view.h"
-#include "base/allocator/partition_allocator/pointers/raw_ptr.h"
 #include "base/memory/raw_ptr.h"
 #include "components/soda/soda_installer.h"
+#include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/gfx/font.h"
 #include "ui/views/controls/button/button.h"
 #include "ui/views/view.h"
@@ -38,8 +38,7 @@ class ASH_EXPORT AccessibilityDetailedView
     : public TrayDetailedView,
       public speech::SodaInstaller::Observer {
  public:
-  static const char kClassName[];
-
+  METADATA_HEADER(AccessibilityDetailedView);
   explicit AccessibilityDetailedView(DetailedViewDelegate* delegate);
 
   AccessibilityDetailedView(const AccessibilityDetailedView&) = delete;
@@ -49,9 +48,6 @@ class ASH_EXPORT AccessibilityDetailedView
   ~AccessibilityDetailedView() override;
 
   void OnAccessibilityStatusChanged();
-
-  // views::View
-  const char* GetClassName() const override;
 
  private:
   friend class AccessibilityDetailedViewLoginScreenTest;

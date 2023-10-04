@@ -5,7 +5,7 @@
 #ifndef CHROME_TEST_INTERACTION_FEATURE_ENGAGEMENT_INITIALIZED_OBSERVER_H_
 #define CHROME_TEST_INTERACTION_FEATURE_ENGAGEMENT_INITIALIZED_OBSERVER_H_
 
-#include "base/allocator/partition_allocator/pointers/raw_ptr.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "ui/base/interaction/state_observer.h"
 
@@ -29,7 +29,10 @@ class FeatureEngagementInitializedObserver
  private:
   void OnTrackerInitialized(bool success);
 
-  raw_ptr<feature_engagement::Tracker> tracker_ = nullptr;
+  // This observer may outlive the browser object slightly; to avoid race
+  // conditions on shutdown, allow it to dangle.
+  raw_ptr<feature_engagement::Tracker, DisableDanglingPtrDetection> tracker_ =
+      nullptr;
   base::WeakPtrFactory<FeatureEngagementInitializedObserver> weak_ptr_factory_{
       this};
 };

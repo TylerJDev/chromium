@@ -37,6 +37,12 @@ using ReportSuccessfulUploadCallback =
 using EncryptionKeyAttachedCallback =
     base::RepeatingCallback<void(SignedEncryptionInfo)>;
 
+// UpdateConfigInMissiveCallback is called if the configuration file obtained
+// from the server is different from the one that was sent previously using
+// this callback.
+using UpdateConfigInMissiveCallback =
+    base::RepeatingCallback<void(ListOfBlockedDestinations)>;
+
 // Successful response consists of Sequence information that may be
 // accompanied with force_confirm flag.
 struct SuccessfulUploadResponse {
@@ -67,6 +73,7 @@ class RecordHandler {
   // Any errors will result in |upload_complete| being called with a Status.
   virtual void HandleRecords(
       bool need_encryption_key,
+      int config_file_version,
       std::vector<EncryptedRecord> records,
       ScopedReservation scoped_reservation,
       CompletionCallback upload_complete,
@@ -86,6 +93,7 @@ class DmServerUploader : public TaskRunnerContext<CompletionResponse> {
  public:
   DmServerUploader(
       bool need_encryption_key,
+      int config_file_version,
       std::vector<EncryptedRecord> records,
       ScopedReservation scoped_reservation,
       RecordHandler* handler,  // Not owned!
@@ -123,6 +131,7 @@ class DmServerUploader : public TaskRunnerContext<CompletionResponse> {
                        const int64_t expected_sequencing_id) const;
 
   const bool need_encryption_key_;
+  const int config_file_version_;
   std::vector<EncryptedRecord> encrypted_records_
       GUARDED_BY_CONTEXT(sequence_checker_);
   ScopedReservation scoped_reservation_ GUARDED_BY_CONTEXT(sequence_checker_);

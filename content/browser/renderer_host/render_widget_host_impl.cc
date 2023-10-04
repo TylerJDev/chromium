@@ -1077,14 +1077,15 @@ blink::VisualProperties RenderWidgetHostImpl::GetVisualProperties() {
         delegate_->GetWindowsControlsOverlayRect();
     visual_properties.virtual_keyboard_resize_height_physical_px =
         delegate_->GetVirtualKeyboardResizeHeight();
+    visual_properties.window_show_state = delegate_->GetWindowShowState();
+    visual_properties.resizable = delegate_->GetResizable();
   } else {
     visual_properties.compositor_viewport_pixel_rect =
         properties_from_parent_local_root_.compositor_viewport;
-  }
+    visual_properties.window_show_state = ui::SHOW_STATE_DEFAULT;
 
-  // These properties come from the top-level main frame's renderer. The
-  // top-level main frame in the browser doesn't specify a value.
-  if (!is_top_most_widget) {
+    // These properties come from the top-level main frame's renderer. The
+    // top-level main frame in the browser doesn't specify a value.
     visual_properties.page_scale_factor =
         properties_from_parent_local_root_.page_scale_factor;
     visual_properties.is_pinch_gesture_active =
@@ -1504,18 +1505,18 @@ void RenderWidgetHostImpl::ForwardMouseEvent(const WebMouseEvent& mouse_event) {
 }
 
 void RenderWidgetHostImpl::ForwardMouseEventWithLatencyInfo(
-    const blink::WebMouseEvent& mouse_event,
+    const WebMouseEvent& mouse_event,
     const ui::LatencyInfo& latency) {
   TRACE_EVENT2("input", "RenderWidgetHostImpl::ForwardMouseEvent", "x",
                mouse_event.PositionInWidget().x(), "y",
                mouse_event.PositionInWidget().y());
 
-  DCHECK_GE(mouse_event.GetType(), blink::WebInputEvent::Type::kMouseTypeFirst);
-  DCHECK_LE(mouse_event.GetType(), blink::WebInputEvent::Type::kMouseTypeLast);
+  DCHECK_GE(mouse_event.GetType(), WebInputEvent::Type::kMouseTypeFirst);
+  DCHECK_LE(mouse_event.GetType(), WebInputEvent::Type::kMouseTypeLast);
 
   // This is used to auto-disable accessibility if we detect user input
   // but no accessibility API usage.
-  if (mouse_event.GetType() == blink::WebInputEvent::Type::kMouseDown) {
+  if (mouse_event.GetType() == WebInputEvent::Type::kMouseDown) {
     BrowserAccessibilityStateImpl::GetInstance()->OnUserInputEvent();
   }
 
@@ -1551,7 +1552,7 @@ void RenderWidgetHostImpl::ForwardWheelEvent(
 }
 
 void RenderWidgetHostImpl::ForwardWheelEventWithLatencyInfo(
-    const blink::WebMouseWheelEvent& wheel_event,
+    const WebMouseWheelEvent& wheel_event,
     const ui::LatencyInfo& latency) {
   TRACE_EVENT2("input", "RenderWidgetHostImpl::ForwardWheelEvent", "dx",
                wheel_event.delta_x, "dy", wheel_event.delta_y);
@@ -1597,7 +1598,7 @@ void RenderWidgetHostImpl::WaitForInputProcessed(base::OnceClosure callback) {
 }
 
 void RenderWidgetHostImpl::ForwardGestureEvent(
-    const blink::WebGestureEvent& gesture_event) {
+    const WebGestureEvent& gesture_event) {
   ForwardGestureEventWithLatencyInfo(
       gesture_event,
       ui::WebInputEventTraits::CreateLatencyInfoForWebGestureEvent(
@@ -1605,14 +1606,14 @@ void RenderWidgetHostImpl::ForwardGestureEvent(
 }
 
 void RenderWidgetHostImpl::ForwardGestureEventWithLatencyInfo(
-    const blink::WebGestureEvent& gesture_event,
+    const WebGestureEvent& gesture_event,
     const ui::LatencyInfo& latency) {
   TRACE_EVENT1("input", "RenderWidgetHostImpl::ForwardGestureEvent", "type",
                WebInputEvent::GetName(gesture_event.GetType()));
 
   // This is used to auto-disable accessibility if we detect user input
   // but no accessibility API usage.
-  if (gesture_event.GetType() == blink::WebInputEvent::Type::kGestureTapDown) {
+  if (gesture_event.GetType() == WebInputEvent::Type::kGestureTapDown) {
     BrowserAccessibilityStateImpl::GetInstance()->OnUserInputEvent();
   }
 
@@ -1626,7 +1627,7 @@ void RenderWidgetHostImpl::ForwardGestureEventWithLatencyInfo(
             blink::WebGestureDevice::kUninitialized);
 
   if (gesture_event.GetType() ==
-      blink::WebInputEvent::Type::kGestureScrollBegin) {
+      WebInputEvent::Type::kGestureScrollBegin) {
     DCHECK(
         !is_in_gesture_scroll_[static_cast<int>(gesture_event.SourceDevice())]);
     is_in_gesture_scroll_[static_cast<int>(gesture_event.SourceDevice())] =
@@ -1636,7 +1637,7 @@ void RenderWidgetHostImpl::ForwardGestureEventWithLatencyInfo(
     scroll_peak_gpu_mem_tracker_ =
         PeakGpuMemoryTracker::Create(PeakGpuMemoryTracker::Usage::SCROLL);
   } else if (gesture_event.GetType() ==
-             blink::WebInputEvent::Type::kGestureScrollEnd) {
+             WebInputEvent::Type::kGestureScrollEnd) {
     DCHECK(
         is_in_gesture_scroll_[static_cast<int>(gesture_event.SourceDevice())]);
     is_in_gesture_scroll_[static_cast<int>(gesture_event.SourceDevice())] =
@@ -1659,7 +1660,7 @@ void RenderWidgetHostImpl::ForwardGestureEventWithLatencyInfo(
     }
     scroll_peak_gpu_mem_tracker_ = nullptr;
   } else if (gesture_event.GetType() ==
-             blink::WebInputEvent::Type::kGestureFlingStart) {
+             WebInputEvent::Type::kGestureFlingStart) {
     NotifyUISchedulerOfScrollStateUpdate(
         BrowserUIThreadScheduler::ScrollState::kFlingActive);
     if (gesture_event.SourceDevice() == blink::WebGestureDevice::kTouchpad) {
@@ -1704,7 +1705,7 @@ void RenderWidgetHostImpl::ForwardTouchEventWithLatencyInfo(
 
   // This is used to auto-disable accessibility if we detect user input
   // but no accessibility API usage.
-  if (touch_event.GetType() == blink::WebInputEvent::Type::kTouchStart) {
+  if (touch_event.GetType() == WebInputEvent::Type::kTouchStart) {
     BrowserAccessibilityStateImpl::GetInstance()->OnUserInputEvent();
   }
 
@@ -1745,8 +1746,8 @@ void RenderWidgetHostImpl::ForwardKeyboardEventWithCommands(
 
   // This is used to auto-disable accessibility if we detect user input
   // but no accessibility API usage.
-  if (key_event.GetType() == blink::WebInputEvent::Type::kRawKeyDown ||
-      key_event.GetType() == blink::WebInputEvent::Type::kKeyDown) {
+  if (key_event.GetType() == WebInputEvent::Type::kRawKeyDown ||
+      key_event.GetType() == WebInputEvent::Type::kKeyDown) {
     BrowserAccessibilityStateImpl::GetInstance()->OnUserInputEvent();
   }
 
@@ -2003,7 +2004,7 @@ void RenderWidgetHostImpl::DragTargetDragEnter(
     const gfx::PointF& screen_pt,
     DragOperationsMask operations_allowed,
     int key_modifiers,
-    base::OnceCallback<void(::ui::mojom::DragOperation)> callback) {
+    DragOperationCallback callback) {
   DragTargetDragEnterWithMetaData(DropDataToMetaData(drop_data), client_pt,
                                   screen_pt, operations_allowed, key_modifiers,
                                   std::move(callback));
@@ -2015,11 +2016,11 @@ void RenderWidgetHostImpl::DragTargetDragEnterWithMetaData(
     const gfx::PointF& screen_pt,
     DragOperationsMask operations_allowed,
     int key_modifiers,
-    base::OnceCallback<void(::ui::mojom::DragOperation)> callback) {
+    DragOperationCallback callback) {
   // TODO(https://crbug.com/1102769): Replace with a for_frame() check.
   if (blink_frame_widget_) {
-    base::OnceCallback<void(::ui::mojom::DragOperation)> callback_wrapper =
-        base::BindOnce(&RenderWidgetHostImpl::OnUpdateDragCursor,
+    DragOperationCallback callback_wrapper =
+        base::BindOnce(&RenderWidgetHostImpl::OnUpdateDragOperation,
                        base::Unretained(this), std::move(callback));
     blink_frame_widget_->DragTargetDragEnter(
         DropMetaDataToDragData(metadata),
@@ -2033,13 +2034,13 @@ void RenderWidgetHostImpl::DragTargetDragOver(
     const gfx::PointF& screen_point,
     DragOperationsMask operations_allowed,
     int key_modifiers,
-    base::OnceCallback<void(ui::mojom::DragOperation)> callback) {
+    DragOperationCallback callback) {
   // TODO(https://crbug.com/1102769): Replace with a for_frame() check.
   if (blink_frame_widget_) {
     blink_frame_widget_->DragTargetDragOver(
         ConvertWindowPointToViewport(client_point), screen_point,
         operations_allowed, key_modifiers,
-        base::BindOnce(&RenderWidgetHostImpl::OnUpdateDragCursor,
+        base::BindOnce(&RenderWidgetHostImpl::OnUpdateDragOperation,
                        base::Unretained(this), std::move(callback)));
   }
 }
@@ -2251,14 +2252,15 @@ void RenderWidgetHostImpl::SelectionBoundsChanged(
   }
 }
 
-void RenderWidgetHostImpl::OnUpdateDragCursor(
+void RenderWidgetHostImpl::OnUpdateDragOperation(
     DragOperationCallback callback,
-    ui::mojom::DragOperation current_op) {
+    ui::mojom::DragOperation current_op,
+    bool document_is_handling_drag) {
   RenderViewHostDelegateView* view = delegate_->GetDelegateView();
   if (view) {
-    view->UpdateDragCursor(current_op);
+    view->UpdateDragOperation(current_op, document_is_handling_drag);
   }
-  std::move(callback).Run(current_op);
+  std::move(callback).Run(current_op, document_is_handling_drag);
 }
 
 void RenderWidgetHostImpl::RendererExited() {
@@ -2694,164 +2696,10 @@ void RenderWidgetHostImpl::UpdateBrowserControlsState(
                                                       animate);
 }
 
-// static
-bool RenderWidgetHostImpl::DidVisualPropertiesSizeChange(
-    const blink::VisualProperties& old_visual_properties,
-    const blink::VisualProperties& new_visual_properties) {
-  return old_visual_properties.auto_resize_enabled !=
-             new_visual_properties.auto_resize_enabled ||
-         (old_visual_properties.auto_resize_enabled &&
-          (old_visual_properties.min_size_for_auto_resize !=
-               new_visual_properties.min_size_for_auto_resize ||
-           old_visual_properties.max_size_for_auto_resize !=
-               new_visual_properties.max_size_for_auto_resize)) ||
-         (!old_visual_properties.auto_resize_enabled &&
-          (old_visual_properties.new_size != new_visual_properties.new_size ||
-           (old_visual_properties.compositor_viewport_pixel_rect.IsEmpty() &&
-            !new_visual_properties.compositor_viewport_pixel_rect.IsEmpty())));
-}
-
-// static
-bool RenderWidgetHostImpl::DoesVisualPropertiesNeedAck(
-    const std::unique_ptr<blink::VisualProperties>& old_visual_properties,
-    const blink::VisualProperties& new_visual_properties) {
-  // We should throttle sending updated VisualProperties to the renderer to
-  // the rate of commit. This ensures we don't overwhelm the renderer with
-  // visual updates faster than it can keep up.  |needs_ack| corresponds to
-  // cases where a commit is expected.
-  bool is_acking_applicable =
-      g_check_for_pending_visual_properties_ack &&
-      !new_visual_properties.auto_resize_enabled &&
-      !new_visual_properties.new_size.IsEmpty() &&
-      !new_visual_properties.compositor_viewport_pixel_rect.IsEmpty() &&
-      new_visual_properties.local_surface_id;
-
-  // If acking is applicable, then check if there has been an
-  // |old_visual_properties| stored which would indicate an update has been
-  // sent. If so, then acking is defined by size changing.
-  return is_acking_applicable &&
-         (!old_visual_properties ||
-          DidVisualPropertiesSizeChange(*old_visual_properties,
-                                        new_visual_properties));
-}
-
-// static
-bool RenderWidgetHostImpl::StoredVisualPropertiesNeedsUpdate(
-    const std::unique_ptr<blink::VisualProperties>& old_visual_properties,
-    const blink::VisualProperties& new_visual_properties) {
-  if (!old_visual_properties) {
-    return true;
-  }
-
-  const bool size_changed = DidVisualPropertiesSizeChange(
-      *old_visual_properties, new_visual_properties);
-
-  // Hold on the the LocalSurfaceId in a local variable otherwise the
-  // LocalSurfaceId may become invalid when used later.
-  const viz::LocalSurfaceId old_parent_local_surface_id =
-      old_visual_properties->local_surface_id.value_or(viz::LocalSurfaceId());
-  const viz::LocalSurfaceId new_parent_local_surface_id =
-      new_visual_properties.local_surface_id.value_or(viz::LocalSurfaceId());
-
-  const bool parent_local_surface_id_changed =
-      old_parent_local_surface_id.parent_sequence_number() !=
-          new_parent_local_surface_id.parent_sequence_number() ||
-      old_parent_local_surface_id.embed_token() !=
-          new_parent_local_surface_id.embed_token();
-
-  const bool zoom_changed =
-      old_visual_properties->zoom_level != new_visual_properties.zoom_level;
-
-  return zoom_changed || size_changed || parent_local_surface_id_changed ||
-         old_visual_properties->screen_infos !=
-             new_visual_properties.screen_infos ||
-         old_visual_properties->compositor_viewport_pixel_rect !=
-             new_visual_properties.compositor_viewport_pixel_rect ||
-         old_visual_properties->is_fullscreen_granted !=
-             new_visual_properties.is_fullscreen_granted ||
-         old_visual_properties->display_mode !=
-             new_visual_properties.display_mode ||
-         old_visual_properties->browser_controls_params !=
-             new_visual_properties.browser_controls_params ||
-         old_visual_properties->visible_viewport_size !=
-             new_visual_properties.visible_viewport_size ||
-         old_visual_properties->capture_sequence_number !=
-             new_visual_properties.capture_sequence_number ||
-         old_visual_properties->page_scale_factor !=
-             new_visual_properties.page_scale_factor ||
-         old_visual_properties->compositing_scale_factor !=
-             new_visual_properties.compositing_scale_factor ||
-         old_visual_properties->cursor_accessibility_scale_factor !=
-             new_visual_properties.cursor_accessibility_scale_factor ||
-         old_visual_properties->is_pinch_gesture_active !=
-             new_visual_properties.is_pinch_gesture_active ||
-         old_visual_properties->root_widget_window_segments !=
-             new_visual_properties.root_widget_window_segments ||
-         old_visual_properties->window_controls_overlay_rect !=
-             new_visual_properties.window_controls_overlay_rect;
-}
-
-void RenderWidgetHostImpl::AutoscrollStart(const gfx::PointF& position) {
-  GetView()->OnAutoscrollStart();
-  sent_autoscroll_scroll_begin_ = false;
-  autoscroll_in_progress_ = true;
-  delegate()->GetInputEventRouter()->SetAutoScrollInProgress(
-      autoscroll_in_progress_);
-  autoscroll_start_position_ = position;
-}
-
-void RenderWidgetHostImpl::AutoscrollFling(const gfx::Vector2dF& velocity) {
-  DCHECK(autoscroll_in_progress_);
-  if (!sent_autoscroll_scroll_begin_ && velocity != gfx::Vector2dF()) {
-    // Send a GSB event with valid delta hints.
-    WebGestureEvent scroll_begin =
-        blink::SyntheticWebGestureEventBuilder::Build(
-            WebInputEvent::Type::kGestureScrollBegin,
-            blink::WebGestureDevice::kSyntheticAutoscroll);
-    scroll_begin.SetPositionInWidget(autoscroll_start_position_);
-    scroll_begin.data.scroll_begin.delta_x_hint = velocity.x();
-    scroll_begin.data.scroll_begin.delta_y_hint = velocity.y();
-
-    ForwardGestureEventWithLatencyInfo(
-        scroll_begin, ui::LatencyInfo(ui::SourceEventType::OTHER));
-    sent_autoscroll_scroll_begin_ = true;
-  }
-
-  WebGestureEvent event = blink::SyntheticWebGestureEventBuilder::Build(
-      WebInputEvent::Type::kGestureFlingStart,
-      blink::WebGestureDevice::kSyntheticAutoscroll);
-  event.SetPositionInWidget(autoscroll_start_position_);
-  event.data.fling_start.velocity_x = velocity.x();
-  event.data.fling_start.velocity_y = velocity.y();
-
-  ForwardGestureEventWithLatencyInfo(
-      event, ui::LatencyInfo(ui::SourceEventType::OTHER));
-}
-
-void RenderWidgetHostImpl::AutoscrollEnd() {
-  autoscroll_in_progress_ = false;
-
-  delegate()->GetInputEventRouter()->SetAutoScrollInProgress(
-      autoscroll_in_progress_);
-  // Don't send a GFC if no GSB is sent.
-  if (!sent_autoscroll_scroll_begin_) {
-    return;
-  }
-
-  sent_autoscroll_scroll_begin_ = false;
-  WebGestureEvent cancel_event = blink::SyntheticWebGestureEventBuilder::Build(
-      WebInputEvent::Type::kGestureFlingCancel,
-      blink::WebGestureDevice::kSyntheticAutoscroll);
-  cancel_event.data.fling_cancel.prevent_boosting = true;
-  cancel_event.SetPositionInWidget(autoscroll_start_position_);
-
-  ForwardGestureEventWithLatencyInfo(
-      cancel_event, ui::LatencyInfo(ui::SourceEventType::OTHER));
-}
-
 void RenderWidgetHostImpl::StartDragging(
     blink::mojom::DragDataPtr drag_data,
-    blink::DragOperationsMask drag_operations_mask,
+    const url::Origin& source_origin,
+    DragOperationsMask drag_operations_mask,
     const SkBitmap& bitmap,
     const gfx::Vector2d& cursor_offset_in_dip,
     const gfx::Rect& drag_obj_rect_in_dip,
@@ -2936,8 +2784,166 @@ void RenderWidgetHostImpl::StartDragging(
   scaled_rect.Scale(scale);
   rect = gfx::ToRoundedRect(scaled_rect);
 #endif
-  view->StartDragging(filtered_data, drag_operations_mask, image, offset, rect,
-                      *event_info, this);
+  view->StartDragging(filtered_data, source_origin, drag_operations_mask, image,
+                      offset, rect, *event_info, this);
+}
+
+// static
+bool RenderWidgetHostImpl::DidVisualPropertiesSizeChange(
+    const blink::VisualProperties& old_visual_properties,
+    const blink::VisualProperties& new_visual_properties) {
+  return old_visual_properties.auto_resize_enabled !=
+             new_visual_properties.auto_resize_enabled ||
+         (old_visual_properties.auto_resize_enabled &&
+          (old_visual_properties.min_size_for_auto_resize !=
+               new_visual_properties.min_size_for_auto_resize ||
+           old_visual_properties.max_size_for_auto_resize !=
+               new_visual_properties.max_size_for_auto_resize)) ||
+         (!old_visual_properties.auto_resize_enabled &&
+          (old_visual_properties.new_size != new_visual_properties.new_size ||
+           (old_visual_properties.compositor_viewport_pixel_rect.IsEmpty() &&
+            !new_visual_properties.compositor_viewport_pixel_rect.IsEmpty())));
+}
+
+// static
+bool RenderWidgetHostImpl::DoesVisualPropertiesNeedAck(
+    const std::unique_ptr<blink::VisualProperties>& old_visual_properties,
+    const blink::VisualProperties& new_visual_properties) {
+  // We should throttle sending updated VisualProperties to the renderer to
+  // the rate of commit. This ensures we don't overwhelm the renderer with
+  // visual updates faster than it can keep up.  |needs_ack| corresponds to
+  // cases where a commit is expected.
+  bool is_acking_applicable =
+      g_check_for_pending_visual_properties_ack &&
+      !new_visual_properties.auto_resize_enabled &&
+      !new_visual_properties.new_size.IsEmpty() &&
+      !new_visual_properties.compositor_viewport_pixel_rect.IsEmpty() &&
+      new_visual_properties.local_surface_id;
+
+  // If acking is applicable, then check if there has been an
+  // |old_visual_properties| stored which would indicate an update has been
+  // sent. If so, then acking is defined by size changing.
+  return is_acking_applicable &&
+         (!old_visual_properties ||
+          DidVisualPropertiesSizeChange(*old_visual_properties,
+                                        new_visual_properties));
+}
+
+// static
+bool RenderWidgetHostImpl::StoredVisualPropertiesNeedsUpdate(
+    const std::unique_ptr<blink::VisualProperties>& old_visual_properties,
+    const blink::VisualProperties& new_visual_properties) {
+  if (!old_visual_properties) {
+    return true;
+  }
+
+  const bool size_changed = DidVisualPropertiesSizeChange(
+      *old_visual_properties, new_visual_properties);
+
+  // Hold on the the LocalSurfaceId in a local variable otherwise the
+  // LocalSurfaceId may become invalid when used later.
+  const viz::LocalSurfaceId old_parent_local_surface_id =
+      old_visual_properties->local_surface_id.value_or(viz::LocalSurfaceId());
+  const viz::LocalSurfaceId new_parent_local_surface_id =
+      new_visual_properties.local_surface_id.value_or(viz::LocalSurfaceId());
+
+  const bool parent_local_surface_id_changed =
+      old_parent_local_surface_id.parent_sequence_number() !=
+          new_parent_local_surface_id.parent_sequence_number() ||
+      old_parent_local_surface_id.embed_token() !=
+          new_parent_local_surface_id.embed_token();
+
+  const bool zoom_changed =
+      old_visual_properties->zoom_level != new_visual_properties.zoom_level;
+
+  return zoom_changed || size_changed || parent_local_surface_id_changed ||
+         old_visual_properties->screen_infos !=
+             new_visual_properties.screen_infos ||
+         old_visual_properties->compositor_viewport_pixel_rect !=
+             new_visual_properties.compositor_viewport_pixel_rect ||
+         old_visual_properties->is_fullscreen_granted !=
+             new_visual_properties.is_fullscreen_granted ||
+         old_visual_properties->display_mode !=
+             new_visual_properties.display_mode ||
+         old_visual_properties->window_show_state !=
+             new_visual_properties.window_show_state ||
+         old_visual_properties->resizable != new_visual_properties.resizable ||
+         old_visual_properties->browser_controls_params !=
+             new_visual_properties.browser_controls_params ||
+         old_visual_properties->visible_viewport_size !=
+             new_visual_properties.visible_viewport_size ||
+         old_visual_properties->capture_sequence_number !=
+             new_visual_properties.capture_sequence_number ||
+         old_visual_properties->page_scale_factor !=
+             new_visual_properties.page_scale_factor ||
+         old_visual_properties->compositing_scale_factor !=
+             new_visual_properties.compositing_scale_factor ||
+         old_visual_properties->cursor_accessibility_scale_factor !=
+             new_visual_properties.cursor_accessibility_scale_factor ||
+         old_visual_properties->is_pinch_gesture_active !=
+             new_visual_properties.is_pinch_gesture_active ||
+         old_visual_properties->root_widget_window_segments !=
+             new_visual_properties.root_widget_window_segments ||
+         old_visual_properties->window_controls_overlay_rect !=
+             new_visual_properties.window_controls_overlay_rect;
+}
+
+void RenderWidgetHostImpl::AutoscrollStart(const gfx::PointF& position) {
+  GetView()->OnAutoscrollStart();
+  sent_autoscroll_scroll_begin_ = false;
+  autoscroll_in_progress_ = true;
+  delegate()->GetInputEventRouter()->SetAutoScrollInProgress(
+      autoscroll_in_progress_);
+  autoscroll_start_position_ = position;
+}
+
+void RenderWidgetHostImpl::AutoscrollFling(const gfx::Vector2dF& velocity) {
+  DCHECK(autoscroll_in_progress_);
+  if (!sent_autoscroll_scroll_begin_ && velocity != gfx::Vector2dF()) {
+    // Send a GSB event with valid delta hints.
+    WebGestureEvent scroll_begin =
+        blink::SyntheticWebGestureEventBuilder::Build(
+            WebInputEvent::Type::kGestureScrollBegin,
+            blink::WebGestureDevice::kSyntheticAutoscroll);
+    scroll_begin.SetPositionInWidget(autoscroll_start_position_);
+    scroll_begin.data.scroll_begin.delta_x_hint = velocity.x();
+    scroll_begin.data.scroll_begin.delta_y_hint = velocity.y();
+
+    ForwardGestureEventWithLatencyInfo(
+        scroll_begin, ui::LatencyInfo(ui::SourceEventType::OTHER));
+    sent_autoscroll_scroll_begin_ = true;
+  }
+
+  WebGestureEvent event = blink::SyntheticWebGestureEventBuilder::Build(
+      WebInputEvent::Type::kGestureFlingStart,
+      blink::WebGestureDevice::kSyntheticAutoscroll);
+  event.SetPositionInWidget(autoscroll_start_position_);
+  event.data.fling_start.velocity_x = velocity.x();
+  event.data.fling_start.velocity_y = velocity.y();
+
+  ForwardGestureEventWithLatencyInfo(
+      event, ui::LatencyInfo(ui::SourceEventType::OTHER));
+}
+
+void RenderWidgetHostImpl::AutoscrollEnd() {
+  autoscroll_in_progress_ = false;
+
+  delegate()->GetInputEventRouter()->SetAutoScrollInProgress(
+      autoscroll_in_progress_);
+  // Don't send a GFC if no GSB is sent.
+  if (!sent_autoscroll_scroll_begin_) {
+    return;
+  }
+
+  sent_autoscroll_scroll_begin_ = false;
+  WebGestureEvent cancel_event = blink::SyntheticWebGestureEventBuilder::Build(
+      WebInputEvent::Type::kGestureFlingCancel,
+      blink::WebGestureDevice::kSyntheticAutoscroll);
+  cancel_event.data.fling_cancel.prevent_boosting = true;
+  cancel_event.SetPositionInWidget(autoscroll_start_position_);
+
+  ForwardGestureEventWithLatencyInfo(
+      cancel_event, ui::LatencyInfo(ui::SourceEventType::OTHER));
 }
 
 bool RenderWidgetHostImpl::IsAutoscrollInProgress() {
@@ -3171,7 +3177,7 @@ bool RenderWidgetHostImpl::KeyPressListenersHandleEvent(
 }
 
 blink::mojom::InputEventResultState RenderWidgetHostImpl::FilterInputEvent(
-    const blink::WebInputEvent& event,
+    const WebInputEvent& event,
     const ui::LatencyInfo& latency_info) {
   // Don't ignore touch cancel events, since they may be sent while input
   // events are being ignored in order to keep the renderer from getting
@@ -3352,7 +3358,7 @@ RenderWidgetHostImpl::BindAndGenerateCreateFrameWidgetParamsForNewWindow() {
 }
 
 void RenderWidgetHostImpl::DispatchInputEventWithLatencyInfo(
-    const blink::WebInputEvent& event,
+    const WebInputEvent& event,
     ui::LatencyInfo* latency,
     ui::EventLatencyMetadata* event_latency_metadata) {
   latency_tracker_.OnInputEvent(event, latency, event_latency_metadata);

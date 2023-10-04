@@ -12,7 +12,6 @@ import org.chromium.base.supplier.Supplier;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider;
 import org.chromium.chrome.browser.compositor.layouts.content.TabContentManager;
 import org.chromium.chrome.browser.compositor.layouts.phone.SimpleAnimationLayout;
-import org.chromium.chrome.browser.device.DeviceClassManager;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabCreatorManager;
@@ -22,6 +21,8 @@ import org.chromium.chrome.browser.theme.TopUiThemeColorProvider;
 import org.chromium.chrome.browser.toolbar.ControlContainer;
 import org.chromium.chrome.features.start_surface.StartSurface;
 import org.chromium.ui.resources.dynamics.DynamicResourceLoader;
+
+import java.util.concurrent.Callable;
 
 /**
  * {@link LayoutManagerChromePhone} is the specialization of {@link LayoutManagerChrome} for the
@@ -45,15 +46,18 @@ public class LayoutManagerChromePhone extends LayoutManagerChrome {
      *         controls.
      * @param tabContentManagerSupplier Supplier of the {@link TabContentManager} instance.
      * @param topUiThemeColorProvider {@link ThemeColorProvider} for top UI.
+     * @param delayedTabSwitcherCallable Callable to create GTS view if Start Surface refactor and
+     *         DeferCreateTabSwitcherLayout are enabled.
      */
     public LayoutManagerChromePhone(LayoutManagerHost host, ViewGroup contentContainer,
             Supplier<StartSurface> startSurfaceSupplier, Supplier<TabSwitcher> tabSwitcherSupplier,
             BrowserControlsStateProvider browserControlsStateProvider,
             ObservableSupplier<TabContentManager> tabContentManagerSupplier,
-            Supplier<TopUiThemeColorProvider> topUiThemeColorProvider) {
+            Supplier<TopUiThemeColorProvider> topUiThemeColorProvider,
+            Callable<ViewGroup> delayedTabSwitcherCallable) {
         super(host, contentContainer, startSurfaceSupplier, tabSwitcherSupplier,
                 browserControlsStateProvider, tabContentManagerSupplier, topUiThemeColorProvider,
-                null, null);
+                null, null, delayedTabSwitcherCallable);
     }
 
     @Override
@@ -71,7 +75,8 @@ public class LayoutManagerChromePhone extends LayoutManagerChrome {
         // Initialize Layouts
         TabContentManager tabContentManager = mTabContentManagerSupplier.get();
         assert tabContentManager != null;
-        mSimpleAnimationLayout.setTabModelSelector(selector, tabContentManager);
+        mSimpleAnimationLayout.setTabModelSelector(selector);
+        mSimpleAnimationLayout.setTabContentManager(tabContentManager);
     }
 
     @Override
@@ -85,9 +90,7 @@ public class LayoutManagerChromePhone extends LayoutManagerChrome {
     @Override
     public void onTabsAllClosing(boolean incognito) {
         if (getActiveLayout() == mStaticLayout && !incognito) {
-            startShowing(DeviceClassManager.enableAccessibilityLayout(mHost.getContext())
-                            ? mOverviewListLayout
-                            : (mTabSwitcherLayout != null ? mTabSwitcherLayout : mOverviewLayout),
+            startShowing(mTabSwitcherLayout != null ? mTabSwitcherLayout : mOverviewLayout,
                     /* animate= */ false);
         }
         super.onTabsAllClosing(incognito);

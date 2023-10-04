@@ -54,10 +54,8 @@ group("closure_compile") {
     "account_manager:closure_compile",
     "arc_account_picker:closure_compile",
     "ash_common:closure_compile",
-    "firmware_update:closure_compile",
     "gaia_action_buttons:closure_compile",
     "os_feedback_ui:closure_compile",
-    "scanning:closure_compile",
     "shimless_rma:closure_compile",
   ]
 }
@@ -77,7 +75,6 @@ ts_library("build_ts") {
     "mock_controller.m.js",
     "set_time_dialog_test.js",
     "test_browser_proxy.js",
-    "test_store.js",
     "test_util.js",
   ]
 

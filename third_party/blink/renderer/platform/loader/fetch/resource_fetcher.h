@@ -66,6 +66,7 @@ namespace blink {
 
 enum class ResourceType : uint8_t;
 class BackForwardCacheLoaderHelper;
+class CodeCacheHost;
 class DetachableConsoleLogger;
 class DetachableUseCounter;
 class DetachableResourceFetcherProperties;
@@ -78,7 +79,6 @@ class ResourceError;
 class ResourceLoadObserver;
 class SubresourceWebBundle;
 class SubresourceWebBundleList;
-class WebCodeCacheLoader;
 struct ResourceFetcherInit;
 struct ResourceLoaderOptions;
 
@@ -117,8 +117,8 @@ class PLATFORM_EXPORT ResourceFetcher
         scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
         BackForwardCacheLoaderHelper*) = 0;
 
-    // Create a code cache loader to fetch data from code caches.
-    virtual std::unique_ptr<WebCodeCacheLoader> CreateCodeCacheLoader() = 0;
+    // Get a code cache host to fetch data from code caches.
+    virtual CodeCacheHost* GetCodeCacheHost() = 0;
   };
 
   // ResourceFetcher creators are responsible for setting consistent objects
@@ -174,9 +174,8 @@ class PLATFORM_EXPORT ResourceFetcher
   // Create a loader. This cannot be called after ClearContext is called.
   std::unique_ptr<URLLoader> CreateURLLoader(const ResourceRequestHead&,
                                              const ResourceLoaderOptions&);
-  // Create a code cache loader. This cannot be called after ClearContext is
-  // called.
-  std::unique_ptr<WebCodeCacheLoader> CreateCodeCacheLoader();
+  // Get a code cache host. This cannot be called after ClearContext is called.
+  CodeCacheHost* GetCodeCacheHost();
 
   Resource* CachedResource(const KURL&) const;
 
@@ -195,9 +194,8 @@ class PLATFORM_EXPORT ResourceFetcher
     return cached_resources_map_;
   }
 
-  const HeapHashSet<Member<Resource>> MoveResourceStrongReferences() {
-    return std::move(document_resource_strong_refs_);
-  }
+  const HeapHashSet<Member<Resource>> MoveResourceStrongReferences();
+  bool HasStrongReferenceForTesting(Resource* resource);
 
   enum class ImageLoadBlockingPolicy {
     kDefault,
@@ -319,12 +317,13 @@ class PLATFORM_EXPORT ResourceFetcher
       bool is_link_preload,
       const absl::optional<float> resource_width = absl::nullopt,
       const absl::optional<float> resource_height = absl::nullopt,
-      bool is_potentially_lcp_element = false) {
-    return ComputeLoadPriority(type, request, visibility_statue, defer_option,
-                               speculative_preload_type,
-                               render_blocking_behavior, script_type,
-                               is_link_preload, resource_width, resource_height,
-                               is_potentially_lcp_element);
+      bool is_potentially_lcp_element = false,
+      bool is_potentially_lcp_influencer = false) {
+    return ComputeLoadPriority(
+        type, request, visibility_statue, defer_option,
+        speculative_preload_type, render_blocking_behavior, script_type,
+        is_link_preload, resource_width, resource_height,
+        is_potentially_lcp_element, is_potentially_lcp_influencer);
   }
 
   bool ShouldLoadIncrementalForTesting(ResourceType type) {
@@ -376,10 +375,6 @@ class PLATFORM_EXPORT ResourceFetcher
                  absl::optional<mojom::blink::WebFeature> count_orb_block_as);
 
   void InitializeRevalidation(ResourceRequest&, Resource*);
-  // When |security_origin| of the ResourceLoaderOptions is not a nullptr, it'll
-  // be used instead of the associated FetchContext's SecurityOrigin.
-  scoped_refptr<const SecurityOrigin> GetSourceOrigin(
-      const ResourceLoaderOptions&) const;
   void AddToMemoryCacheIfNeeded(const FetchParameters&, Resource*);
   Resource* CreateResourceForLoading(const FetchParameters&,
                                      const ResourceFactory&);
@@ -397,7 +392,8 @@ class PLATFORM_EXPORT ResourceFetcher
       bool is_link_preload = false,
       const absl::optional<float> resource_width = absl::nullopt,
       const absl::optional<float> resource_height = absl::nullopt,
-      bool is_potentially_lcp_element = false);
+      bool is_potentially_lcp_element = false,
+      bool is_potentially_lcp_influencer = false);
   ResourceLoadPriority AdjustImagePriority(
       ResourceLoadPriority priority_so_far,
       ResourceType type,
@@ -519,7 +515,7 @@ class PLATFORM_EXPORT ResourceFetcher
 
   void WarnUnusedPreloads();
 
-  void RemoveResourceStrongReference(Resource* image_resource);
+  void RemoveResourceStrongReference(Resource* resource);
 
   // Information about a resource fetch that had started but not completed yet.
   // Would be added to the response data when the response arrives.
@@ -571,6 +567,7 @@ class PLATFORM_EXPORT ResourceFetcher
   // document_resource_strong_refs_ keeps strong references for fonts, images,
   // scripts and stylesheets within their freshness lifetime.
   HeapHashSet<Member<Resource>> document_resource_strong_refs_;
+  size_t document_resource_strong_refs_total_size_ = 0;
 
   // |image_resources_| is the subset of all image resources for the document.
   HeapHashSet<WeakMember<Resource>> image_resources_;
@@ -643,8 +640,8 @@ class PLATFORM_EXPORT ResourceFetcher
   SubresourceLoadMetrics subresource_load_metrics_;
 
   // Number of of not-small images that get a priority boost.
-  // TODO(http://crbug.com/1431169): change this to a const after experiments
-  // determine an approopriate value.
+  // TODO(http://crbug.com/1431169): change this to a const after the
+  // feature flag is removed.
   uint32_t boosted_image_target_ = 0;
 
   // Number of images that have had their priority boosted by heuristics.
@@ -653,7 +650,7 @@ class PLATFORM_EXPORT ResourceFetcher
   // Area (in pixels) below which an image is considered "small"
   uint32_t small_image_max_size_ = 0;
 
-  // Number of images that have had their priority boosted based on LCPP
+  // Number of resources that have had their priority boosted based on LCPP
   // signals.
   uint32_t potentially_lcp_resource_priority_boosts_ = 0;
 };

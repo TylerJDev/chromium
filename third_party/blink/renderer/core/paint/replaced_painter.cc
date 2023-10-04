@@ -124,7 +124,10 @@ void ReplacedPainter::Paint(const PaintInfo& paint_info) {
 
   if (ShouldPaintBoxDecorationBackground(local_paint_info)) {
     bool should_paint_background = false;
-    if (RuntimeEnabledFeatures::HitTestOpaquenessEnabled()) {
+    if (RuntimeEnabledFeatures::HitTestOpaquenessEnabled() &&
+        // TODO(crbug.com/1477914): Without this condition, scaled canvas
+        // would become pixelated on Linux.
+        !layout_replaced_.IsCanvas()) {
       should_paint_background = true;
     } else if (layout_replaced_.HasBoxDecorationBackground()) {
       should_paint_background = true;
@@ -258,7 +261,7 @@ bool ReplacedPainter::ShouldPaint(const ScopedPaintState& paint_state) const {
       layout_replaced_.StyleRef().Visibility() != EVisibility::kVisible)
     return false;
 
-  PhysicalRect local_rect = layout_replaced_.PhysicalVisualOverflowRect();
+  PhysicalRect local_rect = layout_replaced_.VisualOverflowRect();
   local_rect.Unite(layout_replaced_.LocalSelectionVisualRect());
   if (!paint_state.LocalRectIntersectsCullRect(local_rect))
     return false;
@@ -273,7 +276,7 @@ void ReplacedPainter::MeasureOverflowMetrics() const {
     return;
   }
 
-  auto overflow_size = layout_replaced_.PhysicalVisualOverflowRect().size;
+  auto overflow_size = layout_replaced_.VisualOverflowRect().size;
   auto overflow_area = overflow_size.width * overflow_size.height;
 
   auto content_size = layout_replaced_.Size();

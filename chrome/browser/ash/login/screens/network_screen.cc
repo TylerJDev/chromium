@@ -10,15 +10,16 @@
 #include "base/location.h"
 #include "chrome/browser/ash/login/demo_mode/demo_setup_controller.h"
 #include "chrome/browser/ash/login/helper.h"
-#include "chrome/browser/ash/login/oobe_quick_start/target_device_bootstrap_controller.h"
 #include "chrome/browser/ash/login/oobe_screen.h"
+#include "chrome/browser/ash/login/startup_utils.h"
 #include "chrome/browser/ash/login/wizard_context.h"
 #include "chrome/browser/ash/login/wizard_controller.h"
 #include "chrome/browser/ui/webui/ash/login/network_screen_handler.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chromeos/ash/components/network/network_handler.h"
 #include "chromeos/ash/components/network/network_state_handler.h"
+#include "chromeos/ash/components/network/technology_state_controller.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace ash {
@@ -65,27 +66,35 @@ bool NetworkScreen::MaybeSkip(WizardContext& context) {
 }
 
 void NetworkScreen::ShowImpl() {
-  Refresh();
-  if (view_)
-    view_->Show();
+  if (!view_) {
+    return;
+  }
 
-  // Quick Start can be enabled either by feature flag or by keyboard shortcut.
-  // The shortcut method enables a simpler workflow for testers, while the
-  // feature flag will enable us to perform a first run field trial.
+  // In OOBE all physical network technologies should be enabled, so the user is
+  // able to select any of the available networks on the device. Enabled
+  // technologies should not be changed if network screen is shown outside of
+  // OOBE. Right now NetworkScreen is only used in the beginning of OOBE.
+  TechnologyStateController* controller =
+      NetworkHandler::Get()->technology_state_controller();
+  controller->SetTechnologiesEnabled(NetworkTypePattern::Physical(), true,
+                                     network_handler::ErrorCallback());
+  Refresh();
   // QuickStart should not be enabled for Demo mode or OS Install flows
   if (features::IsOobeQuickStartEnabled() &&
       !DemoSetupController::IsOobeDemoSetupFlowInProgress() &&
       !switches::IsOsInstallAllowed()) {
-    EnableQuickStart();
+    // Determine the QuickStart button visibility
+    WizardController::default_controller()
+        ->quick_start_controller()
+        ->DetermineEntryPointVisibility(
+            base::BindOnce(&NetworkScreen::SetQuickStartButtonVisibility,
+                           weak_ptr_factory_.GetWeakPtr()));
   }
+  view_->Show();
 }
 
 void NetworkScreen::HideImpl() {
   connection_timer_.Stop();
-
-  if (context()->quick_start_enabled) {
-    bootstrap_controller_.reset();
-  }
 
   UnsubscribeNetworkNotification();
 }
@@ -151,28 +160,30 @@ void NetworkScreen::NotifyOnConnection() {
 }
 
 void NetworkScreen::OnConnectionTimeout() {
-  StopWaitingForConnection(network_id_);
   if (!network_state_helper_->IsConnected() && view_) {
     // Show error bubble.
     view_->ShowError(l10n_util::GetStringFUTF16(
         IDS_NETWORK_SELECTION_ERROR,
         l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_OS_NAME), network_id_));
   }
+  StopWaitingForConnection(network_id_);
 }
 
 void NetworkScreen::UpdateStatus() {
   bool is_connected = network_state_helper_->IsConnected();
 
-  if (view_ && is_connected)
+  if (view_ && is_connected) {
     view_->ClearErrors();
+  }
 
   std::u16string network_name = network_state_helper_->GetCurrentNetworkName();
-  if (is_connected)
+  if (is_connected) {
     StopWaitingForConnection(network_name);
-  else if (network_state_helper_->IsConnecting())
+  } else if (network_state_helper_->IsConnecting()) {
     WaitForConnection(network_name);
-  else
+  } else {
     StopWaitingForConnection(network_id_);
+  }
 }
 
 void NetworkScreen::StopWaitingForConnection(const std::u16string& network_id) {
@@ -188,8 +199,9 @@ void NetworkScreen::StopWaitingForConnection(const std::u16string& network_id) {
 
   // Automatically continue if the device is connected to Ethernet for the first
   // time in this session.
-  if (UpdateStatusIfConnectedToEthernet())
+  if (UpdateStatusIfConnectedToEthernet()) {
     return;
+  }
 
   // Automatically continue if we are using Zero-Touch Hands-Off Enrollment.
   if (is_connected && continue_attempts_ == 0 &&
@@ -209,16 +221,18 @@ void NetworkScreen::WaitForConnection(const std::u16string& network_id) {
 }
 
 void NetworkScreen::OnBackButtonClicked() {
-  if (view_)
+  if (view_) {
     view_->ClearErrors();
+  }
 
   exit_callback_.Run(Result::BACK);
 }
 
 void NetworkScreen::OnContinueButtonClicked() {
   ++continue_attempts_;
-  if (view_)
+  if (view_) {
     view_->ClearErrors();
+  }
 
   if (network_state_helper_->IsConnected()) {
     NotifyOnConnection();
@@ -233,33 +247,14 @@ void NetworkScreen::OnQuickStartButtonClicked() {
   exit_callback_.Run(Result::QUICK_START);
 }
 
-void NetworkScreen::EnableQuickStart() {
-  context()->quick_start_enabled = true;
-  bootstrap_controller_ =
-      LoginDisplayHost::default_host()->GetQuickStartBootstrapController();
-
-  bootstrap_controller_->GetFeatureSupportStatusAsync(
-      base::BindOnce(&NetworkScreen::OnGetQuickStartFeatureSupportStatus,
-                     weak_ptr_factory_.GetWeakPtr()));
-}
-
-void NetworkScreen::OnGetQuickStartFeatureSupportStatus(
-    quick_start::TargetDeviceConnectionBroker::FeatureSupportStatus status) {
-  if (status != quick_start::TargetDeviceConnectionBroker::
-                    FeatureSupportStatus::kSupported) {
-    return;
+void NetworkScreen::SetQuickStartButtonVisibility(bool visible) {
+  if (visible && view_) {
+    view_->SetQuickStartEnabled();
   }
-
-  if (!view_) {
-    return;
-  }
-
-  view_->SetQuickStartEnabled();
 }
 
 bool NetworkScreen::UpdateStatusIfConnectedToEthernet() {
-  if (!features::IsOobeNetworkScreenSkipEnabled() ||
-      switches::IsOOBENetworkScreenSkippingDisabledForTesting()) {
+  if (switches::IsOOBENetworkScreenSkippingDisabledForTesting()) {
     return false;
   }
 

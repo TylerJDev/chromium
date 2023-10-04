@@ -109,7 +109,7 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/open_from_clipboard/clipboard_recent_content.h"
 #include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/browser/password_manager_features_util.h"
+#include "components/password_manager/core/browser/features/password_manager_features_util.h"
 #include "components/password_manager/core/browser/password_store_interface.h"
 #include "components/password_manager/core/browser/smart_bubble_stats_store.h"
 #include "components/payments/content/payment_manifest_web_data_service.h"
@@ -1309,12 +1309,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
           web_app_registrar.GetIsolatedWebAppStoragePartitionConfigs(
               web_app.app_id());
       for (const content::StoragePartitionConfig& partition : partitions) {
-        // Controlled frame StoragePartitions have non-empty partition_names.
-        if (!partition.partition_name().empty() &&
-            !(remove_mask & constants::DATA_TYPE_CONTROLLED_FRAME)) {
-          continue;
-        }
-
         // Only delete data types that live on a StoragePartition.
         uint64_t iwa_remove_mask =
             content::BrowsingDataRemover::DATA_TYPE_ON_STORAGE_PARTITION &

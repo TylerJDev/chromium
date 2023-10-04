@@ -6,10 +6,9 @@
  * @fileoverview Root element of the OOBE UI Debugger.
  */
 
-import {addSingletonGetter} from '//resources/ash/common/cr_deprecated.js';
 import {MessageType, ProblemType} from '//resources/ash/common/quick_unlock/setup_pin_keyboard.js';
-import { QuickStartUIState } from '../screens/oobe/quick_start.js';
 import {$} from '//resources/ash/common/util.js';
+import {sanitizeInnerHtml} from 'chrome://resources/js/parse_html_subset.js';
 
 import {AssistantNativeIconType} from '../../assistant_optin/utils.js';
 import {Oobe} from '../cr_ui.js';
@@ -665,7 +664,7 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
     {
       id: 'gaia-signin',
       kind: ScreenKind.NORMAL,
-      handledSteps: 'online-gaia,allowlist-error',
+      handledSteps: 'online-gaia,enrollment-nudge',
       states: [
         {
           id: 'online-gaia',
@@ -681,11 +680,9 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
           },
         },
         {
-          id: 'allowlist-error',
+          id: 'enrollment-nudge',
           trigger: (screen) => {
-            screen.showAllowlistCheckFailedError({
-              enterpriseManaged: false,
-            });
+            screen.showEnrollmentNudge('example.com');
           },
         },
       ],
@@ -857,6 +854,10 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
           },
         },
       ],
+    },
+    {
+      id: 'local-password-setup',
+      kind: ScreenKind.NORMAL,
     },
     {
       id: 'saml-confirm-password',
@@ -1384,7 +1385,7 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
       // will append apps instead of replacing.
       states: [
         {
-          id: '2-apps',
+          id: '3-apps',
           trigger: (screen) => {
             screen.reset();
             screen.loadAppList([
@@ -1403,6 +1404,19 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
                 in_app_purchases: true,
                 was_installed: false,
                 content_rating: '',
+                description: 'Short description',
+              },
+              {
+                title: 'anotherGapp',
+                icon_url: 'https://www.google.com/favicon.ico',
+                category: 'Games',
+                in_app_purchases: true,
+                was_installed: false,
+                content_rating: '',
+                // Current limitation is 80 characters.
+                description:
+                    'Lorem ipsum dolor sit amet, consectetur adipiscing elit,' +
+                    ' sed do eiusmod tempor',
               },
             ]);
           },
@@ -1594,52 +1608,40 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
             screens: [
               {
                 screenID: 'screenID1',
-                icon: 'oobe-40:theme-choobe',
-                title: 'choobeThemeSelectionTitle',
-                subtitle: 'choobeThemeSelectionTitle',
-                synced: false,
+                icon: 'oobe-40:scroll-choobe',
+                title: 'choobeTouchpadScrollTitle',
+                subtitle: 'choobeTouchpadScrollSubtitleEnabled',
+                is_synced: true,
                 is_revisitable: true,
                 selected: false,
                 is_completed: false,
               },
               {
                 screenID: 'screenID2',
-                icon: 'oobe-40:scroll-choobe',
-                title: 'choobeThemeSelectionTitle',
-                subtitle: 'choobeThemeSelectionTitle',
-                synced: true,
+                icon: 'oobe-40:drive-pinning-choobe',
+                title: 'choobeDrivePinningTitle',
+                is_synced: false,
                 is_revisitable: false,
                 selected: false,
                 is_completed: false,
               },
               {
                 screenID: 'screenID3',
-                icon: 'oobe-40:scroll-choobe',
-                title: 'choobeThemeSelectionTitle',
-                synced: false,
+                icon: 'oobe-40:display-size-choobe',
+                title: 'choobeDisplaySizeTitle',
+                is_synced: false,
                 is_revisitable: false,
-                selected: false,
-                is_completed: true,
-              },
-              {
-                screenID: 'screenID4',
-                icon: 'oobe-40:scroll-choobe',
-                title: 'choobeThemeSelectionTitle',
-                subtitle: 'choobeThemeSelectionTitle',
-                synced: true,
-                is_revisitable: true,
                 selected: false,
                 is_completed: false,
               },
               {
-                screenID: 'screenID5',
-                icon: 'oobe-40:display-size-choobe',
+                screenID: 'screenID4',
+                icon: 'oobe-40:theme-choobe',
                 title: 'choobeThemeSelectionTitle',
-                subtitle: 'choobeThemeSelectionTitle',
-                synced: false,
-                is_revisitable: true,
+                is_synced: false,
+                is_revisitable: false,
                 selected: false,
-                is_completed: true,
+                is_completed: false,
               },
             ],
           },
@@ -1785,6 +1787,14 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
           },
         },
       ],
+    },
+    {
+      id: 'user-allowlist-check-screen',
+      kind: ScreenKind.NORMAL,
+    },
+    {
+      id: 'online-authentication-screen',
+      kind: ScreenKind.NORMAL,
     },
   ];
 
@@ -2165,8 +2175,8 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
       this.currentScreenId_ = screenId;
       this.lastScreenState_ = stateId;
       /** @suppress {visibility} */
-      const displayManager = Oobe.instance_;
-      Oobe.instance_.showScreen({id: screen.id, data: data});
+      const displayManager = Oobe.getInstance();
+      displayManager.showScreen({id: screen.id, data: data});
       if (state.trigger) {
         state.trigger(displayManager.currentScreen);
       }
@@ -2180,7 +2190,7 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
       this.knownScreens = [];
       this.screenButtons = {};
       /** @suppress {visibility} */
-      for (var id of Oobe.instance_.screens_) {
+      for (var id of Oobe.getInstance().screens_) {
         if (id in this.screenMap) {
           const screenDef = this.screenMap[id];
           const screenElement = $(id);
@@ -2251,7 +2261,7 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
         this.createScreensList();
       }
       /** @suppress {visibility} */
-      const displayManager = Oobe.instance_;
+      const displayManager = Oobe.getInstance();
       if (this.stateCachedFor_) {
         this.screenButtons[this.stateCachedFor_].element.classList.remove(
             'debug-button-selected');
@@ -2294,7 +2304,7 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
     createCssStyle(name, styleSpec) {
       var style = document.createElement('style');
       style.type = 'text/css';
-      style.innerHTML = '.' + name + ' {' + styleSpec + '}';
+      style.innerHTML = sanitizeInnerHtml('.' + name + ' {' + styleSpec + '}');
       document.getElementsByTagName('head')[0].appendChild(style);
     }
 
@@ -2344,6 +2354,12 @@ const createAssistantZippy = (type, isMinor, isNativeIcons) => {
       element.appendChild(this.debuggerButton_);
       element.appendChild(this.debuggerOverlay_);
     }
+
+    /** @return {!DebuggerUI} */
+    static getInstance() {
+      return instance || (instance = new DebuggerUI());
+    }
   }
 
-  addSingletonGetter(DebuggerUI);
+  /** @type {?DebuggerUI} */
+  let instance = null;

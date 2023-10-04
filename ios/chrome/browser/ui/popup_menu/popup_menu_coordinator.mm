@@ -13,16 +13,16 @@
 #import "base/metrics/user_metrics_action.h"
 #import "components/feature_engagement/public/event_constants.h"
 #import "components/feature_engagement/public/tracker.h"
-#import "ios/chrome/browser/bookmarks/account_bookmark_model_factory.h"
-#import "ios/chrome/browser/bookmarks/local_or_syncable_bookmark_model_factory.h"
+#import "ios/chrome/browser/bookmarks/model/account_bookmark_model_factory.h"
+#import "ios/chrome/browser/bookmarks/model/local_or_syncable_bookmark_model_factory.h"
 #import "ios/chrome/browser/feature_engagement/tracker_factory.h"
 #import "ios/chrome/browser/follow/follow_action_state.h"
 #import "ios/chrome/browser/follow/follow_browser_agent.h"
 #import "ios/chrome/browser/ntp/features.h"
 #import "ios/chrome/browser/overlays/public/overlay_presenter.h"
 #import "ios/chrome/browser/promos_manager/promos_manager_factory.h"
-#import "ios/chrome/browser/reading_list/reading_list_browser_agent.h"
-#import "ios/chrome/browser/reading_list/reading_list_model_factory.h"
+#import "ios/chrome/browser/reading_list/model/reading_list_browser_agent.h"
+#import "ios/chrome/browser/reading_list/model/reading_list_model_factory.h"
 #import "ios/chrome/browser/search_engines/template_url_service_factory.h"
 #import "ios/chrome/browser/shared/coordinator/default_browser_promo/non_modal_default_browser_promo_scheduler_scene_agent.h"
 #import "ios/chrome/browser/shared/coordinator/layout_guide/layout_guide_util.h"
@@ -48,14 +48,16 @@
 #import "ios/chrome/browser/shared/ui/util/layout_guide_names.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/shared/ui/util/util_swift.h"
+#import "ios/chrome/browser/signin/authentication_service.h"
+#import "ios/chrome/browser/signin/authentication_service_factory.h"
 #import "ios/chrome/browser/supervised_user/supervised_user_service_factory.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/ui/browser_container/browser_container_mediator.h"
 #import "ios/chrome/browser/ui/bubble/bubble_presenter.h"
 #import "ios/chrome/browser/ui/bubble/bubble_view_controller_presenter.h"
 #import "ios/chrome/browser/ui/popup_menu/overflow_menu/feature_flags.h"
-#import "ios/chrome/browser/ui/popup_menu/overflow_menu/menu_customization_coordinator.h"
 #import "ios/chrome/browser/ui/popup_menu/overflow_menu/overflow_menu_mediator.h"
+#import "ios/chrome/browser/ui/popup_menu/overflow_menu/overflow_menu_metrics.h"
 #import "ios/chrome/browser/ui/popup_menu/overflow_menu/overflow_menu_orderer.h"
 #import "ios/chrome/browser/ui/popup_menu/overflow_menu/overflow_menu_swift.h"
 #import "ios/chrome/browser/ui/popup_menu/popup_menu_action_handler.h"
@@ -77,21 +79,8 @@
 using base::RecordAction;
 using base::UserMetricsAction;
 
-namespace {
-
-// Enum for IOS.OverflowMenu.ActionType histogram.
-// Entries should not be renumbered and numeric values should never be reused.
-enum class IOSOverflowMenuActionType {
-  kNoScrollNoAction = 0,
-  kScrollNoAction = 1,
-  kNoScrollAction = 2,
-  kScrollAction = 3,
-  kMaxValue = kScrollAction,
-};
-
-}  // namespace
-
-@interface PopupMenuCoordinator () <OverflowMenuCustomizationCommands,
+@interface PopupMenuCoordinator () <MenuCustomizationEventHandler,
+                                    OverflowMenuCustomizationCommands,
                                     PopupMenuCommands,
                                     PopupMenuMetricsHandler,
                                     PopupMenuPresenterDelegate,
@@ -122,6 +111,11 @@ enum class IOSOverflowMenuActionType {
 @property(nonatomic, assign) BOOL toolsMenuWasScrolledHorizontally;
 // Whether the user took an action on the tools menu while it was open.
 @property(nonatomic, assign) BOOL toolsMenuUserTookAction;
+// Whether the user selected an Action on the overflow menu (the vertical list).
+@property(nonatomic, assign) BOOL overflowMenuUserSelectedAction;
+// Whether the user selected a Destination on the overflow menu (the horizontal
+// list).
+@property(nonatomic, assign) BOOL overflowMenuUserSelectedDestination;
 
 @property(nonatomic, strong) PopupMenuHelpCoordinator* popupMenuHelpCoordinator;
 
@@ -132,7 +126,9 @@ enum class IOSOverflowMenuActionType {
 
   OverflowMenuOrderer* _overflowMenuOrderer;
 
-  MenuCustomizationCoordinator* _menuCustomizationCoordinator;
+  // Stores whether certain events occured during an overflow menu session for
+  // logs.
+  OverflowMenuVisitedEvent _event;
 }
 
 @synthesize mediator = _mediator;
@@ -219,8 +215,6 @@ enum class IOSOverflowMenuActionType {
           agentFromScene:sceneState];
   // Allow the non-modal promo scheduler to close the promo.
   [nonModalPromoScheduler logPopupMenuEntered];
-
-  [self.bubblePresenter toolsMenuDisplayed];
 
   self.requestStartTime = [NSDate timeIntervalSinceReferenceDate];
 
@@ -320,6 +314,11 @@ enum class IOSOverflowMenuActionType {
         self.overflowMenuMediator.followBrowserAgent =
             FollowBrowserAgent::FromBrowser(self.browser);
       }
+      // Set the AuthenticationService with the one from the original
+      // ChromeBrowserState as the incognito one doesn't have that service.
+      self.overflowMenuMediator.authenticationService =
+          AuthenticationServiceFactory::GetForBrowserState(
+              self.browser->GetBrowserState()->GetOriginalChromeBrowserState());
 
       self.contentBlockerMediator.consumer = self.overflowMenuMediator;
 
@@ -349,7 +348,8 @@ enum class IOSOverflowMenuActionType {
       UIViewController* menu = [OverflowMenuViewProvider
           makeViewControllerWithModel:_overflowMenuModel
                       uiConfiguration:uiConfiguration
-                       metricsHandler:self];
+                       metricsHandler:self
+            customizationEventHandler:self];
 
       LayoutGuideCenter* layoutGuideCenter =
           LayoutGuideCenterForBrowser(self.browser);
@@ -369,31 +369,10 @@ enum class IOSOverflowMenuActionType {
       popoverPresentationController.backgroundColor =
           [UIColor colorNamed:kBackgroundColor];
 
-      // The adaptive controller adjusts styles based on window size: sheet
-      // for slim windows on iPhone and iPad, popover for larger windows on
-      // ipad.
-      UISheetPresentationController* sheetPresentationController =
-          popoverPresentationController.adaptiveSheetPresentationController;
-      if (sheetPresentationController) {
-        sheetPresentationController.delegate = self;
-        sheetPresentationController.prefersGrabberVisible = YES;
-        sheetPresentationController.prefersEdgeAttachedInCompactHeight = YES;
-        sheetPresentationController
-            .widthFollowsPreferredContentSizeWhenEdgeAttached = YES;
+      [self setupSheetForMenu:menu isCustomizationScreen:NO animated:NO];
 
-        NSArray<UISheetPresentationControllerDetent*>* regularDetents = @[
-          [UISheetPresentationControllerDetent mediumDetent],
-          [UISheetPresentationControllerDetent largeDetent]
-        ];
-
-        NSArray<UISheetPresentationControllerDetent*>* largeTextDetents =
-            @[ [UISheetPresentationControllerDetent largeDetent] ];
-
-        BOOL hasLargeText = UIContentSizeCategoryIsAccessibilityCategory(
-            menu.traitCollection.preferredContentSizeCategory);
-        sheetPresentationController.detents =
-            hasLargeText ? largeTextDetents : regularDetents;
-      }
+      // Reset event before presenting.
+      _event = OverflowMenuVisitedEvent();
 
       __weak __typeof(self) weakSelf = self;
       [self.baseViewController
@@ -483,9 +462,24 @@ enum class IOSOverflowMenuActionType {
 
 - (void)dismissPopupMenuAnimated:(BOOL)animated {
   if (self.toolsMenuOpenTime != 0) {
+    OverflowMenuVisitedEvent event;
     base::TimeDelta elapsed = base::Seconds(
         [NSDate timeIntervalSinceReferenceDate] - self.toolsMenuOpenTime);
     UMA_HISTOGRAM_MEDIUM_TIMES("IOS.OverflowMenu.TimeOpen", elapsed);
+    if (self.toolsMenuUserTookAction && self.overflowMenuUserSelectedAction) {
+      UMA_HISTOGRAM_MEDIUM_TIMES("IOS.OverflowMenu.TimeOpen.ActionChosen",
+                                 elapsed);
+    } else if (self.toolsMenuUserTookAction &&
+               self.overflowMenuUserSelectedDestination) {
+      UMA_HISTOGRAM_MEDIUM_TIMES("IOS.OverflowMenu.TimeOpen.DestinationChosen",
+                                 elapsed);
+    }
+
+    event.PutOrRemove(OverflowMenuVisitedEventFields::kUserSelectedDestination,
+                      self.overflowMenuUserSelectedDestination);
+    event.PutOrRemove(OverflowMenuVisitedEventFields::kUserSelectedAction,
+                      self.overflowMenuUserSelectedAction);
+
     // Reset the start time to ensure that whatever happens, we only record
     // this once.
     self.toolsMenuOpenTime = 0;
@@ -510,9 +504,16 @@ enum class IOSOverflowMenuActionType {
         !self.toolsMenuUserTookAction) {
       [self trackToolsMenuNoHorizontalScrollOrAction];
     }
+
+    RecordOverflowMenuVisitedEvent(_event);
+
+    _event = OverflowMenuVisitedEvent();
+
     self.toolsMenuWasScrolledVertically = NO;
     self.toolsMenuWasScrolledHorizontally = NO;
     self.toolsMenuUserTookAction = NO;
+    self.overflowMenuUserSelectedAction = NO;
+    self.overflowMenuUserSelectedDestination = NO;
   }
 
   if (self.overflowMenuMediator) {
@@ -534,17 +535,62 @@ enum class IOSOverflowMenuActionType {
 
 #pragma mark - OverflowMenuCustomizationCommands
 
-- (void)showActionCustomization {
-  _menuCustomizationCoordinator = [[MenuCustomizationCoordinator alloc]
-      initWithBaseViewController:self.baseViewController
-                         browser:self.browser];
-  _menuCustomizationCoordinator.menuOrderer = _overflowMenuOrderer;
-  [_menuCustomizationCoordinator start];
+- (void)showMenuCustomization {
+  _event.Put(OverflowMenuVisitedEventFields::kUserStartedCustomization);
+  [_overflowMenuModel
+      startCustomizationWithActions:_overflowMenuOrderer
+                                        .actionCustomizationModel
+                       destinations:_overflowMenuOrderer
+                                        .destinationCustomizationModel];
+
+  [self setupSheetForMenu:self.baseViewController.presentedViewController
+      isCustomizationScreen:YES
+                   animated:YES];
 }
 
-- (void)hideActionCustomization {
-  [_menuCustomizationCoordinator stop];
-  _menuCustomizationCoordinator = nil;
+- (void)showMenuCustomizationFromActionType:
+    (overflow_menu::ActionType)actionType {
+  for (OverflowMenuAction* action in _overflowMenuOrderer
+           .actionCustomizationModel.actionsGroup.actions) {
+    if (action.actionType == static_cast<NSInteger>(actionType)) {
+      action.highlighted = YES;
+    }
+  }
+
+  [self showMenuCustomization];
+}
+
+- (void)hideMenuCustomization {
+  [self setupSheetForMenu:self.baseViewController.presentedViewController
+      isCustomizationScreen:NO
+                   animated:YES];
+
+  [_overflowMenuModel endCustomization];
+}
+
+#pragma mark - MenuCustomizationEventHandler
+
+- (void)doneWasTapped {
+  if (_overflowMenuOrderer.destinationCustomizationModel.hasChanged) {
+    _event.Put(OverflowMenuVisitedEventFields::kUserCustomizedDestinations);
+  }
+  if (_overflowMenuOrderer.actionCustomizationModel.hasChanged) {
+    _event.Put(OverflowMenuVisitedEventFields::kUserCustomizedActions);
+  }
+
+  [_overflowMenuOrderer commitActionsUpdate];
+  [_overflowMenuOrderer commitDestinationsUpdate];
+
+  [self hideMenuCustomization];
+}
+
+- (void)cancelWasTapped {
+  [_overflowMenuOrderer cancelActionsUpdate];
+  [_overflowMenuOrderer cancelDestinationsUpdate];
+
+  _event.Put(OverflowMenuVisitedEventFields::kUserCancelledCustomization);
+
+  [self hideMenuCustomization];
 }
 
 #pragma mark - ContainedPresenterDelegate
@@ -576,6 +622,11 @@ enum class IOSOverflowMenuActionType {
   [self dismissPopupMenuAnimated:NO];
 }
 
+- (BOOL)presentationControllerShouldDismiss:
+    (UIPresentationController*)presentationController {
+  return _overflowMenuModel.isCustomizationActive ? NO : YES;
+}
+
 #pragma mark - UISheetPresentationControllerDelegate
 
 - (void)sheetPresentationControllerDidChangeSelectedDetentIdentifier:
@@ -588,14 +639,26 @@ enum class IOSOverflowMenuActionType {
 
 - (void)popupMenuScrolledVertically {
   self.toolsMenuWasScrolledVertically = YES;
+  _event.Put(OverflowMenuVisitedEventFields::kUserScrolledVertically);
 }
 
 - (void)popupMenuScrolledHorizontally {
   self.toolsMenuWasScrolledHorizontally = YES;
+  _event.Put(OverflowMenuVisitedEventFields::kUserScrolledHorizontally);
 }
 
 - (void)popupMenuTookAction {
   self.toolsMenuUserTookAction = YES;
+}
+
+- (void)popupMenuUserSelectedAction {
+  self.overflowMenuUserSelectedAction = YES;
+  _event.Put(OverflowMenuVisitedEventFields::kUserSelectedAction);
+}
+
+- (void)popupMenuUserSelectedDestination {
+  self.overflowMenuUserSelectedDestination = YES;
+  _event.Put(OverflowMenuVisitedEventFields::kUserSelectedDestination);
 }
 
 #pragma mark - Notification callback
@@ -619,6 +682,54 @@ enum class IOSOverflowMenuActionType {
 
   tracker->NotifyEvent(
       feature_engagement::events::kOverflowMenuNoHorizontalScrollOrAction);
+}
+
+- (void)setupSheetForMenu:(UIViewController*)menu
+    isCustomizationScreen:(BOOL)isCustomizationScreen
+                 animated:(BOOL)animated {
+  // The adaptive controller adjusts styles based on window size: sheet
+  // for slim windows on iPhone and iPad, popover for larger windows on
+  // iPad.
+  UISheetPresentationController* sheetPresentationController =
+      menu.popoverPresentationController.adaptiveSheetPresentationController;
+  if (!sheetPresentationController) {
+    return;
+  }
+
+  sheetPresentationController.delegate = self;
+
+  void (^changes)(void) = ^{
+    sheetPresentationController.prefersEdgeAttachedInCompactHeight = YES;
+    sheetPresentationController
+        .widthFollowsPreferredContentSizeWhenEdgeAttached = YES;
+
+    if (isCustomizationScreen) {
+      sheetPresentationController.prefersGrabberVisible = NO;
+      sheetPresentationController.detents =
+          @[ [UISheetPresentationControllerDetent largeDetent] ];
+    } else {
+      sheetPresentationController.prefersGrabberVisible = YES;
+
+      NSArray<UISheetPresentationControllerDetent*>* regularDetents = @[
+        [UISheetPresentationControllerDetent mediumDetent],
+        [UISheetPresentationControllerDetent largeDetent]
+      ];
+
+      NSArray<UISheetPresentationControllerDetent*>* largeTextDetents =
+          @[ [UISheetPresentationControllerDetent largeDetent] ];
+
+      BOOL hasLargeText = UIContentSizeCategoryIsAccessibilityCategory(
+          menu.traitCollection.preferredContentSizeCategory);
+      sheetPresentationController.detents =
+          hasLargeText ? largeTextDetents : regularDetents;
+    }
+  };
+
+  if (animated) {
+    [sheetPresentationController animateChanges:changes];
+  } else {
+    changes();
+  }
 }
 
 @end

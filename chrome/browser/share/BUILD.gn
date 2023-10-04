@@ -6,6 +6,7 @@ import("//chrome/browser/buildflags.gni")
 if (is_android) {
   import("//build/config/android/config.gni")
   import("//build/config/android/rules.gni")
+  import("//third_party/jni_zero/jni_zero.gni")
 }
 
 source_set("share") {
@@ -52,7 +53,7 @@ source_set("share") {
       "//components/history/core/browser:browser",
       "//components/ukm/content:content",
       "//ui/android",
-      "//url:gurl_android",
+      "//url",
     ]
   }
 }

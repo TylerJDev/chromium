@@ -627,6 +627,8 @@
 "fullscreen"
 "standalone"
 "minimal-ui"
+"borderless"
+"window-controls-overlay"
 "browser"
 "sticky"
 "coarse"
@@ -937,6 +939,12 @@
 "color-contrast"
 "accentcolor"
 "accentcolortext"
+
+# display-state
+# normal
+# fullscreen
+"minimized"
+"maximized"
 
 # at-rules
 "@charset"

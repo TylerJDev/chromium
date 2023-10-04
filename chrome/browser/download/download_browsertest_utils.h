@@ -192,10 +192,10 @@ class DownloadTestBase : public InProcessBrowserTest {
                               const base::FilePath& downloaded_file,
                               const base::FilePath& origin_file);
 
-  content::DownloadTestObserver* CreateInProgressDownloadObserver(
-      size_t download_count);
-
-  download::DownloadItem* CreateSlowTestDownload();
+  // Creates an in-progress download and returns a pointer to its DownloadItem.
+  // Either supply a `browser` or the `browser()` in the test fixture will be
+  // used.
+  download::DownloadItem* CreateSlowTestDownload(Browser* browser = nullptr);
 
   bool RunSizeTest(Browser* browser,
                    SizeTestType type,
@@ -249,6 +249,12 @@ class DownloadTestBase : public InProcessBrowserTest {
       content::TestFileErrorInjector* error_injector,
       download::DownloadInterruptReason error);
 
+  // Provide equivalent to embedded_test_server() with a variant that uses HTTPS
+  // to avoid insecure download warnings.
+  net::EmbeddedTestServer* https_test_server() {
+    return https_test_server_.get();
+  }
+
  private:
   // Location of the test data.
   base::FilePath test_dir_;
@@ -257,6 +263,10 @@ class DownloadTestBase : public InProcessBrowserTest {
   std::unique_ptr<DownloadTestFileActivityObserver> file_activity_observer_;
   extensions::ScopedIgnoreContentVerifierForTest ignore_content_verifier_;
   extensions::ScopedInstallVerifierBypassForTest ignore_install_verification_;
+
+  // By default, the embedded test server uses HTTP. Keep an HTTPS server
+  // as well so that we can avoid unexpected insecure download warnings.
+  std::unique_ptr<net::EmbeddedTestServer> https_test_server_;
 };
 
 #endif  // CHROME_BROWSER_DOWNLOAD_DOWNLOAD_BROWSERTEST_UTILS_H_

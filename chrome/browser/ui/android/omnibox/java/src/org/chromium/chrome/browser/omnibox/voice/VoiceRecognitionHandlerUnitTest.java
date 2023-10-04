@@ -82,9 +82,8 @@ import java.util.concurrent.ExecutionException;
 @Config(manifest = Config.NONE,
         shadows = {ShadowLog.class, RecognitionTestHelper.ShadowUserPrefs.class})
 public class VoiceRecognitionHandlerUnitTest {
-    private static final GURL DEFAULT_URL = JUnitTestGURLs.getGURL(JUnitTestGURLs.URL_1);
-    private static final GURL DEFAULT_SEARCH_URL =
-            JUnitTestGURLs.getGURL(JUnitTestGURLs.SEARCH_URL);
+    private static final GURL DEFAULT_URL = JUnitTestGURLs.URL_1;
+    private static final GURL DEFAULT_SEARCH_URL = JUnitTestGURLs.SEARCH_URL;
     public @Rule MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     private @Mock Intent mIntent;
@@ -150,7 +149,7 @@ public class VoiceRecognitionHandlerUnitTest {
         mHandler.removeObserver(mObserver);
         FeatureList.setTestValues(null);
         mProfileSupplier.set(null);
-        ProfileManager.onProfileAdded(null);
+        ProfileManager.resetForTesting();
     }
 
     /**

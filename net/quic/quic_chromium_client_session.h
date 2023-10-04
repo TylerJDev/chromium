@@ -150,6 +150,10 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
       public QuicChromiumPacketReader::Visitor,
       public QuicChromiumPacketWriter::Delegate {
  public:
+  // Sets a callback that is called in the middle of a connection migration.
+  // Only for testing.
+  static void SetMidMigrationCallbackForTesting(base::OnceClosure callback);
+
   class StreamRequest;
 
   // An interface that when implemented and added via
@@ -425,7 +429,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
         const quic::QuicSocketAddress& self_address,
         const quic::QuicSocketAddress& peer_address,
         handles::NetworkHandle network,
-        std::unique_ptr<DatagramClientSocket> socket,
         std::unique_ptr<QuicChromiumPacketWriter> writer,
         std::unique_ptr<QuicChromiumPacketReader> reader);
     ~QuicChromiumPathValidationContext() override;
@@ -435,12 +438,10 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
     // Transfer the ownership from |this| to the caller.
     std::unique_ptr<QuicChromiumPacketWriter> ReleaseWriter();
-    std::unique_ptr<DatagramClientSocket> ReleaseSocket();
     std::unique_ptr<QuicChromiumPacketReader> ReleaseReader();
 
    private:
     handles::NetworkHandle network_handle_;
-    std::unique_ptr<DatagramClientSocket> socket_;
     std::unique_ptr<QuicChromiumPacketWriter> writer_;
     std::unique_ptr<QuicChromiumPacketReader> reader_;
   };
@@ -640,7 +641,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
       handles::NetworkHandle network,
       const quic::QuicSocketAddress& peer_address,
       const quic::QuicSocketAddress& self_address,
-      std::unique_ptr<DatagramClientSocket> socket,
       std::unique_ptr<QuicChromiumPacketWriter> writer,
       std::unique_ptr<QuicChromiumPacketReader> reader);
 
@@ -648,7 +648,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
       handles::NetworkHandle network,
       const quic::QuicSocketAddress& peer_address,
       const quic::QuicSocketAddress& self_address,
-      std::unique_ptr<DatagramClientSocket> socket,
       std::unique_ptr<QuicChromiumPacketWriter> writer,
       std::unique_ptr<QuicChromiumPacketReader> reader);
 
@@ -656,7 +655,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
       handles::NetworkHandle network,
       const quic::QuicSocketAddress& peer_address,
       const quic::QuicSocketAddress& self_address,
-      std::unique_ptr<DatagramClientSocket> socket,
       std::unique_ptr<QuicChromiumPacketWriter> writer,
       std::unique_ptr<QuicChromiumPacketReader> reader);
 
@@ -830,7 +828,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   // and |writer|.
   bool MigrateToSocket(const quic::QuicSocketAddress& self_address,
                        const quic::QuicSocketAddress& peer_address,
-                       std::unique_ptr<DatagramClientSocket> socket,
                        std::unique_ptr<QuicChromiumPacketReader> reader,
                        std::unique_ptr<QuicChromiumPacketWriter> writer);
 
@@ -1060,7 +1057,7 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   std::unique_ptr<quic::QuicCryptoClientStream> crypto_stream_;
   raw_ptr<QuicStreamFactory> stream_factory_;
   base::ObserverList<ConnectivityObserver> connectivity_observer_list_;
-  std::vector<std::unique_ptr<DatagramClientSocket>> sockets_;
+  std::vector<std::unique_ptr<QuicChromiumPacketReader>> packet_readers_;
   raw_ptr<TransportSecurityState> transport_security_state_;
   raw_ptr<SSLConfigService> ssl_config_service_;
   std::unique_ptr<QuicServerInfo> server_info_;
@@ -1075,7 +1072,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   size_t num_total_streams_ = 0;
   raw_ptr<base::SequencedTaskRunner> task_runner_;
   NetLogWithSource net_log_;
-  std::vector<std::unique_ptr<QuicChromiumPacketReader>> packet_readers_;
   LoadTimingInfo::ConnectTiming connect_timing_;
   std::unique_ptr<QuicConnectionLogger> logger_;
   std::unique_ptr<QuicHttp3Logger> http3_logger_;

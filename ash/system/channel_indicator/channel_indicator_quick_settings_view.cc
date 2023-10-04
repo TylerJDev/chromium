@@ -24,6 +24,7 @@
 #include "base/ranges/algorithm.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkScalar.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/chromeos/styles/cros_tokens_color_mappings.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/geometry/insets.h"
@@ -165,9 +166,15 @@ const gfx::RoundedCornersF& GetSubmitFeedbackButtonInkDropCorners() {
 // version.
 class VersionButton : public views::LabelButton {
  public:
+  METADATA_HEADER(VersionButton);
   VersionButton(version_info::Channel channel, bool allow_user_feedback)
       : LabelButton(
             base::BindRepeating([](const ui::Event& event) {
+              // Do nothing if it's shown on non-logged-in screen.
+              if (Shell::Get()->session_controller()->GetSessionState() !=
+                  session_manager::SessionState::ACTIVE) {
+                return;
+              }
               quick_settings_metrics_util::RecordQsButtonActivated(
                   QsButtonCatalogName::kVersionButton);
               Shell::Get()
@@ -192,13 +199,21 @@ class VersionButton : public views::LabelButton {
       SetImageLabelSpacing(kVersionButtonImageLabelSpacing);
       SetMinSize(gfx::Size(0, kVersionButtonHeight));
     }
-    views::InkDrop::Get(this)->SetMode(views::InkDropHost::InkDropMode::ON);
     StyleUtil::InstallRoundedCornerHighlightPathGenerator(
         this, GetVersionButtonInkDropCorners(allow_user_feedback));
     views::FocusRing::Get(this)->SetColorId(
         features::IsQsRevampEnabled()
             ? cros_tokens::kCrosSysFocusRing
             : static_cast<ui::ColorId>(ui::kColorAshFocusRing));
+
+    // The button is not focusable and with no clickable effect if it's shown on
+    // non-logged-in screen.
+    if (Shell::Get()->session_controller()->GetSessionState() !=
+        session_manager::SessionState::ACTIVE) {
+      SetFocusBehavior(FocusBehavior::NEVER);
+      return;
+    }
+    views::InkDrop::Get(this)->SetMode(views::InkDropHost::InkDropMode::ON);
   }
   VersionButton(const VersionButton&) = delete;
   VersionButton& operator=(const VersionButton&) = delete;
@@ -272,10 +287,14 @@ class VersionButton : public views::LabelButton {
   SkScalar content_corners_[kNumVersionButtonCornerRadii];
 };
 
+BEGIN_METADATA(VersionButton, views::LabelButton)
+END_METADATA
+
 // SubmitFeedbackButton provides a styled button, for devices on a
 // non-stable release track, that allows the user to submit feedback.
 class SubmitFeedbackButton : public IconButton {
  public:
+  METADATA_HEADER(SubmitFeedbackButton);
   // `content_corners` - an array of `SkScalar` used to generate the rounded
   // rect that's painted for the button, the same regardless of RTL/LTR.
   // `highlight_corners` - a `gfx::RoundedCornersF` used to generate the
@@ -370,6 +389,9 @@ class SubmitFeedbackButton : public IconButton {
   SkScalar content_corners_[kNumVersionButtonCornerRadii];
 };
 
+BEGIN_METADATA(SubmitFeedbackButton, IconButton)
+END_METADATA
+
 }  // namespace
 
 ChannelIndicatorQuickSettingsView::ChannelIndicatorQuickSettingsView(
@@ -409,5 +431,8 @@ void ChannelIndicatorQuickSettingsView::SetNarrowLayout(bool narrow) {
   DCHECK(views::IsViewClass<VersionButton>(version_button_));
   views::AsViewClass<VersionButton>(version_button_)->SetNarrowLayout(narrow);
 }
+
+BEGIN_METADATA(ChannelIndicatorQuickSettingsView, views::View)
+END_METADATA
 
 }  // namespace ash

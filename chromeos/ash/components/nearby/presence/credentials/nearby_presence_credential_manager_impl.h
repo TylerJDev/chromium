@@ -5,12 +5,15 @@
 #ifndef CHROMEOS_ASH_COMPONENTS_NEARBY_PRESENCE_CREDENTIALS_NEARBY_PRESENCE_CREDENTIAL_MANAGER_IMPL_H_
 #define CHROMEOS_ASH_COMPONENTS_NEARBY_PRESENCE_CREDENTIALS_NEARBY_PRESENCE_CREDENTIAL_MANAGER_IMPL_H_
 
+#include "base/memory/raw_ref.h"
 #include "chromeos/ash/components/nearby/presence/credentials/nearby_presence_credential_manager.h"
 
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "chromeos/ash/components/nearby/common/client/nearby_http_result.h"
+#include "chromeos/ash/components/nearby/presence/metrics/nearby_presence_metrics.h"
 #include "chromeos/ash/services/nearby/public/mojom/nearby_presence.mojom.h"
 #include "mojo/public/cpp/bindings/shared_remote.h"
 
@@ -142,12 +145,15 @@ class NearbyPresenceCredentialManagerImpl
 
  private:
   void StartFirstTimeRegistration();
+  void OnFirstTimeRegistrationComplete(
+      metrics::FirstTimeRegistrationResult result);
 
   // Callbacks for server registration UpdateDevice RPC via
   // |RegisterPresence|.
   void HandleFirstTimeRegistrationTimeout();
-  void HandleFirstTimeRegistrationFailure();
+  void HandleFirstTimeRegistrationFailure(ash::nearby::NearbyHttpResult result);
   void OnRegistrationRpcSuccess(
+      base::TimeTicks registration_request_start_time,
       const ash::nearby::proto::UpdateDeviceResponse& response);
   void OnRegistrationRpcFailure(ash::nearby::NearbyHttpError error);
 
@@ -159,10 +165,11 @@ class NearbyPresenceCredentialManagerImpl
   // changes.
   void OnFirstTimeCredentialsGenerated(
       std::vector<mojom::SharedCredentialPtr> shared_credentials,
-      mojom::StatusCode status);
+      mojo_base::mojom::AbslStatusCode status);
 
   // Callback for first time remote credential saving in the NP library.
-  void OnFirstTimeRemoteCredentialsSaved(mojom::StatusCode status);
+  void OnFirstTimeRemoteCredentialsSaved(
+      mojo_base::mojom::AbslStatusCode status);
 
   // Callbacks for credential upload/download during first time
   // server registration and daily syncs.
@@ -177,7 +184,7 @@ class NearbyPresenceCredentialManagerImpl
   // daily syncs.
   void OnGetLocalSharedCredentials(
       std::vector<mojom::SharedCredentialPtr> shared_credentials,
-      mojom::StatusCode status);
+      mojo_base::mojom::AbslStatusCode status);
 
   // Callbacks for uploading/downloading credentials as part of the
   // daily syncs.
@@ -188,7 +195,8 @@ class NearbyPresenceCredentialManagerImpl
 
   // Callback for remote credential saving in the NP library that is part of
   // the daily sync flow.
-  void OnDailySyncRemoteCredentialsSaved(mojom::StatusCode status);
+  void OnDailySyncRemoteCredentialsSaved(
+      mojo_base::mojom::AbslStatusCode status);
 
   // Helper functions to trigger uploading credentials in the NP server. The
   // helper functions are used for first time server registration to upload
@@ -217,6 +225,7 @@ class NearbyPresenceCredentialManagerImpl
       base::RepeatingCallback<void(bool)> upload_credentials_callback);
   void OnUploadCredentialsSuccess(
       base::RepeatingCallback<void(bool)> upload_credentials_callback,
+      base::TimeTicks upload_request_start_time,
       const ash::nearby::proto::UpdateDeviceResponse& response);
   void OnUploadCredentialsFailure(
       base::RepeatingCallback<void(bool)> upload_credentials_callback,
@@ -239,6 +248,7 @@ class NearbyPresenceCredentialManagerImpl
       base::RepeatingCallback<
           void(std::vector<::nearby::internal::SharedCredential>, bool)>
           download_credentials_result_callback,
+      base::TimeTicks download_request_start_time,
       const ash::nearby::proto::ListPublicCertificatesResponse& response);
   void OnDownloadCredentialsFailure(
       base::RepeatingCallback<
@@ -257,7 +267,8 @@ class NearbyPresenceCredentialManagerImpl
   std::unique_ptr<LocalDeviceDataProvider> local_device_data_provider_;
 
   base::OneShotTimer server_response_timer_;
-  const mojo::SharedRemote<mojom::NearbyPresence>& nearby_presence_;
+  const raw_ref<const mojo::SharedRemote<mojom::NearbyPresence>>
+      nearby_presence_;
   const scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
 
   // Schedulers used to schedule immediate tasks to communicate with the
@@ -277,6 +288,12 @@ class NearbyPresenceCredentialManagerImpl
   // 0 once the download request is completed (either resulting in final
   // success or failure).
   int download_credentials_attempts_needed_count_ = 0;
+
+  // Stores the number of current attempts for registered the local device with
+  // the Nearby Presence server. Increments on each attempt, and is reset to 0
+  // once the registration request is completed (either resulting in final
+  // success or failure).
+  int first_time_server_registration_attempts_needed_count_ = 0;
 
   // Initialized during the first time registration flow kicked off in
   // `RegisterPresence()`. Not expected to be a valid pointer unless used during

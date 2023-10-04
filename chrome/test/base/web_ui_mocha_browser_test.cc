@@ -8,6 +8,7 @@
 #include "base/files/file_path.h"
 #include "base/path_service.h"
 #include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/common/webui_url_constants.h"
@@ -74,26 +75,37 @@ void WebUIMochaBrowserTest::SetUpOnMainThread() {
 
 void WebUIMochaBrowserTest::RunTest(const std::string& file,
                                     const std::string& trigger) {
-  RunTest(file, trigger, /*requires_focus=*/false);
+  RunTest(file, trigger, /*skip_test_loader=*/false);
+}
+
+void WebUIMochaBrowserTest::OnWebContentsAvailable(
+    content::WebContents* web_contents) {
+  // Nothing to do here. Should be overridden by any subclasses if additional
+  // setup steps are needed.
+}
+
+void WebUIMochaBrowserTest::SubstituteWebContents(
+    content::WebContents** out_new_contents) {
+  // Nothing to do here. Should be overridden by any subclasses if web contents
+  // should be substituted.
 }
 
 void WebUIMochaBrowserTest::RunTest(const std::string& file,
                                     const std::string& trigger,
-                                    const bool& requires_focus) {
+                                    const bool& skip_test_loader) {
   // Construct URL to load the test module file.
   GURL url(
-      std::string("chrome://" + test_loader_host_ +
-                  "/test_loader.html?adapter=mocha_adapter_simple.js&module=") +
-      file);
+      skip_test_loader
+          ? std::string("chrome://" + test_loader_host_)
+          : std::string(
+                "chrome://" + test_loader_host_ +
+                "/test_loader.html?adapter=mocha_adapter_simple.js&module=") +
+                file);
 
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url));
   content::WebContents* web_contents =
       chrome_test_utils::GetActiveWebContents(this);
   ASSERT_TRUE(web_contents);
-
-  if (requires_focus) {
-    web_contents->Focus();
-  }
 
   // Check that the navigation does not point to an error page like
   // chrome-error://chromewebdata/.
@@ -104,8 +116,41 @@ void WebUIMochaBrowserTest::RunTest(const std::string& file,
     FAIL() << "Navigation to '" << url.spec() << "' failed.";
   }
 
+  // Hook for subclasses that want to override the WebContents used for running
+  // the mocha test (e.g., for testing the WebContents of a constrained dialog
+  // and not the tab itself).
+  SubstituteWebContents(&web_contents);
+  ASSERT_TRUE(web_contents);
+
+  // Hook for subclasses that need access to the WebContents before the Mocha
+  // test runs.
+  OnWebContentsAvailable(web_contents);
+
+  ASSERT_TRUE(
+      RunTestOnWebContents(web_contents, file, trigger, skip_test_loader));
+}
+
+testing::AssertionResult WebUIMochaBrowserTest::RunTestOnWebContents(
+    content::WebContents* web_contents,
+    const std::string& file,
+    const std::string& trigger,
+    const bool& skip_test_loader) {
+  testing::AssertionResult result(testing::AssertionFailure());
+
+  if (skip_test_loader) {
+    // Perform setup steps normally done by test_loader.html.
+    result = SimulateTestLoader(web_contents, file);
+    if (!result) {
+      return result;
+    }
+  }
+
   // Trigger the Mocha tests, and wait for completion.
-  ASSERT_TRUE(ExecJs(web_contents->GetPrimaryMainFrame(), trigger));
+  result = ExecJs(web_contents->GetPrimaryMainFrame(), trigger);
+  if (!result) {
+    return result;
+  }
+
   bool success = WaitForTestToFinish(web_contents);
 
   // Report code coverage metrics.
@@ -120,12 +165,51 @@ void WebUIMochaBrowserTest::RunTest(const std::string& file,
   }
 
   if (!success) {
-    FAIL() << "Mocha test failures detected in file: " << file
-           << ", triggered by '" << trigger << "'";
+    testing::Message msg;
+    msg << "Mocha test failures detected in file: " << file
+        << ", triggered by '" << trigger << "'";
+    return testing::AssertionFailure(msg);
   }
+
+  return testing::AssertionSuccess();
 }
 
-void WebUIMochaFocusTest::RunTest(const std::string& file,
-                                  const std::string& trigger) {
-  WebUIMochaBrowserTest::RunTest(file, trigger, /*requires_focus=*/true);
+void WebUIMochaBrowserTest::RunTestWithoutTestLoader(
+    const std::string& file,
+    const std::string& trigger) {
+  RunTest(file, trigger, /*skip_test_loader=*/true);
+}
+
+testing::AssertionResult WebUIMochaBrowserTest::SimulateTestLoader(
+    content::WebContents* web_contents,
+    const std::string& file) {
+  // Step 1: Programmatically loads mocha.js and mocha_adapter_simple.js.
+  std::string loadMochaScript(base::StringPrintf(
+      R"(
+async function load() {
+  await import('chrome://%s/mocha.js');
+  await import('chrome://%s/mocha_adapter_simple.js');
+}
+load();
+)",
+      chrome::kChromeUIWebUITestHost, chrome::kChromeUIWebUITestHost));
+
+  testing::AssertionResult result =
+      ExecJs(web_contents->GetPrimaryMainFrame(), loadMochaScript);
+  if (!result) {
+    return result;
+  }
+
+  // Step 2: Programmatically loads the Mocha test file.
+  std::string loadTestModuleScript(
+      base::StringPrintf("import('chrome://%s/%s');",
+                         chrome::kChromeUIWebUITestHost, file.c_str()));
+  return ExecJs(web_contents->GetPrimaryMainFrame(), loadTestModuleScript);
+}
+
+void WebUIMochaFocusTest::OnWebContentsAvailable(
+    content::WebContents* web_contents) {
+  // Focus the web contents before running the test, used for tests running as
+  // interactive_ui_tests.
+  web_contents->Focus();
 }

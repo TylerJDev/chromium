@@ -57,7 +57,7 @@ using Segmentation_ModelExecution =
     ::ukm::builders::Segmentation_ModelExecution;
 
 constexpr auto kTestOptimizationTarget0 =
-    SegmentId::OPTIMIZATION_TARGET_SEGMENTATION_SHOPPING_USER;
+    SegmentId::OPTIMIZATION_TARGET_SEGMENTATION_NEW_TAB;
 constexpr auto kTestOptimizationTarget1 =
     SegmentId::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER;
 constexpr auto kTestOptimizationTarget2 =
@@ -177,8 +177,6 @@ class TrainingDataCollectorImplTest : public ::testing::Test {
     storage_service_ = std::make_unique<StorageService>(
         std::move(test_segment_info_db), nullptr,
         std::move(signal_storage_config),
-        std::make_unique<DefaultModelManager>(nullptr,
-                                              base::flat_set<SegmentId>()),
         std::make_unique<MockModelManager>(),
         std::make_unique<ConfigHolder>(std::move(configs_)),
         &ukm_data_manager_);
@@ -912,10 +910,9 @@ TEST_F(TrainingDataCollectorImplTest,
                                    base::DoNothing());
   ExpectUkmCount(0u);
   // A histogram should have been recorded.
-  EXPECT_EQ(
-      1, tester.GetBucketCount(
-             "SegmentationPlatform.TrainingDataCollectionEvents.ShoppingUser",
-             stats::TrainingDataCollectionEvent::kGetInputTensorsFailed));
+  EXPECT_EQ(1, tester.GetBucketCount(
+                   "SegmentationPlatform.TrainingDataCollectionEvents.NewTab",
+                   stats::TrainingDataCollectionEvent::kGetInputTensorsFailed));
 }
 
 }  // namespace

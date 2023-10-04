@@ -77,17 +77,14 @@ class PreinstalledWebAppManager {
 
   static void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
 
-  // TODO(crbug.com/1434692): All these should return a base::AutoReset<bool> to
-  // avoid leaking override state beyond unit test execution.
-  static void SkipStartupForTesting();
+  static base::AutoReset<bool> SkipStartupForTesting();
   static base::AutoReset<bool> BypassAwaitingDependenciesForTesting();
-  static void BypassOfflineManifestRequirementForTesting();
-
-  static void OverridePreviousUserUninstallConfigForTesting();
-  static void SetConfigDirForTesting(const base::FilePath* config_dir);
-
-  static void SetConfigsForTesting(const base::Value::List* configs);
-  static void SetFileUtilsForTesting(FileUtilsWrapper* file_utils);
+  static base::AutoReset<bool> BypassOfflineManifestRequirementForTesting();
+  static base::AutoReset<bool> OverridePreviousUserUninstallConfigForTesting();
+  static base::AutoReset<const base::Value::List*> SetConfigsForTesting(
+      const base::Value::List* configs);
+  static base::AutoReset<FileUtilsWrapper*> SetFileUtilsForTesting(
+      FileUtilsWrapper* file_utils);
 
   explicit PreinstalledWebAppManager(Profile* profile);
   PreinstalledWebAppManager(const PreinstalledWebAppManager&) = delete;
@@ -124,10 +121,10 @@ class PreinstalledWebAppManager {
 
     bool is_start_up_task_complete = false;
     std::vector<std::string> parse_errors;
-    std::vector<ExternalInstallOptions> enabled_configs;
-    using DisabledConfigWithReason =
-        std::pair<ExternalInstallOptions, std::string>;
-    std::vector<DisabledConfigWithReason> disabled_configs;
+    using ConfigWithLog = std::pair<ExternalInstallOptions, std::string>;
+    std::vector<ConfigWithLog> uninstall_configs;
+    std::vector<ConfigWithLog> install_configs;
+    std::vector<ConfigWithLog> ignore_configs;
     std::map<InstallUrl, ExternallyManagedAppManager::InstallResult>
         install_results;
     std::map<InstallUrl, bool> uninstall_results;
@@ -152,7 +149,8 @@ class PreinstalledWebAppManager {
                    std::vector<ExternalInstallOptions>);
   void OnExternalWebAppsSynchronized(
       ExternallyManagedAppManager::SynchronizeCallback callback,
-      std::map<InstallUrl, std::vector<AppId>> desired_uninstall_and_replaces,
+      std::map<InstallUrl, std::vector<webapps::AppId>>
+          desired_uninstall_and_replaces,
       std::map<InstallUrl, ExternallyManagedAppManager::InstallResult>
           install_results,
       std::map<InstallUrl, bool> uninstall_results);

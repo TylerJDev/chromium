@@ -27,7 +27,12 @@ CGFloat DoodleTopMargin(CGFloat top_inset, UITraitCollection* trait_collection);
 CGFloat HeaderSeparatorHeight();
 // Returns the proper margin to the bottom of the doodle for the search field.
 CGFloat SearchFieldTopMargin();
+// Returns the height of the Fake Omnibox on Home when it is not scrolled.
 CGFloat FakeOmniboxHeight();
+// Returns the height of the Fake Omnibox on Home when it is pinned / scrolled.
+CGFloat PinnedFakeOmniboxHeight();
+// Returns the height of the fake toolbar shown when the fake omnibox is pinned.
+CGFloat FakeToolbarHeight();
 // Returns the proper width for the search field inside a view with a `width`.
 // The SizeClass of the `traitCollection` of the view displaying the search
 // field is used in the computation.

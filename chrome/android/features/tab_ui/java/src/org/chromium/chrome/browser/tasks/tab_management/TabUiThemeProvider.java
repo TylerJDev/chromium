@@ -19,7 +19,7 @@ import com.google.android.material.color.MaterialColors;
 import com.google.android.material.elevation.ElevationOverlayProvider;
 
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.browser_ui.styles.SemanticColorUtils;
 
 /**
@@ -40,17 +40,12 @@ public class TabUiThemeProvider {
             Context context, boolean isIncognito, boolean isSelected) {
         if (isIncognito) {
             // Incognito does not use dynamic colors, so it can use colors from resources.
-            int incognitoTabBgColorRes = ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                    ? R.color.default_bg_color_dark_elev_4_gm3_baseline
-                    : R.color.incognito_tab_bg_color;
             @ColorRes
-            int colorRes =
-                    isSelected ? R.color.incognito_tab_bg_selected_color : incognitoTabBgColorRes;
+            int colorRes = isSelected ? R.color.incognito_tab_bg_selected_color
+                                      : R.color.incognito_tab_bg_color;
             return ContextCompat.getColor(context, colorRes);
         } else {
-            float tabElevation = ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                    ? context.getResources().getDimension(R.dimen.default_elevation_5)
-                    : context.getResources().getDimension(R.dimen.tab_bg_elevation);
+            float tabElevation = context.getResources().getDimension(R.dimen.tab_bg_elevation);
             @ColorInt
             int colorInt = isSelected
                     ? MaterialColors.getColor(context, org.chromium.chrome.R.attr.colorPrimary, TAG)
@@ -261,13 +256,9 @@ public class TabUiThemeProvider {
     public static ColorStateList getHoveredCardBackgroundTintList(
             Context context, boolean isIncognito, boolean isSelected) {
         if (isIncognito) {
-            int incognitoTabGroupHoveredBgColorRes =
-                    ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                    ? R.color.default_bg_color_dark_elev_1_gm3_baseline
-                    : R.color.incognito_tab_group_hovered_bg_color;
             @ColorRes
             int colorRes = isSelected ? R.color.incognito_tab_group_hovered_bg_selected_color
-                                      : incognitoTabGroupHoveredBgColorRes;
+                                      : R.color.incognito_tab_group_hovered_bg_color;
             return AppCompatResources.getColorStateList(context, colorRes);
         } else {
             if (isSelected) {
@@ -382,6 +373,48 @@ public class TabUiThemeProvider {
     public static @ColorInt int getTabGridDialogUngroupBarHoveredBackgroundColor(
             Context context, boolean isIncognito) {
         return getTabGridDialogUngroupBarBackgroundColor(context, isIncognito, true);
+    }
+
+    /**
+     * Returns the {@link ColorStateList} to use for the strip tab hover card based on the incognito
+     * mode.
+     *
+     * @param context {@link Context} used to retrieve color.
+     * @param isIncognito Whether the color is used for incognito mode.
+     * @return The {@link ColorStateList} for the strip tab hover card.
+     */
+    public static ColorStateList getStripTabHoverCardBackgroundTintList(
+            Context context, boolean isIncognito) {
+        int backgroundTint = isIncognito
+                ? ContextCompat.getColor(context, R.color.default_bg_color_dark_elev_5_baseline)
+                : ChromeColors.getSurfaceColor(context, R.dimen.tab_hover_card_bg_color_elev);
+        return ColorStateList.valueOf(backgroundTint);
+    }
+
+    /**
+     * Returns the text color for the strip tab hover card title based on the incognito mode.
+     *
+     * @param context {@link Context} used to retrieve color.
+     * @param isIncognito Whether the color is used for incognito mode.
+     * @return The text color for the strip tab hover card title.
+     */
+    public static @ColorInt int getStripTabHoverCardTextColorPrimary(
+            Context context, boolean isIncognito) {
+        return isIncognito ? context.getColor(R.color.default_text_color_light)
+                           : SemanticColorUtils.getDefaultTextColor(context);
+    }
+
+    /**
+     * Returns the text color for the strip tab hover card URL based on the incognito mode.
+     *
+     * @param context {@link Context} used to retrieve color.
+     * @param isIncognito Whether the color is used for incognito mode.
+     * @return The text color for the strip tab hover card URL.
+     */
+    public static @ColorInt int getStripTabHoverCardTextColorSecondary(
+            Context context, boolean isIncognito) {
+        return isIncognito ? context.getColor(R.color.default_text_color_secondary_light)
+                           : SemanticColorUtils.getDefaultTextColorSecondary(context);
     }
 
     /**

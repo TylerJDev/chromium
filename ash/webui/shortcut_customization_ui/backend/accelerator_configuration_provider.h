@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "ash/accelerators/accelerator_alias_converter.h"
+#include "ash/accelerators/accelerator_prefs.h"
 #include "ash/accelerators/ash_accelerator_configuration.h"
 #include "ash/public/cpp/accelerator_configuration.h"
 #include "ash/public/cpp/input_device_settings_controller.h"
@@ -38,11 +39,23 @@ class PrefService;
 
 namespace ash::shortcut_ui {
 
+// Enum for histograms, must be kept in sync with the equivalent enum in
+// enums.xml.
+enum class ShortcutCustomizationAction {
+  kAddAccelerator,
+  kRemoveAccelerator,
+  kReplaceAccelerator,
+  kResetAction,
+  kResetAll,
+  kMaxValue = kResetAll,
+};
+
 class AcceleratorConfigurationProvider
     : public shortcut_customization::mojom::AcceleratorConfigurationProvider,
       public ui::InputDeviceEventObserver,
       public input_method::InputMethodManager::Observer,
-      public InputDeviceSettingsController::Observer {
+      public InputDeviceSettingsController::Observer,
+      public AcceleratorPrefs::Observer {
  public:
   using ActionIdToAcceleratorsInfoMap =
       base::flat_map<AcceleratorActionId,
@@ -74,6 +87,8 @@ class AcceleratorConfigurationProvider
   // shortcut_customization::mojom::AcceleratorConfigurationProvider:
   void IsMutable(ash::mojom::AcceleratorSource source,
                  IsMutableCallback callback) override;
+  void IsCustomizationAllowedByPolicy(
+      IsCustomizationAllowedByPolicyCallback callback) override;
   void HasLauncherButton(HasLauncherButtonCallback callback) override;
   void GetConflictAccelerator(mojom::AcceleratorSource source,
                               uint32_t action_id,
@@ -86,6 +101,9 @@ class AcceleratorConfigurationProvider
   void AddObserver(mojo::PendingRemote<
                    shortcut_customization::mojom::AcceleratorsUpdatedObserver>
                        observer) override;
+  void AddPolicyObserver(
+      mojo::PendingRemote<shortcut_customization::mojom::PolicyUpdatedObserver>
+          observer) override;
   void GetAcceleratorLayoutInfos(
       GetAcceleratorLayoutInfosCallback callback) override;
   void PreventProcessingAccelerators(
@@ -108,6 +126,8 @@ class AcceleratorConfigurationProvider
                       uint32_t action_id,
                       RestoreDefaultCallback callback) override;
   void RestoreAllDefaults(RestoreAllDefaultsCallback callback) override;
+  void RecordUserAction(
+      shortcut_customization::mojom::UserAction user_action) override;
 
   // ui::InputDeviceEventObserver:
   void OnInputDeviceConfigurationChanged(uint8_t input_device_types) override;
@@ -121,6 +141,9 @@ class AcceleratorConfigurationProvider
   void OnKeyboardConnected(const mojom::Keyboard& keyboard) override;
   void OnKeyboardDisconnected(const mojom::Keyboard& keyboard) override;
   void OnKeyboardSettingsUpdated(const mojom::Keyboard& keyboard) override;
+
+  // AcceleratorPrefs::Observer:
+  void OnShortcutPolicyUpdated() override;
 
   AcceleratorConfigurationMap GetAcceleratorConfig();
   std::vector<mojom::AcceleratorLayoutInfoPtr> GetAcceleratorLayoutInfos()
@@ -148,6 +171,19 @@ class AcceleratorConfigurationProvider
                            SetLayoutDetailsMapForTesting);
   friend class AcceleratorConfigurationProviderTest;
   using NonConfigAcceleratorActionMap = ui::AcceleratorMap<AcceleratorActionId>;
+
+  // Represents the different states the current pending accelerator can be
+  // in.
+  enum class AcceleratorConflictErrorState {
+    // No error.
+    kStandby,
+    // Awaiting user to re-input the same accelerator.
+    kAwaitingConflictResolution,
+    // Accelerator with conflict has been resolved and can be used.
+    kConflictResolved,
+    // Awaiting user to re-input the same non-search modifier accelerator.
+    kAwaitingNonSearchConfirmation,
+  };
 
   // Accelerator that is queued to be added. This should only be set if the user
   // has attempted to add an accelerator that conflicts with a overridable
@@ -192,6 +228,14 @@ class AcceleratorConfigurationProvider
                            AcceleratorActionId action_id,
                            const ui::Accelerator& accelerator);
 
+  // Handle the case in which the user inputs an accelerator without Search as
+  // a modifier. Returns the `AcceleratorConflictErrorState` that reflects
+  // the current state of handling the non-search accelerator.
+  AcceleratorConflictErrorState MaybeHandleNonSearchAccelerator(
+      const ui::Accelerator& accelerator,
+      mojom::AcceleratorSource source,
+      AcceleratorActionId action_id);
+
   void SetLayoutDetailsMapForTesting(
       const std::vector<AcceleratorLayoutDetails>& layouts);
 
@@ -234,10 +278,17 @@ class AcceleratorConfigurationProvider
 
   std::unique_ptr<PendingAccelerator> pending_accelerator_;
 
+  AcceleratorConflictErrorState conflict_error_state_ =
+      AcceleratorConflictErrorState::kStandby;
+
   mojo::Remote<shortcut_customization::mojom::AcceleratorsUpdatedObserver>
       accelerators_updated_mojo_observer_;
   base::ObserverList<AcceleratorsUpdatedObserver>
       accelerators_updated_observers_;
+
+  // Policy update mojo observer:
+  mojo::Remote<shortcut_customization::mojom::PolicyUpdatedObserver>
+      policy_updated_mojo_observer;
 
   base::WeakPtrFactory<AcceleratorConfigurationProvider> weak_ptr_factory_{
       this};

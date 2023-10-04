@@ -30,6 +30,7 @@ import org.chromium.base.Log;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ActivityUtils;
 import org.chromium.chrome.browser.IntentHandler;
@@ -44,7 +45,7 @@ import org.chromium.chrome.browser.document.ChromeLauncherActivity;
 import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
 import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.read_later.ReadingListUtils;
 import org.chromium.chrome.browser.tab.Tab;
@@ -323,15 +324,7 @@ public class BookmarkUtils {
 
         bookmarkId =
                 bookmarkModel.addBookmark(parent, bookmarkModel.getChildCount(parent), title, url);
-        // TODO(lazzzis): remove log after bookmark sync is fixed, crbug.com/986978
         if (bookmarkId == null) {
-            Log.e(TAG,
-                    "Failed to add bookmarks: parentTypeAndId %s, defaultFolderTypeAndId %s, "
-                            + "mobileFolderTypeAndId %s, parentEditable Managed isFolder %s,",
-                    parent, bookmarkModel.getDefaultFolder(), bookmarkModel.getMobileFolderId(),
-                    parentItem == null ? "null"
-                                       : (parentItem.isEditable() + " " + parentItem.isManaged()
-                                               + " " + parentItem.isFolder()));
             setLastUsedParent(context, bookmarkModel.getDefaultFolder());
         }
         return bookmarkId;
@@ -400,7 +393,7 @@ public class BookmarkUtils {
         Context context = activity == null ? ContextUtils.getApplicationContext() : activity;
         String url = getFirstUrlToLoad(context, folderId);
 
-        if (SharedPreferencesManager.getInstance().contains(
+        if (ChromeSharedPreferences.getInstance().contains(
                     ChromePreferenceKeys.BOOKMARKS_LAST_USED_URL)) {
             RecordUserAction.record("MobileBookmarkManagerReopenBookmarksInSameSession");
         }
@@ -473,7 +466,7 @@ public class BookmarkUtils {
      */
     @VisibleForTesting(otherwise = VisibleForTesting.PACKAGE_PRIVATE)
     public static void setLastUsedUrl(Context context, String url) {
-        SharedPreferencesManager.getInstance().writeString(
+        ChromeSharedPreferences.getInstance().writeString(
                 ChromePreferenceKeys.BOOKMARKS_LAST_USED_URL, url);
     }
 
@@ -482,7 +475,7 @@ public class BookmarkUtils {
      */
     @VisibleForTesting
     public static String getLastUsedUrl(Context context) {
-        return SharedPreferencesManager.getInstance().readString(
+        return ChromeSharedPreferences.getInstance().readString(
                 ChromePreferenceKeys.BOOKMARKS_LAST_USED_URL, UrlConstants.BOOKMARKS_URL);
     }
 
@@ -490,7 +483,7 @@ public class BookmarkUtils {
      * Save the last used {@link BookmarkId} as a folder to put new bookmarks to.
      */
     public static void setLastUsedParent(Context context, BookmarkId bookmarkId) {
-        SharedPreferencesManager.getInstance().writeString(
+        ChromeSharedPreferences.getInstance().writeString(
                 ChromePreferenceKeys.BOOKMARKS_LAST_USED_PARENT, bookmarkId.toString());
     }
 
@@ -502,7 +495,7 @@ public class BookmarkUtils {
      *         has never selected a parent folder to use.
      */
     static BookmarkId getLastUsedParent(Context context, BookmarkModel bookmarkModel) {
-        SharedPreferencesManager preferences = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
         if (!preferences.contains(ChromePreferenceKeys.BOOKMARKS_LAST_USED_PARENT)) return null;
 
         BookmarkId parent = BookmarkId.getBookmarkIdFromString(
@@ -566,14 +559,19 @@ public class BookmarkUtils {
 
     /**
      * @param context {@link Context} used to retrieve the drawable.
-     * @param type The bookmark type of the folder.
+     * @param bookmarkId The bookmark id of the folder.
+     * @param bookmarkModel The bookmark model.
      * @return A {@link Drawable} to use for displaying bookmark folders.
      */
-    public static Drawable getFolderIcon(
-            Context context, @BookmarkType int type, @BookmarkRowDisplayPref int displayPref) {
-        ColorStateList tint = getFolderIconTint(context, type);
-        if (type == BookmarkType.READING_LIST) {
+    public static Drawable getFolderIcon(Context context, BookmarkId bookmarkId,
+            BookmarkModel bookmarkModel, @BookmarkRowDisplayPref int displayPref) {
+        ColorStateList tint = getFolderIconTint(context, bookmarkId.getType());
+        if (bookmarkId.getType() == BookmarkType.READING_LIST) {
             return UiUtils.getTintedDrawable(context, R.drawable.ic_reading_list_folder_24dp, tint);
+        } else if (BookmarkFeatures.isAndroidImprovedBookmarksEnabled()
+                && bookmarkId.getType() == BookmarkType.NORMAL
+                && Objects.equals(bookmarkId, bookmarkModel.getDesktopFolderId())) {
+            return UiUtils.getTintedDrawable(context, R.drawable.ic_toolbar_24dp, tint);
         }
 
         return UiUtils.getTintedDrawable(context,
@@ -587,6 +585,8 @@ public class BookmarkUtils {
      * @param type The bookmark type of the folder.
      * @return The tint used on the bookmark folder icon.
      */
+    // TODO(crbug.com/1483510): This function isn't used in the new bookmarks manager, remove it
+    // after android-improved-bookmarks is the default.
     public static ColorStateList getFolderIconTint(Context context, @BookmarkType int type) {
         if (BookmarkFeatures.isAndroidImprovedBookmarksEnabled()
                 && type == BookmarkType.READING_LIST) {
@@ -606,54 +606,6 @@ public class BookmarkUtils {
     }
 
     /**
-     * Populates the top level bookmark folder ids.
-     * @param bookmarkModel The bookmark model that talks to bookmark native backend.
-     * @return The list of top level bookmark folder ids.
-     */
-    public static List<BookmarkId> populateTopLevelFolders(BookmarkModel bookmarkModel) {
-        // TODO(crbug.com/1449020): Refactor this to not go through JNI so much.
-        List<BookmarkId> topLevelFolders = new ArrayList<>();
-        BookmarkId desktopNodeId = bookmarkModel.getDesktopFolderId();
-        BookmarkId mobileNodeId = bookmarkModel.getMobileFolderId();
-        BookmarkId othersNodeId = bookmarkModel.getOtherFolderId();
-
-        List<BookmarkId> specialFoldersIds =
-                bookmarkModel.getTopLevelFolderIds(/*getSpecial=*/true, /*getNormal=*/false);
-        BookmarkId rootFolder = bookmarkModel.getRootFolderId();
-
-        // managed and partner bookmark folders will be put to the bottom.
-        List<BookmarkId> managedAndPartnerFolderIds = new ArrayList<>();
-
-        for (BookmarkId bookmarkId : specialFoldersIds) {
-            // Adds reading list as the first top level folder.
-            if (bookmarkId.getType() == BookmarkType.READING_LIST) {
-                topLevelFolders.add(bookmarkId);
-                TrackerFactory.getTrackerForProfile(Profile.getLastUsedRegularProfile())
-                        .notifyEvent(EventConstants.READ_LATER_BOTTOM_SHEET_FOLDER_SEEN);
-                continue;
-            }
-            BookmarkId parent = bookmarkModel.getBookmarkById(bookmarkId).getParentId();
-            if (parent.equals(rootFolder)) managedAndPartnerFolderIds.add(bookmarkId);
-        }
-
-        // Adds normal bookmark top level folders.
-        if (bookmarkModel.isFolderVisible(mobileNodeId)) {
-            topLevelFolders.add(mobileNodeId);
-        }
-        if (bookmarkModel.isFolderVisible(desktopNodeId)) {
-            topLevelFolders.add(desktopNodeId);
-        }
-        if (bookmarkModel.isFolderVisible(othersNodeId)) {
-            topLevelFolders.add(othersNodeId);
-        }
-
-        // Add any top-level managed and partner bookmark folders that are children of the root
-        // folder.
-        topLevelFolders.addAll(managedAndPartnerFolderIds);
-        return topLevelFolders;
-    }
-
-    /**
      * Expires the stored last used url if Chrome has been in the background long enough to mark it
      * as a new session. We're using the "Start Surface" concept of session here which is if the
      * app has been in the background for X amount of time. Called from #onStartWithNative, after
@@ -664,7 +616,7 @@ public class BookmarkUtils {
     public static void maybeExpireLastBookmarkLocationForReadLater(
             long timeSinceLastBackgroundedMs) {
         if (timeSinceLastBackgroundedMs > READING_LIST_SESSION_LENGTH_MS) {
-            SharedPreferencesManager.getInstance().removeKey(
+            ChromeSharedPreferences.getInstance().removeKey(
                     ChromePreferenceKeys.BOOKMARKS_LAST_USED_URL);
         }
     }
@@ -682,7 +634,7 @@ public class BookmarkUtils {
      */
     public static int getChildCountForDisplay(BookmarkId id, BookmarkModel bookmarkModel) {
         if (id.getType() == BookmarkType.READING_LIST) {
-            return bookmarkModel.getUnreadCount(id);
+            return bookmarkModel.getUnreadCount();
         } else {
             return bookmarkModel.getTotalBookmarkCount(id);
         }
@@ -820,14 +772,12 @@ public class BookmarkUtils {
     /** Returns whether the given folder should display images. */
     public static boolean shouldShowImagesForFolder(
             BookmarkModel bookmarkModel, BookmarkId folder) {
-        // TODO(crbug.com/1449020): Refactor this to not go through JNI so much.
         BookmarkId rootNodeId = bookmarkModel.getRootFolderId();
         BookmarkId desktopNodeId = bookmarkModel.getDesktopFolderId();
         BookmarkId mobileNodeId = bookmarkModel.getMobileFolderId();
         BookmarkId othersNodeId = bookmarkModel.getOtherFolderId();
 
-        List<BookmarkId> specialFoldersIds =
-                bookmarkModel.getTopLevelFolderIds(/*getSpecial=*/true, /*getNormal=*/false);
+        List<BookmarkId> specialFoldersIds = bookmarkModel.getTopLevelFolderIds();
         return !Objects.equals(folder, rootNodeId) && !Objects.equals(folder, desktopNodeId)
                 && !Objects.equals(folder, mobileNodeId) && !Objects.equals(folder, othersNodeId)
                 && !specialFoldersIds.contains(folder);

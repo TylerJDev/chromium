@@ -7,8 +7,12 @@
 
 #include <memory>
 
-#include "base/files/file_path.h"
+#include "base/functional/callback_forward.h"
 #include "components/metrics/structured/key_data_provider.h"
+
+namespace base {
+class FilePath;
+}
 
 namespace metrics::structured {
 

@@ -118,9 +118,9 @@ float SVGLength::Value(const SVGLengthConversionData& conversion_data,
 }
 
 float SVGLength::Value(const SVGLengthContext& context) const {
-  if (IsCalculated() || HasContainerRelativeUnits())
-    return context.ResolveValue(AsCSSPrimitiveValue(), UnitMode());
-
+  if (const auto* math_function = DynamicTo<CSSMathFunctionValue>(*value_)) {
+    return context.ResolveValue(*math_function, UnitMode());
+  }
   return context.ConvertValueToUserUnits(value_->GetFloatValue(), UnitMode(),
                                          NumericLiteralType());
 }
@@ -128,19 +128,6 @@ float SVGLength::Value(const SVGLengthContext& context) const {
 void SVGLength::SetValueAsNumber(float value) {
   value_ = CSSNumericLiteralValue::Create(
       value, CSSPrimitiveValue::UnitType::kUserUnits);
-}
-
-void SVGLength::SetValue(float value, const SVGLengthContext& context) {
-  // |value| is in user units.
-  if (IsCalculated() || HasContainerRelativeUnits()) {
-    value_ = CSSNumericLiteralValue::Create(
-        value, CSSPrimitiveValue::UnitType::kUserUnits);
-    return;
-  }
-  value_ = CSSNumericLiteralValue::Create(
-      context.ConvertValueFromUserUnits(value, UnitMode(),
-                                        NumericLiteralType()),
-      NumericLiteralType());
 }
 
 void SVGLength::SetValueInSpecifiedUnits(float value) {
@@ -293,8 +280,14 @@ bool SVGLength::NegativeValuesForbiddenForAnimatedLengthAttribute(
 void SVGLength::Add(const SVGPropertyBase* other,
                     const SVGElement* context_element) {
   SVGLengthContext length_context(context_element);
-  SetValue(Value(length_context) + To<SVGLength>(other)->Value(length_context),
-           length_context);
+  const float sum =
+      Value(length_context) + To<SVGLength>(other)->Value(length_context);
+  if (IsCalculated()) {
+    SetValueAsNumber(sum);
+    return;
+  }
+  SetValueInSpecifiedUnits(length_context.ConvertValueFromUserUnits(
+      sum, UnitMode(), NumericLiteralType()));
 }
 
 void SVGLength::CalculateAnimatedValue(
@@ -321,8 +314,7 @@ void SVGLength::CalculateAnimatedValue(
   const SVGLength* unit_determining_length =
       (percentage < 0.5) ? from_length : to_length;
   CSSPrimitiveValue::UnitType result_unit =
-      (!unit_determining_length->IsCalculated() &&
-       !unit_determining_length->HasContainerRelativeUnits())
+      !unit_determining_length->IsCalculated()
           ? unit_determining_length->NumericLiteralType()
           : CSSPrimitiveValue::UnitType::kUserUnits;
 

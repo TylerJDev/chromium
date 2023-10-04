@@ -132,6 +132,18 @@ v8::Local<v8::Value> DirectFromSellerSignalsRequester::Result::GetSignals(
   return v8_result.ToLocalChecked();
 }
 
+bool DirectFromSellerSignalsRequester::Result::IsNull() const {
+  if (absl::holds_alternative<ErrorString>(response_or_error_)) {
+    return false;
+  }
+
+  DCHECK(absl::holds_alternative<scoped_refptr<ResponseString>>(
+      response_or_error_));
+  scoped_refptr<ResponseString> response =
+      absl::get<scoped_refptr<ResponseString>>(response_or_error_);
+  return response == nullptr;
+}
+
 DirectFromSellerSignalsRequester::Result::ResponseString::ResponseString(
     std::string&& other)
     : value_(std::move(other)) {}
@@ -295,13 +307,16 @@ void DirectFromSellerSignalsRequester::OnSignalsDownloaded(
   auto it = coalesced_downloads_.find(signals_url);
   DCHECK(it != coalesced_downloads_.end());
   DCHECK_EQ(signals_url, it->second.downloader->source_url());
-  std::list<raw_ptr<Request, DanglingUntriaged>> requests;
+  std::list<raw_ptr<Request>> requests;
   std::swap(requests, it->second.requests);
   coalesced_downloads_.erase(it);
 
-  for (Request* request : requests) {
+  while (!requests.empty()) {
+    // `*request` may be destroyed by the callback, so we also don't want to
+    // keep a dangling pointer to it in `requests`.
+    Request* request = requests.front();
+    requests.pop_front();
     request->RunCallbackSync(result);
-    // `*request` might have been destroyed by the callback.
   }
 }
 

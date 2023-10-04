@@ -10,7 +10,7 @@ namespace drive::prefs {
 // The pref prefix should remain as "gdata" for backward compatibility.
 const char kDisableDrive[] = "gdata.disabled";
 
-// A boolean pref to disable Drive over cellular connections.
+// A boolean pref to disable Drive over cellular or metered connections.
 // The pref prefix should remain as "gdata" for backward compatibility.
 const char kDisableDriveOverCellular[] = "gdata.cellular.disabled";
 
@@ -44,5 +44,9 @@ const char kDriveFsBulkPinningVisible[] = "drivefs.bulk_pinning.visible";
 // A boolean pref indicating whether the DriveFS bulk-pinning feature is enabled
 // or disabled by the user.
 const char kDriveFsBulkPinningEnabled[] = "drivefs.bulk_pinning_enabled";
+
+// A time pref indicating the last time the DSS availability metric was emitted.
+const char kDriveFsDSSAvailabilityLastEmitted[] =
+    "drivefs.dss_availability_last_emitted_time";
 
 }  // namespace drive::prefs

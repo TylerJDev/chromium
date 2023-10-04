@@ -23,7 +23,6 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.tab.MockTab;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabImpl;
-import org.chromium.chrome.browser.tab.state.CriticalPersistedTabData;
 import org.chromium.chrome.browser.tabmodel.TabList;
 import org.chromium.chrome.browser.tabmodel.TabModelFilter;
 import org.chromium.chrome.browser.tabmodel.TabModelFilterProvider;
@@ -65,9 +64,6 @@ public class PseudoTabUnitTest {
     @Mock
     TabModelFilterProvider mTabModelFilterProvider;
 
-    @Mock
-    CriticalPersistedTabData mCriticalPersistedTabData;
-
     private TabImpl mTab1;
     private TabImpl mTab2;
     private TabImpl mTab3;
@@ -77,10 +73,10 @@ public class PseudoTabUnitTest {
     public void setUp() {
         MockitoAnnotations.initMocks(this);
 
-        mTab1 = TabUiUnitTestUtils.prepareTab(TAB1_ID, mCriticalPersistedTabData);
-        mTab2 = TabUiUnitTestUtils.prepareTab(TAB2_ID, mCriticalPersistedTabData);
-        mTab3 = TabUiUnitTestUtils.prepareTab(TAB3_ID, mCriticalPersistedTabData);
-        mTab1Copy = TabUiUnitTestUtils.prepareTab(TAB1_ID, mCriticalPersistedTabData);
+        mTab1 = TabUiUnitTestUtils.prepareTab(TAB1_ID);
+        mTab2 = TabUiUnitTestUtils.prepareTab(TAB2_ID);
+        mTab3 = TabUiUnitTestUtils.prepareTab(TAB3_ID);
+        mTab1Copy = TabUiUnitTestUtils.prepareTab(TAB1_ID);
 
         doReturn(mTabModelFilterProvider).when(mTabModelSelector).getTabModelFilterProvider();
     }
@@ -246,7 +242,7 @@ public class PseudoTabUnitTest {
 
     @Test
     public void getUrl_real() {
-        GURL url = JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL);
+        GURL url = JUnitTestGURLs.EXAMPLE_URL;
         doReturn(url).when(mTab1).getUrl();
 
         PseudoTab tab = PseudoTab.fromTabId(TAB1_ID);
@@ -259,11 +255,10 @@ public class PseudoTabUnitTest {
 
     @Test
     public void getUrl_cache() {
-        String url = JUnitTestGURLs.URL_1;
-        TabAttributeCache.setUrlForTesting(TAB1_ID, JUnitTestGURLs.getGURL(url));
+        TabAttributeCache.setUrlForTesting(TAB1_ID, JUnitTestGURLs.URL_1);
 
         PseudoTab tab = PseudoTab.fromTabId(TAB1_ID);
-        Assert.assertEquals(url, tab.getUrl().getSpec());
+        Assert.assertEquals(JUnitTestGURLs.URL_1.getSpec(), tab.getUrl().getSpec());
 
         PseudoTab realTab = PseudoTab.fromTab(mTab1);
         Assert.assertNotEquals(tab, realTab);
@@ -273,7 +268,7 @@ public class PseudoTabUnitTest {
     @Test
     public void getRootId_real() {
         int rootId = 1337;
-        doReturn(rootId).when(mCriticalPersistedTabData).getRootId();
+        doReturn(rootId).when(mTab1).getRootId();
 
         PseudoTab tab = PseudoTab.fromTabId(TAB1_ID);
         Assert.assertEquals(Tab.INVALID_TAB_ID, tab.getRootId());
@@ -299,10 +294,10 @@ public class PseudoTabUnitTest {
     @Test
     public void getTimestampMillis_real() {
         long timestamp = 12345;
-        doReturn(timestamp).when(mCriticalPersistedTabData).getTimestampMillis();
+        doReturn(timestamp).when(mTab1).getTimestampMillis();
 
         PseudoTab tab = PseudoTab.fromTabId(TAB1_ID);
-        Assert.assertEquals(CriticalPersistedTabData.INVALID_TIMESTAMP, tab.getTimestampMillis());
+        Assert.assertEquals(Tab.INVALID_TIMESTAMP, tab.getTimestampMillis());
 
         PseudoTab realTab = PseudoTab.fromTab(mTab1);
         Assert.assertNotEquals(tab, realTab);
@@ -459,7 +454,6 @@ public class PseudoTabUnitTest {
         // Timestamp was not set. Without the isInitialized() check,
         // pseudoTab.getTimestampMillis() would crash here with
         // UnsupportedOperationException
-        Assert.assertEquals(
-                CriticalPersistedTabData.INVALID_TIMESTAMP, pseudoTab.getTimestampMillis());
+        Assert.assertEquals(Tab.INVALID_TIMESTAMP, pseudoTab.getTimestampMillis());
     }
 }

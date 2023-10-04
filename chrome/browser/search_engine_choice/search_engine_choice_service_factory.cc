@@ -10,7 +10,9 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engine_choice/search_engine_choice_service.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "components/search_engines/search_engine_choice_utils.h"
+#include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/signin_switches.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -33,7 +35,9 @@ SearchEngineChoiceServiceFactory::SearchEngineChoiceServiceFactory()
           "SearchEngineChoiceServiceFactory",
           ProfileSelections::Builder()
               .WithRegular(ProfileSelection::kOriginalOnly)
-              .Build()) {}
+              .Build()) {
+  DependsOn(TemplateURLServiceFactory::GetInstance());
+}
 
 SearchEngineChoiceServiceFactory::~SearchEngineChoiceServiceFactory() = default;
 
@@ -76,13 +80,18 @@ bool SearchEngineChoiceServiceFactory::IsProfileEligibleForChoiceScreen(
   is_regular_profile &= !profile.IsGuestSession();
 #endif
 
+  TemplateURLService* template_url_service =
+      TemplateURLServiceFactory::GetForProfile(&profile);
   return search_engines::ShouldShowChoiceScreen(
       policy_service,
-      /*profile_properties=*/{.is_regular_profile = is_regular_profile,
-                              .pref_service = profile.GetPrefs()});
+      /*profile_properties=*/
+      {.is_regular_profile = is_regular_profile,
+       .pref_service = profile.GetPrefs()},
+      template_url_service);
 }
 
-KeyedService* SearchEngineChoiceServiceFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+SearchEngineChoiceServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   if (!g_is_chrome_build) {
     return nullptr;
@@ -93,5 +102,8 @@ KeyedService* SearchEngineChoiceServiceFactory::BuildServiceInstanceFor(
           CHECK_DEREF(g_browser_process->policy_service()), profile)) {
     return nullptr;
   }
-  return new SearchEngineChoiceService();
+  TemplateURLService& template_url_service =
+      CHECK_DEREF(TemplateURLServiceFactory::GetForProfile(&profile));
+  return std::make_unique<SearchEngineChoiceService>(profile,
+                                                     template_url_service);
 }

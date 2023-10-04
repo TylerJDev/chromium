@@ -92,16 +92,6 @@ bool NeedsAnchorPositionScrollData(Element& element,
 LayoutBoxModelObject::LayoutBoxModelObject(ContainerNode* node)
     : LayoutObject(node) {}
 
-bool LayoutBoxModelObject::UsesCompositedScrolling() const {
-  NOT_DESTROYED();
-
-  // TODO(crbug.com/1414885): We may need to redefine this function for
-  // CompositeScrollAfterPaint.
-  const auto* properties = FirstFragment().PaintProperties();
-  return properties && properties->ScrollTranslation() &&
-         properties->ScrollTranslation()->HasDirectCompositingReasons();
-}
-
 LayoutBoxModelObject::~LayoutBoxModelObject() = default;
 
 void LayoutBoxModelObject::WillBeDestroyed() {
@@ -456,10 +446,9 @@ void LayoutBoxModelObject::UpdateFromStyle() {
       ComputeCanCompositeBackgroundAttachmentFixed());
 }
 
-PhysicalRect LayoutBoxModelObject::PhysicalVisualOverflowRectIncludingFilters()
-    const {
+PhysicalRect LayoutBoxModelObject::VisualOverflowRectIncludingFilters() const {
   NOT_DESTROYED();
-  return ApplyFiltersToRect(PhysicalVisualOverflowRect());
+  return ApplyFiltersToRect(VisualOverflowRect());
 }
 
 PhysicalRect LayoutBoxModelObject::ApplyFiltersToRect(
@@ -582,12 +571,9 @@ bool LayoutBoxModelObject::UpdateStickyPositionConstraints() {
   {
     if (IsLayoutInline()) {
       sticky_box_rect = To<LayoutInline>(this)->PhysicalLinesBoundingBox();
-    } else if (RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()) {
+    } else {
       const LayoutBox& box = To<LayoutBox>(*this);
       sticky_box_rect = PhysicalRect(box.PhysicalLocation(), box.Size());
-    } else {
-      sticky_box_rect = sticky_container->FlipForWritingMode(
-          To<LayoutBox>(this)->FrameRect());
     }
 
     PhysicalRect scroll_container_relative_sticky_box_rect =
@@ -809,6 +795,14 @@ LayoutRect LayoutBoxModelObject::LocalCaretRectForEmptyElement(
 
   LayoutUnit x = BorderLeft() + PaddingLeft();
   LayoutUnit max_x = width - BorderRight() - PaddingRight();
+  NGBoxStrut border_padding;
+  if (RuntimeEnabledFeatures::EmptyCaretInVerticalEnabled()) {
+    border_padding = (BorderOutsets() + PaddingOutsets())
+                         .ConvertToLogical({current_style.GetWritingMode(),
+                                            TextDirection::kLtr});
+    x = border_padding.inline_start;
+    max_x = width - border_padding.inline_end;
+  }
   LayoutUnit caret_width = GetFrameView()->CaretWidth();
 
   switch (alignment) {
@@ -839,6 +833,11 @@ LayoutRect LayoutBoxModelObject::LocalCaretRectForEmptyElement(
   if (font_data)
     height = LayoutUnit(font_data->GetFontMetrics().Height());
   LayoutUnit vertical_space = FirstLineHeight() - height;
+  if (RuntimeEnabledFeatures::EmptyCaretInVerticalEnabled()) {
+    LayoutUnit block_start = border_padding.block_start + (vertical_space / 2);
+    // Returns a logical box.
+    return LayoutRect(x, block_start, caret_width, height);
+  }
   LayoutUnit y = PaddingTop() + BorderTop() + (vertical_space / 2);
   return current_style.IsHorizontalWritingMode()
              ? LayoutRect(x, y, caret_width, height)

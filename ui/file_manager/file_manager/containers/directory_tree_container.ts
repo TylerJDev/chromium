@@ -8,8 +8,9 @@ import {CrButtonElement} from 'chrome://resources/cr_elements/cr_button/cr_butto
 import {maybeShowTooltip} from '../common/js/dom_utils.js';
 import {isEntryInsideComputers, isEntryInsideDrive, isEntryInsideMyDrive, isGrandRootEntryInDrives, isMyFilesEntry, isTrashEntry, isVolumeEntry} from '../common/js/entry_utils.js';
 import {EntryList, FakeEntryImpl, VolumeEntry} from '../common/js/files_app_entry_types.js';
-import {metrics} from '../common/js/metrics.js';
-import {str, strf} from '../common/js/util.js';
+import {vmTypeToIconName} from '../common/js/icon_util.js';
+import {recordEnum, recordUserAction} from '../common/js/metrics.js';
+import {str, strf, util} from '../common/js/util.js';
 import {VolumeManagerCommon} from '../common/js/volume_manager_types.js';
 import {FileData, FileKey, NavigationKey, NavigationRoot, NavigationType, PropStatus, State} from '../externs/ts/state.js';
 import {VolumeManager} from '../externs/volume_manager.js';
@@ -19,14 +20,13 @@ import {MetadataModel} from '../foreground/js/metadata/metadata_model.js';
 import {Command} from '../foreground/js/ui/command.js';
 import {contextMenuHandler} from '../foreground/js/ui/context_menu_handler.js';
 import {Menu} from '../foreground/js/ui/menu.js';
-import {changeDirectory} from '../state/actions/current_directory.js';
-import {refreshNavigationRoots, updateNavigationEntry} from '../state/actions/navigation.js';
-import {readSubDirectories} from '../state/actions_producers/all_entries.js';
-import {convertEntryToFileData} from '../state/reducers/all_entries.js';
-import {driveRootEntryListKey} from '../state/reducers/volumes.js';
-import {getEntry, getFileData, getStore, Store} from '../state/store.js';
-import {TreeSelectedChangedEvent, XfTree} from '../widgets/xf_tree.js';
-import {TreeItemCollapsedEvent, TreeItemExpandedEvent, XfTreeItem} from '../widgets/xf_tree_item.js';
+import {convertEntryToFileData, readSubDirectories} from '../state/ducks/all_entries.js';
+import {changeDirectory} from '../state/ducks/current_directory.js';
+import {refreshNavigationRoots, updateNavigationEntry} from '../state/ducks/navigation.js';
+import {driveRootEntryListKey} from '../state/ducks/volumes.js';
+import {getEntry, getFileData, getStore, getVolume, getVolumeType, type Store} from '../state/store.js';
+import {type TreeSelectedChangedEvent, XfTree} from '../widgets/xf_tree.js';
+import {type TreeItemCollapsedEvent, type TreeItemExpandedEvent, XfTreeItem} from '../widgets/xf_tree_item.js';
 
 /**
  * @fileoverview The Directory Tree aka Navigation Tree.
@@ -290,6 +290,9 @@ export class DirectoryTreeContainer {
       return;
     }
     const fileData = newData as FileData;
+    if (window.IN_TEST) {
+      this.addAttributesForTesting_(element, fileData, navigationRoot);
+    }
 
     // TODO(b/228139439): The current menu/command implementation requires a
     // valid `.entry` existed on the tree item. We should remove this `.entry`
@@ -369,6 +372,14 @@ export class DirectoryTreeContainer {
       this.attachRename_(element);
     }
 
+    const isOdfs = util.isOneDriveId(
+        getVolume(this.store_.getState(), fileData)?.providerId);
+    if (isOdfs && fileData?.disabled) {
+      // The entries under ODFS are not disabled recursively. Collapse ODFS when
+      // it is disabled.
+      element.expanded = false;
+    }
+
     // Update new data to the map.
     navigationData.fileData = fileData;
   }
@@ -402,6 +413,30 @@ export class DirectoryTreeContainer {
       if (isExternalMedia) {
         element.icon = constants.ICON_TYPES.USB;
       }
+    }
+  }
+
+  /** Add attributes for testing purpose. */
+  private addAttributesForTesting_(
+      element: XfTreeItem, fileData: FileData,
+      navigationRoot?: NavigationRoot) {
+    // Add full-path for all non-root items.
+    if (!navigationRoot) {
+      element.setAttribute('full-path-for-testing', fileData.entry.fullPath);
+    }
+    if (!isVolumeEntry(fileData.entry)) {
+      return;
+    }
+    // Add volume-type for the root volume items.
+    const volumeData = getVolume(this.store_.getState(), fileData);
+    if (!volumeData) {
+      return;
+    }
+    if (volumeData.volumeType == VolumeManagerCommon.VolumeType.GUEST_OS) {
+      element.setAttribute(
+          'volume-type-for-testing', vmTypeToIconName(volumeData.vmType));
+    } else {
+      element.setAttribute('volume-type-for-testing', volumeData.volumeType);
     }
   }
 
@@ -483,7 +518,8 @@ export class DirectoryTreeContainer {
       // For SMB shares, avoid prefetching sub directories to delay
       // authentication.
       if (isVolumeEntry(entry) && entry.volumeInfo.providerId !== '@smb' &&
-          fileData.volumeType !== VolumeManagerCommon.VolumeType.SMB) {
+          getVolumeType(this.store_.getState(), fileData) !==
+              VolumeManagerCommon.VolumeType.SMB) {
         this.store_.dispatch(readSubDirectories(entry));
       }
       return;
@@ -768,8 +804,7 @@ export class DirectoryTreeContainer {
     const rootType = fileData.rootType ?? 'unknown';
     const level = fileData.isRootEntry ? 'TopLevel' : 'NonTopLevel';
     const metricName = `Location.OnEntryExpandedOrCollapsed.${level}`;
-    metrics.recordEnum(
-        metricName, rootType, VolumeManagerCommon.RootTypesForUMA);
+    recordEnum(metricName, rootType, VolumeManagerCommon.RootTypesForUMA);
   }
 
   /** Record UMA for tree item selected. */
@@ -777,8 +812,7 @@ export class DirectoryTreeContainer {
     const rootType = fileData.rootType ?? 'unknown';
     const level = fileData.isRootEntry ? 'TopLevel' : 'NonTopLevel';
     const metricName = `Location.OnEntrySelected.${level}`;
-    metrics.recordEnum(
-        metricName, rootType, VolumeManagerCommon.RootTypesForUMA);
+    recordEnum(metricName, rootType, VolumeManagerCommon.RootTypesForUMA);
   }
 
   /** Activate the directory behind the item. */
@@ -819,7 +853,7 @@ export class DirectoryTreeContainer {
 
         if (navigationRootData?.type === NavigationType.SHORTCUT) {
           const onEntryResolved = (resolvedEntry: Entry) => {
-            metrics.recordUserAction('FolderShortcut.Navigate');
+            recordUserAction('FolderShortcut.Navigate');
             this.store_.dispatch(
                 changeDirectory({toKey: resolvedEntry.toURL()}));
           };

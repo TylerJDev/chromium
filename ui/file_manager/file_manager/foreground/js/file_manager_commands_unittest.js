@@ -6,34 +6,28 @@ import {assertArrayEquals, assertEquals, assertFalse, assertNotEquals, assertTru
 
 import {MockVolumeManager} from '../../background/js/mock_volume_manager.js';
 import {FakeEntryImpl} from '../../common/js/files_app_entry_types.js';
-import {metrics} from '../../common/js/metrics.js';
-import {installMockChrome} from '../../common/js/mock_chrome.js';
+import {installMockChrome, MockMetrics} from '../../common/js/mock_chrome.js';
 import {MockDirectoryEntry, MockEntry} from '../../common/js/mock_entry.js';
 import {waitUntil} from '../../common/js/test_error_reporting.js';
 import {util} from '../../common/js/util.js';
 import {VolumeManagerCommon} from '../../common/js/volume_manager_types.js';
 import {VolumeInfo} from '../../externs/volume_info.js';
-import {addVolume, updateIsInteractiveVolume} from '../../state/actions/volumes.js';
+import {addVolume, convertVolumeInfoAndMetadataToVolume, trashRootKey, updateIsInteractiveVolume} from '../../state/ducks/volumes.js';
+import {createMyFilesDataWithVolumeEntry} from '../../state/ducks/volumes_unittest.js';
 import {createFakeVolumeMetadata, setUpFileManagerOnWindow, setupStore, waitDeepEquals} from '../../state/for_tests.js';
-import {convertVolumeInfoAndMetadataToVolume, trashRootKey} from '../../state/reducers/volumes.js';
-import {createMyFilesDataWithVolumeEntry} from '../../state/reducers/volumes_unittest.js';
 
 import {CommandHandler} from './file_manager_commands.js';
 
-/**
- * Mock metrics.recordEnum.
- * @param {string} name
- * @param {*} value
- * @param {Array<*>|number=} opt_validValues
- */
-metrics.recordEnum = function(name, value, opt_validValues) {
-  if (!Array.isArray(metrics.recordEnumCalls[name])) {
-    metrics.recordEnumCalls[name] = [];
-  }
-  metrics.recordEnumCalls[name].push(value);
-};
+/** @type {!MockMetrics} */
+let mockMetrics;
 
-metrics.recordEnumCalls = {};
+/**
+ * @param {number} metricIndex
+ * @returns {string|undefined}
+ */
+function getMetricName(metricIndex) {
+  return CommandHandler.ValidMenuCommandsForUMA[metricIndex];
+}
 
 /**
  * Checks that the `toggle-holding-space` command is appropriately enabled/
@@ -51,7 +45,9 @@ export async function testToggleHoldingSpaceCommand(done) {
    * @type {!Object}
    */
   let itemUrls = [];
+  mockMetrics = new MockMetrics();
   const mockChrome = {
+    metricsPrivate: mockMetrics,
     fileManagerPrivate: {
       getHoldingSpaceState: (callback) => {
         callback({itemUrls});
@@ -245,17 +241,21 @@ export async function testToggleHoldingSpaceCommand(done) {
     };
 
     // Reset cache of metrics recorded.
-    metrics.recordEnumCalls['MenuItemSelected'] = [];
+    mockMetrics.metricCalls['FileBrowser.MenuItemSelected'] = [];
 
     // Verify `command.execute()` results in expected mock API interactions.
     command.execute(event, fileManager);
     assertTrue(didInteractWithMockPrivateApi);
 
     // Verify metrics recorded.
-    assertArrayEquals(
-        metrics.recordEnumCalls['MenuItemSelected'],
-        [testCase.expect.isAdd ? 'pin-to-holding-space' :
-                                 'unpin-from-holding-space']);
+    const calls = mockMetrics.metricCalls['FileBrowser.MenuItemSelected'] || [];
+    assertTrue(calls.length > 0);
+    // The index is 2nd position argument, we're only checking the first call.
+    const metricIndex = calls[0][1];
+    assertEquals(
+        getMetricName(metricIndex),
+        testCase.expect.isAdd ? 'pin-to-holding-space' :
+                                'unpin-from-holding-space');
   }
 
   done();

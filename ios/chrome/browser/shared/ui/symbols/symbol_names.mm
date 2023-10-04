@@ -9,7 +9,13 @@
 NSString* const kGoogleIconSymbol = @"google_icon";
 NSString* const kGoogleShieldSymbol = @"google_shield";
 NSString* const kChromeSymbol = @"chrome_symbol";
+NSString* const kMulticolorChromeballSymbol = @"multicolor_chromeball";
 NSString* const kGoogleMapsSymbol = @"google_maps";
+NSString* const kGooglePhotosSymbol = @"google_photos";
+// TODO(crbug.com/1489185): Move PNG images out of this file.
+NSString* const kFedexCarrierImage = @"parcel_tracking_carrier_fedex";
+NSString* const kUPSCarrierImage = @"parcel_tracking_carrier_ups";
+NSString* const kUSPSCarrierImage = @"parcel_tracking_carrier_usps";
 #endif  // BUILDFLAG(IOS_USE_BRANDED_SYMBOLS)
 NSString* const kPrivacySymbol = @"checkerboard_shield";
 NSString* const kSyncDisabledSymbol = @"arrow_triangle_slash_circlepath";
@@ -47,6 +53,7 @@ NSString* const kTunerSymbol = @"tuner";
 NSString* const kMoveFolderSymbol = @"folder_badge_arrow_forward";
 NSString* const kTopOmniboxOptionSymbol = @"top_omnibox_option";
 NSString* const kBottomOmniboxOptionSymbol = @"bottom_omnibox_option";
+NSString* const kDangerousOmniboxSymbol = @"dangerous_omnibox";
 
 // Custom symbol names which can be configured with a color palette.
 NSString* const kIncognitoCircleFillSymbol = @"incognito_circle_fill";
@@ -157,7 +164,7 @@ NSString* const kTabsSymbol = @"square.on.square";
 NSString* const kHighlighterSymbol = @"highlighter";
 NSString* const kSealFillSymbol = @"seal.fill";
 NSString* const kSquareOnSquareDashedSymbol = @"square.on.square.dashed";
-NSString* const kDocPlaintext = @"doc.plaintext";
+NSString* const kDocPlaintextSymbol = @"doc.plaintext";
 NSString* const kFlagSymbol = @"flag";
 NSString* const kKeyboardSymbol = @"keyboard";
 NSString* const kSpeedometerSymbol = @"speedometer";
@@ -166,6 +173,15 @@ NSString* const kMovePlatterToTopPhoneSymbol =
 NSString* const kMovePlatterToBottomPhoneSymbol =
     @"platter.filled.bottom.and.arrow.down.iphone";
 NSString* const kMapSymbol = @"map";
+NSString* const kShippingBoxSymbol = @"shippingbox";
+NSString* const kSliderHorizontalSymbol = @"slider.horizontal.3";
+NSString* const kMacbookAndIPhoneSymbol = @"macbook.and.iphone";
+NSString* const kCheckmarkShieldSymbol = @"checkmark.shield";
+NSString* const kListBulletClipboardSymbol = @"list.bullet.clipboard";
+NSString* const kListBulletRectangleSymbol = @"list.bullet.rectangle.portrait";
+NSString* const kBoxTruckFillSymbol = @"box.truck.fill";
+NSString* const kExclamationMarkBubbleSymbol = @"exclamationmark.bubble";
+NSString* const kShippingBoxFillSymbol = @"shippingbox.fill";
 
 // Names of the default symbol being non-monochrome by default. When using them,
 // you probably want to set their color to monochrome.

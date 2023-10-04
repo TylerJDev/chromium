@@ -55,8 +55,9 @@ class PrintBrowserTest : public InProcessBrowserTest {
   void SetPrinterNameForSubsequentContexts(const std::string& printer_name);
 
   void PrintAndWaitUntilPreviewIsReady();
-  void PrintAndWaitUntilPreviewIsReady(const PrintParams& params);
   // Returns the Print Preview dialog.
+  content::WebContents* PrintAndWaitUntilPreviewIsReady(
+      const PrintParams& params);
   content::WebContents* PrintAndWaitUntilPreviewIsReadyAndLoaded();
   content::WebContents* PrintAndWaitUntilPreviewIsReadyAndLoaded(
       const PrintParams& params);
@@ -144,6 +145,7 @@ class PrintBrowserTest : public InProcessBrowserTest {
   uint32_t rendered_page_count_ = 0;
   unsigned int num_expected_messages_;
   unsigned int num_received_messages_;
+  std::unique_ptr<base::RunLoop> run_loop_;
   base::OnceClosure quit_callback_;
   mojo::AssociatedRemote<mojom::PrintRenderFrame> remote_;
   std::map<content::RenderFrameHost*, std::unique_ptr<TestPrintRenderFrame>>

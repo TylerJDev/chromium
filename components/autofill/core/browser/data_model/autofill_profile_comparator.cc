@@ -195,8 +195,6 @@ ServerFieldTypeSet GetUserVisibleTypes() {
       ADDRESS_HOME_STATE,
       ADDRESS_HOME_ZIP,
       ADDRESS_HOME_COUNTRY,
-      ADDRESS_HOME_LANDMARK,
-      ADDRESS_HOME_BETWEEN_STREETS,
       ADDRESS_HOME_ADMIN_LEVEL2,
       EMAIL_ADDRESS,
       PHONE_HOME_WHOLE_NUMBER,
@@ -633,9 +631,8 @@ bool AutofillProfileComparator::MergePhoneNumbers(
   // Figure out a country code hint.
   // TODO(crbug.com/1313862) |GetNonEmptyOf()| prefers |p1| in case both are
   // non empty.
-  const AutofillType kCountryCode(HtmlFieldType::kCountryCode,
-                                  HtmlFieldMode::kNone);
-  std::string region = UTF16ToUTF8(GetNonEmptyOf(p1, p2, kCountryCode));
+  std::string region = UTF16ToUTF8(
+      GetNonEmptyOf(p1, p2, AutofillType(HtmlFieldType::kCountryCode)));
   if (region.empty())
     region = AutofillCountry::CountryCodeForLocale(app_locale_);
 

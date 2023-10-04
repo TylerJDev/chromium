@@ -114,6 +114,9 @@ class StorageAccessGrantPermissionContextTest
                },
            }});
     } else {
+      // TODO(crbug.com/1485248) Handle first party sets (related website sets)
+      // more deliberately in the tests now that it is enabled by default
+      disabled.push_back(features::kFirstPartySets);
       disabled.push_back(blink::features::kStorageAccessAPI);
     }
 
@@ -123,7 +126,6 @@ class StorageAccessGrantPermissionContextTest
     } else {
       disabled.push_back(permissions::features::kPermissionStorageAccessAPI);
     }
-
     features_.InitWithFeaturesAndParameters(enabled, disabled);
   }
 
@@ -182,7 +184,9 @@ class StorageAccessGrantPermissionContextTest
       bool user_gesture) {
     auto future = std::make_unique<base::test::TestFuture<ContentSetting>>();
     permission_context_->DecidePermissionForTesting(
-        CreateFakeID(), GetRequesterURL(), GetTopLevelURL(), user_gesture,
+        permissions::PermissionRequestData(permission_context(), CreateFakeID(),
+                                           user_gesture, GetRequesterURL(),
+                                           GetTopLevelURL()),
         future->GetCallback());
     return future;
   }
@@ -193,8 +197,11 @@ class StorageAccessGrantPermissionContextTest
 
   ContentSetting RequestPermissionSync() {
     base::test::TestFuture<ContentSetting> future;
-    permission_context()->RequestPermission(CreateFakeID(), GetRequesterURL(),
-                                            true, future.GetCallback());
+    permission_context()->RequestPermission(
+        permissions::PermissionRequestData(permission_context(), CreateFakeID(),
+                                           /*user_gesture=*/true,
+                                           GetRequesterURL()),
+        future.GetCallback());
 
     return future.Get();
   }
@@ -571,8 +578,11 @@ class StorageAccessGrantPermissionContextAPIWithImplicitGrantsTest
                                                          future.GetCallback());
     for (int grant_id = 0; grant_id < implicit_grant_limit; grant_id++) {
       permission_context()->DecidePermissionForTesting(
-          fake_id, requesting_origin, GetDummyEmbeddingUrl(grant_id),
-          /*user_gesture=*/true, barrier);
+          permissions::PermissionRequestData(permission_context(), fake_id,
+                                             /*user_gesture=*/true,
+                                             requesting_origin,
+                                             GetDummyEmbeddingUrl(grant_id)),
+          barrier);
     }
     ASSERT_TRUE(future.Wait());
     EXPECT_FALSE(request_manager()->IsRequestInProgress());
@@ -626,8 +636,10 @@ TEST_P(StorageAccessGrantPermissionContextAPIWithImplicitGrantsTest,
   // it gets auto-granted as the limit has not been reached for it yet.
   base::test::TestFuture<ContentSetting> future;
   permission_context()->DecidePermissionForTesting(
-      CreateFakeID(), alternate_requester_url, GetTopLevelURL(),
-      /*user_gesture=*/true, future.GetCallback());
+      permissions::PermissionRequestData(
+          permission_context(), CreateFakeID(), /*user_gesture=*/true,
+          alternate_requester_url, GetTopLevelURL()),
+      future.GetCallback());
 
   // We should have no prompts still and our latest result should be an allow.
   EXPECT_EQ(CONTENT_SETTING_ALLOW, future.Get());
@@ -816,6 +828,8 @@ class StorageAccessGrantPermissionContextAPIWithFirstPartySetsTest
 
 TEST_P(StorageAccessGrantPermissionContextAPIWithFirstPartySetsTest,
        ImplicitGrant_AutograntedWithinFPS) {
+  base::Time expiration_lower_bound_check = base::Time::Now();
+
   HostContentSettingsMap* settings_map =
       HostContentSettingsMapFactory::GetForProfile(profile());
   DCHECK(settings_map);
@@ -844,6 +858,17 @@ TEST_P(StorageAccessGrantPermissionContextAPIWithFirstPartySetsTest,
   EXPECT_THAT(page_specific_content_settings()->GetTwoSiteRequests(
                   ContentSettingsType::STORAGE_ACCESS),
               IsEmpty());
+
+  auto setting = non_restorable_grants[0];
+
+  EXPECT_NE(true, setting.IsExpired());
+  // Check to ensure the expiration time is in expected range.
+  EXPECT_GT(setting.metadata.expiration(),
+            blink::features::kStorageAccessAPIRelatedWebsiteSetsLifetime.Get() +
+                expiration_lower_bound_check);
+  EXPECT_LT(setting.metadata.expiration(),
+            blink::features::kStorageAccessAPIRelatedWebsiteSetsLifetime.Get() +
+                base::Time::Now());
 }
 
 // This test suite is no-op since the enablde/disabled features are hard coded.

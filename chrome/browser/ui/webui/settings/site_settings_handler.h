@@ -102,15 +102,6 @@ class SiteSettingsHandler
   // CookiesTreeModel::Observer:
   // TODO(https://crbug.com/835712): Listen for backend data changes and notify
   // WebUI
-  void TreeNodesAdded(ui::TreeModel* model,
-                      ui::TreeModelNode* parent,
-                      size_t start,
-                      size_t count) override;
-  void TreeNodesRemoved(ui::TreeModel* model,
-                        ui::TreeModelNode* parent,
-                        size_t start,
-                        size_t count) override;
-  void TreeNodeChanged(ui::TreeModel* model, ui::TreeModelNode* node) override;
   void TreeModelEndBatchDeprecated(CookiesTreeModel* model) override;
 
   // content_settings::Observer:
@@ -200,7 +191,6 @@ class SiteSettingsHandler
 
   // Handles setting and resetting an origin permission.
   void HandleResetCategoryPermissionForPattern(const base::Value::List& args);
-  // TODO(1466127): Add tests for HandleSetCategoryPermissionForPattern.
   void HandleSetCategoryPermissionForPattern(const base::Value::List& args);
 
   // TODO(andypaicu, crbug.com/880684): Update to only expect a list of three
@@ -297,11 +287,11 @@ class SiteSettingsHandler
   // Gets a plural string for the given number of cookies.
   void HandleGetNumCookiesString(const base::Value::List& args);
 
-  // Provides an opportunity for site data which is not integrated into the
-  // tree model to be removed when entries for |origins| are removed.
+  // Provides an opportunity for site data which is not integrated into a model
+  // to be removed when entries for |origins| are removed.
   // TODO(crbug.com/1271155): This function is a temporary hack while the
   // CookiesTreeModel is deprecated.
-  void RemoveNonTreeModelData(const std::vector<url::Origin>& origins);
+  void RemoveNonModelData(const std::vector<url::Origin>& origins);
 
   // Notifies the JS side the effective cookies setting has changed and
   // provides the updated description label for display.

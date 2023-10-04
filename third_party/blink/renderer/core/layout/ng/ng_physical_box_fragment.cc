@@ -15,9 +15,9 @@
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
+#include "third_party/blink/renderer/core/layout/layout_text_combine.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/ng/geometry/ng_box_strut.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text_combine.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_item.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_cursor.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item.h"
@@ -726,7 +726,7 @@ const NGPhysicalBoxFragment* NGPhysicalBoxFragment::PostLayout() const {
 PhysicalRect NGPhysicalBoxFragment::SelfInkOverflow() const {
   if (UNLIKELY(!CanUseFragmentsForInkOverflow())) {
     const auto* owner_box = DynamicTo<LayoutBox>(GetLayoutObject());
-    return owner_box->PhysicalSelfVisualOverflowRect();
+    return owner_box->SelfVisualOverflowRect();
   }
   if (!HasInkOverflow())
     return LocalRect();
@@ -736,7 +736,7 @@ PhysicalRect NGPhysicalBoxFragment::SelfInkOverflow() const {
 PhysicalRect NGPhysicalBoxFragment::ContentsInkOverflow() const {
   if (UNLIKELY(!CanUseFragmentsForInkOverflow())) {
     const auto* owner_box = DynamicTo<LayoutBox>(GetLayoutObject());
-    return owner_box->PhysicalContentsVisualOverflowRect();
+    return owner_box->ContentsVisualOverflowRect();
   }
   if (!HasInkOverflow())
     return LocalRect();
@@ -746,7 +746,7 @@ PhysicalRect NGPhysicalBoxFragment::ContentsInkOverflow() const {
 PhysicalRect NGPhysicalBoxFragment::InkOverflow() const {
   if (UNLIKELY(!CanUseFragmentsForInkOverflow())) {
     const auto* owner_box = DynamicTo<LayoutBox>(GetLayoutObject());
-    return owner_box->PhysicalVisualOverflowRect();
+    return owner_box->VisualOverflowRect();
   }
 
   if (!HasInkOverflow())
@@ -1061,7 +1061,7 @@ PhysicalRect NGPhysicalBoxFragment::ScrollableOverflowFromChildren(
     } else if (add_inline_children && child->IsLineBox()) {
       context.AddLineBoxChild(To<NGPhysicalLineBoxFragment>(*child),
                               child.Offset());
-    } else if (height_type == TextHeightType::kEmHeight && IsRubyRun()) {
+    } else if (height_type == TextHeightType::kEmHeight && IsRubyColumn()) {
       PhysicalRect r = child->ScrollableOverflow(*this, height_type);
       r.offset += child.offset;
       context.AddChild(r);
@@ -1238,7 +1238,7 @@ PhysicalRect NGPhysicalBoxFragment::RecalcContentsInkOverflow() {
     // Add text decorations and emphasis mark ink over flow for combined
     // text.
     const auto* const text_combine =
-        DynamicTo<LayoutNGTextCombine>(GetLayoutObject());
+        DynamicTo<LayoutTextCombine>(GetLayoutObject());
     if (UNLIKELY(text_combine)) {
       // Reset the cursor for text combine to provide a current item for
       // decorations.
@@ -1277,7 +1277,7 @@ PhysicalRect NGPhysicalBoxFragment::RecalcContentsInkOverflow() {
                 child_layout_object->IsLayoutFlowThread());
       if (child_fragment->IsColumnBox())
         continue;
-      child_rect = child_layout_object->PhysicalVisualOverflowRect();
+      child_rect = child_layout_object->VisualOverflowRect();
     }
     child_rect.offset += child.offset;
     contents_rect.Unite(child_rect);
@@ -1305,7 +1305,7 @@ PhysicalRect NGPhysicalBoxFragment::ComputeSelfInkOverflow() const {
       if (child_fragment.CanUseFragmentsForInkOverflow())
         child_rect = child_fragment.InkOverflow();
       else
-        child_rect = child_layout_object->PhysicalVisualOverflowRect();
+        child_rect = child_layout_object->VisualOverflowRect();
       child_rect.offset += child.offset;
       ink_overflow.Unite(child_rect);
     }
@@ -1382,12 +1382,12 @@ void NGPhysicalBoxFragment::AddOutlineRects(
   // For anonymous blocks, the children add outline rects.
   if (!IsAnonymousBlock()) {
     if (IsSvgText()) {
-      if (const NGFragmentItems* items = Items()) {
+      if (Items()) {
         collector.AddRect(PhysicalRect::EnclosingRect(
             GetLayoutObject()->ObjectBoundingBox()));
       }
     } else {
-      collector.AddRect(PhysicalRect(additional_offset, Size().ToLayoutSize()));
+      collector.AddRect(PhysicalRect(additional_offset, Size()));
     }
   }
 

@@ -12,9 +12,12 @@
 #include "ash/ash_export.h"
 #include "ash/public/cpp/shelf_types.h"
 #include "ash/style/ash_color_provider_source.h"
+#include "ash/wm/overview/overview_metrics.h"
+#include "ash/wm/overview/overview_types.h"
 #include "ash/wm/workspace/workspace_types.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
 
@@ -51,6 +54,7 @@ class RootWindowLayoutManager;
 class Shelf;
 class ShelfLayoutManager;
 class SplitViewController;
+class SplitViewOverviewSession;
 class StatusAreaWidget;
 class SystemModalContainerLayoutManager;
 class SystemWallpaperController;
@@ -112,8 +116,11 @@ class ASH_EXPORT RootWindowController {
   aura::Window* GetRootWindow();
   const aura::Window* GetRootWindow() const;
 
-  SplitViewController* split_view_controller() const {
+  SplitViewController* split_view_controller() {
     return split_view_controller_.get();
+  }
+  SplitViewOverviewSession* split_view_overview_session() {
+    return split_view_overview_session_.get();
   }
 
   Shelf* shelf() const { return shelf_.get(); }
@@ -253,6 +260,15 @@ class ASH_EXPORT RootWindowController {
   curtain::SecurityCurtainWidgetController*
   security_curtain_widget_controller();
 
+  // Starts a split view overview session for this root window with `window`
+  // snapped on one side and overview on the other side. Overview and split view
+  // should already be active before calling this function.
+  void StartSplitViewOverviewSession(
+      aura::Window* window,
+      absl::optional<OverviewStartAction> action,
+      absl::optional<OverviewEnterExitType> type);
+  void EndSplitViewOverviewSession();
+
  private:
   FRIEND_TEST_ALL_PREFIXES(RootWindowControllerTest,
                            ContextMenuDisappearsInTabletMode);
@@ -308,6 +324,7 @@ class ASH_EXPORT RootWindowController {
   std::unique_ptr<WindowParentingController> window_parenting_controller_;
 
   std::unique_ptr<SplitViewController> split_view_controller_;
+  std::unique_ptr<SplitViewOverviewSession> split_view_overview_session_;
 
   // The shelf controller for this root window. Exists for the entire lifetime
   // of the RootWindowController so that it is safe for observers to be added

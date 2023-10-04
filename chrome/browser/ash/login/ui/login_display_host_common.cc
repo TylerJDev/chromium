@@ -23,6 +23,8 @@
 #include "chrome/browser/ash/login/choobe_flow_controller.h"
 #include "chrome/browser/ash/login/existing_user_controller.h"
 #include "chrome/browser/ash/login/lock_screen_utils.h"
+#include "chrome/browser/ash/login/login_pref_names.h"
+#include "chrome/browser/ash/login/oobe_metrics_helper.h"
 #include "chrome/browser/ash/login/oobe_quick_start/second_device_auth_broker.h"
 #include "chrome/browser/ash/login/oobe_quick_start/target_device_bootstrap_controller.h"
 #include "chrome/browser/ash/login/screens/encryption_migration_screen.h"
@@ -59,6 +61,7 @@
 #include "chrome/browser/ui/webui/ash/login/saml_confirm_password_handler.h"
 #include "chrome/browser/ui/webui/ash/login/signin_fatal_error_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/terms_of_service_screen_handler.h"
+#include "chrome/browser/ui/webui/ash/login/user_allowlist_check_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/user_creation_screen_handler.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -81,17 +84,6 @@ namespace {
 // after the login screen is initialized. This makes sure that device policy
 // network requests are made while the system is idle waiting for user input.
 constexpr int64_t kPolicyServiceInitializationDelayMilliseconds = 100;
-
-void ScheduleCompletionCallbacks(std::vector<base::OnceClosure>&& callbacks) {
-  for (auto& callback : callbacks) {
-    if (callback.is_null()) {
-      continue;
-    }
-
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, std::move(callback));
-  }
-}
 
 void PushFrontImIfNotExists(const std::string& input_method_id,
                             std::vector<std::string>* input_method_ids) {
@@ -232,7 +224,8 @@ LoginDisplayHostCommon::LoginDisplayHostCommon()
     : keep_alive_(KeepAliveOrigin::LOGIN_DISPLAY_HOST_WEBUI,
                   KeepAliveRestartOption::DISABLED),
       login_ui_pref_controller_(std::make_unique<LoginUIPrefController>()),
-      wizard_context_(std::make_unique<WizardContext>()) {
+      wizard_context_(std::make_unique<WizardContext>()),
+      oobe_metrics_helper_(std::make_unique<OobeMetricsHelper>()) {
   // Close the login screen on app termination (for the case where shutdown
   // occurs before login completes).
   app_terminating_subscription_ =
@@ -241,9 +234,7 @@ LoginDisplayHostCommon::LoginDisplayHostCommon()
   BrowserList::AddObserver(this);
 }
 
-LoginDisplayHostCommon::~LoginDisplayHostCommon() {
-  ScheduleCompletionCallbacks(std::move(completion_callbacks_));
-}
+LoginDisplayHostCommon::~LoginDisplayHostCommon() = default;
 
 void LoginDisplayHostCommon::BeforeSessionStart() {
   session_starting_ = true;
@@ -255,12 +246,13 @@ bool LoginDisplayHostCommon::LoginDisplayHostCommon::IsFinalizing() {
 
 void LoginDisplayHostCommon::Finalize(base::OnceClosure completion_callback) {
   LOG(WARNING) << "Finalize";
+  LoginDisplayHost::Finalize(std::move(completion_callback));
+
   // If finalize is called twice the LoginDisplayHost instance will be deleted
   // multiple times.
   CHECK(!is_finalizing_);
   is_finalizing_ = true;
 
-  completion_callbacks_.push_back(std::move(completion_callback));
   OnFinalize();
 }
 
@@ -280,7 +272,7 @@ KioskLaunchController* LoginDisplayHostCommon::GetKioskLaunchController() {
 
 void LoginDisplayHostCommon::StartUserAdding(
     base::OnceClosure completion_callback) {
-  completion_callbacks_.push_back(std::move(completion_callback));
+  LoginDisplayHost::StartUserAdding(std::move(completion_callback));
   OnStartUserAdding();
 }
 
@@ -427,10 +419,7 @@ void LoginDisplayHostCommon::SetDisplayEmail(const std::string& email) {
 }
 
 void LoginDisplayHostCommon::ShowAllowlistCheckFailedError() {
-  StartWizard(GaiaView::kScreenId);
-
-  GaiaScreen* gaia_screen = GetWizardController()->GetScreen<GaiaScreen>();
-  gaia_screen->ShowAllowlistCheckFailedError();
+  StartWizard(UserAllowlistCheckScreenView::kScreenId);
 }
 
 void LoginDisplayHostCommon::UpdateWallpaper(
@@ -543,13 +532,15 @@ void LoginDisplayHostCommon::OnPowerwashAllowedCallback(
   if (tpm_firmware_update_mode.has_value()) {
     // Force the TPM firmware update option to be enabled.
     g_browser_process->local_state()->SetInteger(
-        prefs::kFactoryResetTPMFirmwareUpdateMode,
+        ::prefs::kFactoryResetTPMFirmwareUpdateMode,
         static_cast<int>(tpm_firmware_update_mode.value()));
   }
   StartWizard(ResetView::kScreenId);
 }
 
 void LoginDisplayHostCommon::StartUserOnboarding() {
+  oobe_metrics_helper_->OnOnboardingFlowStarted(
+      g_browser_process->local_state()->GetTime(prefs::kOobeStartTime));
   StartWizard(LocaleSwitchView::kScreenId);
 }
 
@@ -715,6 +706,10 @@ WizardContext* LoginDisplayHostCommon::GetWizardContext() {
   return wizard_context_.get();
 }
 
+OobeMetricsHelper* LoginDisplayHostCommon::GetOobeMetricsHelper() {
+  return oobe_metrics_helper_.get();
+}
+
 void LoginDisplayHostCommon::OnCancelPasswordChangedFlow() {
   LoginDisplayHost::default_host()->StartSignInScreen();
 }
@@ -746,8 +741,7 @@ void LoginDisplayHostCommon::ShowGaiaDialogCommon(
   if (!prefilled_account.is_valid()) {
     StartWizard(UserCreationView::kScreenId);
   } else {
-    GaiaScreen* gaia_screen = GetWizardController()->GetScreen<GaiaScreen>();
-    gaia_screen->LoadOnline(prefilled_account);
+    wizard_context_->gaia_config.prefilled_account = prefilled_account;
     StartWizard(GaiaView::kScreenId);
   }
 }
@@ -785,6 +779,10 @@ void LoginDisplayHostCommon::NotifyWizardCreated() {
 }
 
 void LoginDisplayHostCommon::Cleanup() {
+  if (wizard_context_->quick_start_enabled) {
+    bootstrap_controller_.reset();
+  }
+
   SigninProfileHandler::Get()->ClearSigninProfile(base::DoNothing());
   app_terminating_subscription_ = {};
   BrowserList::RemoveObserver(this);

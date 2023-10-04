@@ -420,15 +420,19 @@ void AppManagementPageHandler::GetOverlappingPreferredApps(
     GetOverlappingPreferredAppsCallback callback) {
 #if BUILDFLAG(IS_CHROMEOS)
   auto intent_filters = GetSupportedLinkIntentFilters(profile_, app_id);
+  auto* proxy = apps::AppServiceProxyFactory::GetForProfile(profile_);
   base::flat_set<std::string> app_ids =
-      apps::AppServiceProxyFactory::GetForProfile(profile_)
-          ->PreferredAppsList()
-          .FindPreferredAppsForFilters(intent_filters);
+      proxy->PreferredAppsList().FindPreferredAppsForFilters(intent_filters);
   app_ids.erase(app_id);
-  // Remove the use_browser app ID as it's mainly used inside the intent system
-  // and is not an app in app management. This prevents an overlap dialog from
-  // being shown when there are no "real" apps that overlap.
-  app_ids.erase(apps_util::kUseBrowserForLink);
+
+  // Erase all IDs that do not correspond to installed apps in App Service. Such
+  // IDs could be apps that have been uninstalled but did not have their
+  // preference updated correctly, or the legacy "use_browser" preference. This
+  // prevents attempting to show an overlapping app dialog for an app that
+  // doesn't currently exist.
+  base::EraseIf(app_ids, [proxy](const std::string& app_id) {
+    return !proxy->AppRegistryCache().IsAppInstalled(app_id);
+  });
   std::move(callback).Run(std::move(app_ids).extract());
 #else
   web_app::WebAppProvider* provider =
@@ -437,15 +441,20 @@ void AppManagementPageHandler::GetOverlappingPreferredApps(
       "AppManagementPageHandler::GetOverlappingPreferredApps",
       std::make_unique<web_app::AllAppsLockDescription>(),
       base::BindOnce(
-          [](const web_app::AppId& app_id,
+          [](const webapps::AppId& app_id,
              GetOverlappingPreferredAppsCallback callback,
              web_app::AllAppsLock& all_apps_lock) {
             std::move(callback).Run(
-                all_apps_lock.registrar().GetOverlappingAppsMatchingScopePrefix(
+                all_apps_lock.registrar().GetOverlappingAppsMatchingScope(
                     app_id));
           },
           app_id, std::move(callback)));
 #endif  // BUILDFLAG(IS_CHROMEOS)
+}
+
+void AppManagementPageHandler::UpdateAppSize(const std::string& app_id) {
+  auto* proxy = apps::AppServiceProxyFactory::GetForProfile(profile_);
+  proxy->UpdateAppSize(app_id);
 }
 
 void AppManagementPageHandler::SetWindowMode(const std::string& app_id,
@@ -495,7 +504,7 @@ void AppManagementPageHandler::ShowDefaultAppAssociationsUi() {
 }
 
 void AppManagementPageHandler::OnWebAppFileHandlerApprovalStateChanged(
-    const web_app::AppId& app_id) {
+    const webapps::AppId& app_id) {
 #if BUILDFLAG(IS_CHROMEOS)
   NOTREACHED();
 #endif
@@ -522,7 +531,7 @@ void AppManagementPageHandler::OnAppRegistrarDestroyed() {
 
 #if !BUILDFLAG(IS_CHROMEOS)
 void AppManagementPageHandler::OnWebAppUserLinkCapturingPreferencesChanged(
-    const web_app::AppId& app_id,
+    const webapps::AppId& app_id,
     bool is_preferred) {
   OnPreferredAppChanged(app_id, is_preferred);
 }
@@ -763,7 +772,7 @@ void AppManagementPageHandler::OnPreferredAppsListWillBeDestroyed(
 
 #if !BUILDFLAG(IS_CHROMEOS)
 void AppManagementPageHandler::MakeAppPreferredAndResetOthers(
-    const web_app::AppId& app_id,
+    const webapps::AppId& app_id,
     bool set_to_preferred,
     web_app::AllAppsLock& lock) {
   bool is_already_preferred = lock.registrar().CapturesLinksInScope(app_id);
@@ -779,7 +788,7 @@ void AppManagementPageHandler::MakeAppPreferredAndResetOthers(
 
   // TODO(b/273830801): Automatically call observers when changes are committed
   //  to the web_app DB.
-  for (const web_app::AppId& id : lock.registrar().GetAppIds()) {
+  for (const webapps::AppId& id : lock.registrar().GetAppIds()) {
     if (id == app_id) {
       {
         web_app::ScopedRegistryUpdate update = lock.sync_bridge().BeginUpdate();

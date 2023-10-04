@@ -30,6 +30,8 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
+#include "ui/display/screen.h"
+#include "ui/events/base_event_utils.h"
 #include "ui/gfx/color_palette.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/scrollbar_size.h"
@@ -51,6 +53,11 @@ namespace autofill {
 
 namespace {
 
+// The maximum size (in DIPs) of custom cursors that are permitted while the
+// popup is shown. The size is limited to avoid custom cursors that cover most
+// of the popup.
+constexpr int kMaximumAllowedCustomCursorDimension = 24;
+
 // The maximum number of pixels the suggestions dialog is shifted towards the
 // center the focused field.
 constexpr int kMaximumPixelsToMoveSuggestionToCenter = 120;
@@ -58,6 +65,20 @@ constexpr int kMaximumPixelsToMoveSuggestionToCenter = 120;
 // The maximum width percentage the suggestion dialog is shifted towards the
 // center of the focused field.
 constexpr int kMaximumWidthPercentageToMoveTheSuggestionToCenter = 50;
+
+// Creates a border for a popup.
+std::unique_ptr<views::Border> CreateBorder() {
+  auto border = std::make_unique<views::BubbleBorder>(
+      views::BubbleBorder::NONE, views::BubbleBorder::STANDARD_SHADOW,
+      ui::kColorDropdownBackground);
+  border->SetCornerRadius(PopupBaseView::GetCornerRadius());
+  border->set_md_shadow_elevation(
+      ChromeLayoutProvider::Get()->GetShadowElevationMetric(
+          base::FeatureList::IsEnabled(features::kAutofillMoreProminentPopup)
+              ? views::Emphasis::kMaximum
+              : views::Emphasis::kMedium));
+  return border;
+}
 
 }  // namespace
 
@@ -128,11 +149,61 @@ class PopupBaseView::Widget : public views::Widget {
 
     return browser_view->GetWidget()->GetPrimaryWindowWidget();
   }
+
+  void OnMouseEvent(ui::MouseEvent* event) override {
+    views::View* parent_content_view =
+        parent() ? parent()->GetContentsView() : nullptr;
+
+    if (!parent_content_view) {
+      views::Widget::OnMouseEvent(event);
+      return;
+    }
+
+    // Retrigger mouse moves on the parent to make selection/highlighting work
+    // properly and thus provide more intuitive UX when the child's
+    // transparent parts (e.g. shadow) overlap parent (assuming that
+    // the contents are not x`overlapped).
+    if (event->type() == ui::EventType::ET_MOUSE_MOVED &&
+        !GetContentsView()->IsMouseHovered() &&
+        parent_content_view->IsMouseHovered()) {
+      parent()->SynthesizeMouseMoveEvent();
+      // Save the synthesized event position to use it for the exit event
+      // later.
+      last_synthesized_parent_mouse_move_position_ =
+          display::Screen::GetScreen()->GetCursorScreenPoint();
+    } else if (!parent_content_view->IsMouseHovered() &&
+               last_synthesized_parent_mouse_move_position_.has_value()) {
+      // Generate the exit event after a set of move events as there is no one
+      // handling this case (when the mouse gets outside of the parent
+      // widget), which is important for the selection/highlighting state
+      // consistency.
+      const gfx::Point location = View::ConvertPointFromScreen(
+          parent()->GetRootView(),
+          last_synthesized_parent_mouse_move_position_.value());
+      ui::MouseEvent mouse_event(ui::ET_MOUSE_EXITED, location, location,
+                                 ui::EventTimeForNow(), ui::EF_IS_SYNTHESIZED,
+                                 /*changed_button_flags=*/0);
+      parent()->OnMouseEvent(&mouse_event);
+      last_synthesized_parent_mouse_move_position_.reset();
+    }
+
+    views::Widget::OnMouseEvent(event);
+  }
+
+ private:
+  absl::optional<gfx::Point> last_synthesized_parent_mouse_move_position_;
 };
 
-PopupBaseView::PopupBaseView(base::WeakPtr<AutofillPopupViewDelegate> delegate,
-                             views::Widget* parent_widget)
-    : delegate_(delegate), parent_widget_(parent_widget) {}
+PopupBaseView::PopupBaseView(
+    base::WeakPtr<AutofillPopupViewDelegate> delegate,
+    views::Widget* parent_widget,
+    base::span<const views::BubbleArrowSide> preferred_popup_sides,
+    bool show_arrow_pointer)
+    : delegate_(delegate),
+      parent_widget_(parent_widget),
+      preferred_popup_sides_(
+          {preferred_popup_sides.begin(), preferred_popup_sides.end()}),
+      show_arrow_pointer_(show_arrow_pointer) {}
 
 PopupBaseView::~PopupBaseView() {
   if (delegate_) {
@@ -173,6 +244,15 @@ bool PopupBaseView::DoShow() {
   if (!enough_height) {
     return false;
   }
+
+  if (content::WebContents* web_contents = GetWebContents()) {
+    custom_cursor_blocker_ = web_contents->CreateDisallowCustomCursorScope(
+        /*max_dimension_dips=*/kMaximumAllowedCustomCursorDimension + 1);
+  } else {
+    // `delegate_` is already gone and `WebContents` is destroying itself.
+    return false;
+  }
+
   GetWidget()->Show();
 
   // Showing the widget can change native focus (which would result in an
@@ -356,17 +436,19 @@ gfx::Rect PopupBaseView::GetOptionalPositionAndPlaceArrowOnPopup(
       maximum_pixel_offset_to_center,
       /*maximum_width_percentage_to_center=*/
       kMaximumWidthPercentageToMoveTheSuggestionToCenter,
-      /*popup_bounds=*/popup_bounds);
+      /*popup_bounds=*/popup_bounds, preferred_popup_sides_);
 
   // Those values are not supported for adding an arrow.
   // Currently, they can not be returned by GetOptimalPopupPlacement().
   DCHECK(arrow != views::BubbleBorder::Arrow::NONE);
   DCHECK(arrow != views::BubbleBorder::Arrow::FLOAT);
 
-  // Set the arrow position to the border.
-  border->set_arrow(arrow);
-  border->AddArrowToBubbleCornerAndPointTowardsAnchor(element_bounds,
-                                                      popup_bounds);
+  if (show_arrow_pointer_) {
+    // Set the arrow position to the border.
+    border->set_arrow(arrow);
+    border->AddArrowToBubbleCornerAndPointTowardsAnchor(element_bounds,
+                                                        popup_bounds);
+  }
 
   return popup_bounds;
 }
@@ -422,20 +504,6 @@ bool PopupBaseView::DoUpdateBoundsAndRedrawPopup() {
   UpdateClipPath();
   SchedulePaint();
   return true;
-}
-
-std::unique_ptr<views::Border> PopupBaseView::CreateBorder() {
-  auto border = std::make_unique<views::BubbleBorder>(
-      views::BubbleBorder::NONE, views::BubbleBorder::STANDARD_SHADOW,
-      ui::kColorDropdownBackground);
-  border->SetCornerRadius(GetCornerRadius());
-  views::Emphasis emphasis =
-      base::FeatureList::IsEnabled(features::kAutofillMoreProminentPopup)
-          ? views::Emphasis::kMaximum
-          : views::Emphasis::kMedium;
-  border->set_md_shadow_elevation(
-      ChromeLayoutProvider::Get()->GetShadowElevationMetric(emphasis));
-  return border;
 }
 
 void PopupBaseView::OnNativeFocusChanged(gfx::NativeView focused_now) {

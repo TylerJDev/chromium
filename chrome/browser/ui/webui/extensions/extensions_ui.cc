@@ -29,8 +29,8 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/browser_resources.h"
-#include "chrome/grit/chromium_strings.h"
 #include "chrome/grit/extensions_resources.h"
 #include "chrome/grit/extensions_resources_map.h"
 #include "chrome/grit/generated_resources.h"
@@ -120,6 +120,12 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
      IDS_EXTENSIONS_EDIT_SITE_PERMISSIONS_CUSTOMIZE_PER_EXTENSION},
     {"editSitePermissionsRestrictExtensions",
      IDS_EXTENSIONS_EDIT_SITE_PERMISSIONS_RESTRICT_EXTENSIONS},
+    {"enableToggleTooltipDisabled",
+     IDS_EXTENSIONS_ENABLE_TOGGLE_TOOLTIP_DISABLED},
+    {"enableToggleTooltipEnabled",
+     IDS_EXTENSIONS_ENABLE_TOGGLE_TOOLTIP_ENABLED},
+    {"enableToggleTooltipEnabledWithSiteAccess",
+     IDS_EXTENSIONS_ENABLE_TOGGLE_TOOLTIP_ENABLED_WITH_SITE_ACCESS},
     {"errorsPageHeading", IDS_EXTENSIONS_ERROR_PAGE_HEADING},
     {"clearActivities", IDS_EXTENSIONS_CLEAR_ACTIVITIES},
     {"clearAll", IDS_EXTENSIONS_ERROR_CLEAR_ALL},
@@ -213,6 +219,7 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
     {"itemPermissionsEmpty", IDS_EXTENSIONS_ITEM_PERMISSIONS_EMPTY},
     {"itemPermissionsAndSiteAccessEmpty",
      IDS_EXTENSIONS_ITEM_PERMISSIONS_AND_SITE_ACCESS_EMPTY},
+    {"itemPinToToolbar", IDS_EXTENSIONS_ITEM_PIN_TO_TOOLBAR},
     {"itemRemoveExtension", IDS_EXTENSIONS_ITEM_REMOVE_EXTENSION},
     {"itemShowAccessRequestsInToolbar",
      IDS_EXTENSIONS_ITEM_SHOW_ACCESS_REQUESTS_IN_TOOLBAR},
@@ -348,8 +355,8 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
     {"viewServiceWorker", IDS_EXTENSIONS_SERVICE_WORKER_BACKGROUND},
     {"safetyCheckKeepExtension", IDS_EXTENSIONS_SC_KEEP_EXT},
     {"safetyCheckRemoveAll", IDS_EXTENSIONS_SC_REMOVE_ALL},
-    {"safetyCheckAllDoneForNow", IDS_EXTENSIONS_SC_ALL_DONE_FOR_NOW},
     {"safetyCheckAllExtensions", IDS_EXTENSIONS_SC_ALL_EXTENSIONS},
+    {"safetyHubHeader", IDS_SETTINGS_SAFETY_HUB},
     {"safetyCheckRemoveButtonA11yLabel",
      IDS_EXTENSIONS_SC_REMOVE_BUTTON_A11Y_LABEL},
     {"safetyCheckOptionMenuA11yLabel",
@@ -432,6 +439,8 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
   source->AddBoolean(
       "safetyCheckShowReviewPanel",
       base::FeatureList::IsEnabled(features::kSafetyCheckExtensions));
+  source->AddBoolean("safetyHubShowReviewPanel",
+                     base::FeatureList::IsEnabled(features::kSafetyHub));
 
   return source;
 }
@@ -474,6 +483,8 @@ ExtensionsUI::ExtensionsUI(content::WebUI* web_ui)
                                             IDS_EXTENSIONS_SC_TITLE);
   plural_string_handler->AddLocalizedString("safetyCheckDescription",
                                             IDS_EXTENSIONS_SC_DESCRIPTION);
+  plural_string_handler->AddLocalizedString("safetyCheckAllDoneForNow",
+                                            IDS_EXTENSIONS_SC_ALL_DONE_FOR_NOW);
   web_ui->AddMessageHandler(std::move(plural_string_handler));
 }
 

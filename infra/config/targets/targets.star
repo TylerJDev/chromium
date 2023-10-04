@@ -164,6 +164,11 @@ targets.generated_script(
     label = "//base:base_junit_tests",
 )
 
+targets.compile_target(
+    name = "base_nocompile_tests",
+    label = "//base:base_nocompile_tests",
+)
+
 targets.script(
     name = "base_perftests",
     label = "//base:base_perftests",
@@ -198,9 +203,19 @@ targets.console_test_launcher(
     label = "//third_party/blink/renderer/platform/heap:blink_heap_unittests",
 )
 
+targets.compile_target(
+    name = "blink_platform_nocompile_tests",
+    label = "//third_party/blink/renderer/platform:blink_platform_nocompile_tests",
+)
+
 targets.console_test_launcher(
     name = "blink_platform_unittests",
     label = "//third_party/blink/renderer/platform:blink_platform_unittests",
+)
+
+targets.compile_target(
+    name = "blink_probes_nocompile_tests",
+    label = "//third_party/blink/renderer/core/probe:blink_probes_nocompile_tests",
 )
 
 targets.generated_script(
@@ -240,11 +255,6 @@ targets.generated_script(
         "--results-directory",
         "${ISOLATED_OUTDIR}",
     ],
-)
-
-targets.compile_target(
-    name = "boundary_interface_example_apk",
-    label = "//android_webview/support_library/boundary_interfaces:boundary_interface_example_apk",
 )
 
 # TODO(b/246519185) - Py3 incompatible, decide if to keep test.
@@ -561,17 +571,8 @@ targets.windowed_test_launcher(
 )
 
 targets.generated_script(
-    name = "webdriver_wpt_tests",
-    label = "//:webdriver_wpt_tests",
-    args = [
-        "--results-directory",
-        "${ISOLATED_OUTDIR}",
-    ],
-)
-
-targets.generated_script(
-    name = "chrome_wpt",
-    label = "//:chrome_wpt",
+    name = "chrome_wpt_tests",
+    label = "//:chrome_wpt_tests",
     args = [
         "--results-directory",
         "${ISOLATED_OUTDIR}",
@@ -642,11 +643,6 @@ targets.windowed_test_launcher(
     label = "//chrome/test/chromedriver:chromedriver_unittests",
 )
 
-targets.generated_script(
-    name = "chrome_finch_smoke_tests",
-    label = "//clank/java:chrome_finch_smoke_tests",
-)
-
 targets.console_test_launcher(
     name = "chromeos_components_unittests",
     label = "//chromeos/components:chromeos_components_unittests",
@@ -670,11 +666,6 @@ targets.compile_target(
 targets.compile_target(
     name = "chromiumos_preflight",
     label = "//:chromiumos_preflight",
-)
-
-targets.console_test_launcher(
-    name = "color_unittests",
-    label = "//ui/color:color_unittests",
 )
 
 targets.script(
@@ -775,7 +766,7 @@ targets.generated_script(
     label = "//content/public/android:content_junit_tests",
 )
 
-targets.console_test_launcher(
+targets.compile_target(
     name = "content_nocompile_tests",
     label = "//content/test:content_nocompile_tests",
 )
@@ -925,11 +916,6 @@ targets.generated_script(
 targets.console_test_launcher(
     name = "display_unittests",
     label = "//ui/display:display_unittests",
-)
-
-targets.compile_target(
-    name = "dump_syms",
-    label = "//third_party/breakpad:dump_syms",
 )
 
 targets.windowed_test_launcher(
@@ -1390,11 +1376,6 @@ targets.windowed_test_launcher(
     label = "//ui/message_center:message_center_unittests",
 )
 
-targets.compile_target(
-    name = "microdump_stackwalk",
-    label = "//third_party/breakpad:microdump_stackwalk",
-)
-
 targets.windowed_test_launcher(
     name = "midi_unittests",
     label = "//media/midi:midi_unittests",
@@ -1421,13 +1402,13 @@ targets.console_test_launcher(
 )
 
 targets.generated_script(
-    name = "module_installer_junit_tests",
-    label = "//components/module_installer/android:module_installer_junit_tests",
+    name = "model_validation_tests",
+    label = "//components/optimization_guide/internal/testing:model_validation_tests",
 )
 
 targets.generated_script(
-    name = "monochrome_finch_smoke_tests",
-    label = "//clank/android_webview/components:monochrome_finch_smoke_tests",
+    name = "module_installer_junit_tests",
+    label = "//components/module_installer/android:module_installer_junit_tests",
 )
 
 targets.console_test_launcher(
@@ -1563,6 +1544,11 @@ targets.windowed_test_launcher(
 targets.console_test_launcher(
     name = "openscreen_unittests",
     label = "//chrome/browser/media/router:openscreen_unittests",
+)
+
+targets.console_test_launcher(
+    name = "optimization_guide_unittests",
+    label = "//components/optimization_guide/internal:optimization_guide_unittests",
 )
 
 targets.console_test_launcher(
@@ -2170,6 +2156,11 @@ targets.script(
 targets.compile_target(
     name = "chrome/updater:all",
     label = "//chrome/updater:all",
+)
+
+targets.console_test_launcher(
+    name = "ui_unittests",
+    label = "//ui/tests:ui_unittests",
 )
 
 targets.generated_script(

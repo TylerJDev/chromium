@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_PRIVACY_SANDBOX_PRIVACY_SANDBOX_SETTINGS_H_
 #define COMPONENTS_PRIVACY_SANDBOX_PRIVACY_SANDBOX_SETTINGS_H_
 
+#include "components/browsing_topics/common/common_types.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/interest_group_api_operation.h"
 
@@ -84,6 +85,16 @@ class PrivacySandboxSettings : public KeyedService {
     // Whether the profile is subject to being given notice of restrictions to
     // the standard set of Privacy Sandbox APIs.
     virtual bool IsSubjectToM1NoticeRestricted() const = 0;
+
+    // Whether the profile is eligible for 3PCD experiment. The eligibility
+    // applies for both mode A and mode B experiments.
+    virtual bool IsCookieDeprecationExperimentEligible() const = 0;
+
+    // Whether the profile is currently eligible for 3PCD experiment. The
+    // eligibility applies for both mode A and mode B experiments. Unlike
+    // `IsCookieDeprecationExperimentEligible` this method returns the real time
+    // eligibility.
+    virtual bool IsCookieDeprecationExperimentCurrentlyEligible() const = 0;
   };
 
   // Returns whether the Topics API is allowed at all. If false, Topics API
@@ -106,6 +117,9 @@ class PrivacySandboxSettings : public KeyedService {
   // current epoch, or provided to a website as a previous / current epochs
   // site assigned topic.
   virtual bool IsTopicAllowed(const CanonicalTopic& topic) = 0;
+
+  // Returns whether |topic| is prioritized by Finch settings.
+  virtual bool IsTopicPrioritized(const CanonicalTopic& topic) = 0;
 
   // Sets |topic| to |allowed|. Whether a topic is allowed or not is made
   // available through IsTopicAllowed().
@@ -213,6 +227,32 @@ class PrivacySandboxSettings : public KeyedService {
       const url::Origin& top_frame_origin,
       const url::Origin& reporting_origin) const = 0;
 
+  // Determines whether the Private Aggregation API's debug mode is allowable in
+  // a particular context. Note that if IsPrivateAggregationAllowed() is false,
+  // this will always be false too. `top_frame_origin` is the associated
+  // top-frame origin of the calling context. Applicable to all uses of Private
+  // Aggregation.
+  virtual bool IsPrivateAggregationDebugModeAllowed(
+      const url::Origin& top_frame_origin,
+      const url::Origin& reporting_origin) const = 0;
+
+  // Returns whether the profile is currently eligible for 3PCD experiments.
+  // This consults the delegate for the real time eligibility of the profile.
+  // The eligibility applies for both mode A and mode B experiments.
+  virtual bool IsCookieDeprecationExperimentCurrentlyEligible() const = 0;
+
+  // Determines whether cookie deprecation label is allowable. This consults
+  // whether the profile is eligible for 3PCD experiments. If true, the more
+  // specific function, IsCookieDeprecationLabelAllowed(), should be consulted
+  // for the relevant context.
+  virtual bool IsCookieDeprecationLabelAllowed() const = 0;
+
+  // Determines whether cookie deprecation label is allowable for
+  // `context_origin` in the context of `top_frame_origin`.
+  virtual bool IsCookieDeprecationLabelAllowedForContext(
+      const url::Origin& top_frame_origin,
+      const url::Origin& context_origin) const = 0;
+
   // Returns whether the profile has the Privacy Sandbox enabled. This consults
   // the main preference, as well as the delegate to check whether the sandbox
   // is restricted. It does not consider any cookie settings. A return value of
@@ -267,6 +307,9 @@ class PrivacySandboxSettings : public KeyedService {
 
   // Overrides the internal delegate for test purposes.
   virtual void SetDelegateForTesting(std::unique_ptr<Delegate> delegate) = 0;
+
+  // Source of truth for whether related websites are enabled.
+  virtual bool AreRelatedWebsiteSetsEnabled() const = 0;
 };
 
 }  // namespace privacy_sandbox

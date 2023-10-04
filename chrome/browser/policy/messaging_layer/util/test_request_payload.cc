@@ -92,6 +92,97 @@ std::string NoAttachEncryptionSettingsMatcher::Name() const {
   return "no-attach-encryption-settings-matcher";
 }
 
+bool ConfigurationFileVersionMatcher::MatchAndExplain(
+    const base::Value::Dict& arg,
+    MatchResultListener* listener) const {
+  auto* attach_configuration_file = arg.Find("configurationFileVersion");
+  if (!attach_configuration_file->GetIfInt().has_value()) {
+    *listener << "No key named \"configurationFileVersion\" in the argument or "
+                 "the value is not of int type.";
+    return false;
+  }
+  return true;
+}
+
+void ConfigurationFileVersionMatcher::DescribeTo(std::ostream* os) const {
+  *os << "has a valid configurationFileVersion field.";
+}
+
+void ConfigurationFileVersionMatcher::DescribeNegationTo(
+    std::ostream* os) const {
+  *os << "has an invalid configurationFileVersion field.";
+}
+
+std::string ConfigurationFileVersionMatcher::Name() const {
+  return "configuration-file-version-matcher";
+}
+
+bool NoConfigurationFileVersionMatcher::MatchAndExplain(
+    const base::Value::Dict& arg,
+    MatchResultListener* listener) const {
+  if (arg.Find("configurationFileVersion") != nullptr) {
+    *listener << "Found \"configurationFileVersion\" in the argument.";
+    return false;
+  }
+  return true;
+}
+
+void NoConfigurationFileVersionMatcher::DescribeTo(std::ostream* os) const {
+  *os << "expectedly has no configurationFileVersion field.";
+}
+
+void NoConfigurationFileVersionMatcher::DescribeNegationTo(
+    std::ostream* os) const {
+  *os << "unexpectedly has an configurationFileVersion field.";
+}
+
+std::string NoConfigurationFileVersionMatcher::Name() const {
+  return "no-configuration-file-version-matcher";
+}
+
+bool SourceMatcher::MatchAndExplain(const base::Value::Dict& arg,
+                                    MatchResultListener* listener) const {
+  if (arg.FindString("source") == nullptr) {
+    *listener << "No key named \"source\" or the value "
+                 "is not a string in the argument.";
+    return false;
+  }
+  return true;
+}
+
+void SourceMatcher::DescribeTo(std::ostream* os) const {
+  *os << "has a valid source field.";
+}
+
+void SourceMatcher::DescribeNegationTo(std::ostream* os) const {
+  *os << "has an invalid source field.";
+}
+
+std::string SourceMatcher::Name() const {
+  return "source-test-matcher";
+}
+
+bool NoSourceMatcher::MatchAndExplain(const base::Value::Dict& arg,
+                                      MatchResultListener* listener) const {
+  if (arg.Find("source") != nullptr) {
+    *listener << "Found \"source\" in the argument.";
+    return false;
+  }
+  return true;
+}
+
+void NoSourceMatcher::DescribeTo(std::ostream* os) const {
+  *os << "expectedly has no source field.";
+}
+
+void NoSourceMatcher::DescribeNegationTo(std::ostream* os) const {
+  *os << "unexpectedly has an Source field.";
+}
+
+std::string NoSourceMatcher::Name() const {
+  return "source-test-matcher";
+}
+
 void CompressionInformationMatcher::DescribeTo(std::ostream* os) const {
   *os << "has a valid compression information field.";
 }

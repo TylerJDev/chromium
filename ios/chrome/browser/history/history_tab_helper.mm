@@ -10,13 +10,13 @@
 #import "components/keyed_service/core/service_access_type.h"
 #import "components/strings/grit/components_strings.h"
 #import "components/translate/core/common/language_detection_details.h"
-#import "ios/chrome/browser/complex_tasks/ios_content_record_task_id.h"
-#import "ios/chrome/browser/complex_tasks/ios_task_tab_helper.h"
+#import "ios/chrome/browser/complex_tasks/model/ios_content_record_task_id.h"
+#import "ios/chrome/browser/complex_tasks/model/ios_task_tab_helper.h"
 #import "ios/chrome/browser/history/history_service_factory.h"
 #import "ios/chrome/browser/sessions/ios_chrome_session_tab_helper.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
-#import "ios/chrome/browser/translate/chrome_ios_translate_client.h"
+#import "ios/chrome/browser/translate/model/chrome_ios_translate_client.h"
 #import "ios/web/public/navigation/navigation_context.h"
 #import "ios/web/public/navigation/navigation_item.h"
 #import "ios/web/public/navigation/navigation_manager.h"
@@ -155,6 +155,11 @@ history::HistoryAddPageArgs HistoryTabHelper::CreateHistoryAddPageArgs(
       /*did_replace_entry=*/false, consider_for_ntp_most_visited,
       navigation_context->IsSameDocument() ? GetPageTitle(*last_committed_item)
                                            : absl::nullopt,
+      // TODO(crbug.com/1475717): due to WebKit constraints, iOS does not
+      // support triple-key partitioning. Once supported, we need to populate
+      // `top_level_url` with the correct value. Until then, :visited history on
+      // iOS is unpartitioned.
+      /*top_level_url=*/absl::nullopt,
       /*opener=*/absl::nullopt,
       /*bookmark_id=*/absl::nullopt,
       /*context_annotations=*/std::move(context_annotations));

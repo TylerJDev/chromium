@@ -12,7 +12,8 @@ instructions on how to enable it.
 
 Starting from version 117, Chrome experimentally supports Compression Dictionary
 Transport feature. This feature adds support for using designated previous
-responses, as an external dictionary for Brotli-compressing HTTP responses.
+responses, as an external dictionary for Brotli- or Zstandard-compressed HTTP
+responses.
 
 ## Activation
 
@@ -145,8 +146,11 @@ If a dictionary is available for the request, Chrome will add `sbr` the
 
 ## Supported compression scheme
 
-Currently Chrome only supports Shared Brotli. Supporting Zstandard's shared
-dictionary is tracked at [crbug.com/1462543][zstd-issue].
+Chrome 117.0.5857.0 introduced support for Shared Brotli, and Chrome
+118.0.5952.0 adds support for Shared Zstandard.
+
+Shared Zstandard can be enabled/disabled from
+[chrome://flags/#enable-shared-zstd][shared-zstd-flag].
 
 ## Debugging
 
@@ -167,6 +171,11 @@ Developers can check the related HTTP request and response headers
   `transferSize` property of `PerformanceResourceTiming` for shared dictionary
   compressed response are wrong. Currently it returns as if the response is not
   compressed.
+- [crbug.com/1479465](crbug.com/1479465): Can't store large (>40 MB)
+  dictionaries. Fixed in M118, by setting a [100 MB size limit](100mb-limit-line)
+  if there is enough disk space.
+- [cbrbug.com/1479809](crbug.com/1479809): Can't use large (>8MB) dictionaries
+  for Shared Zstd. Fixed in M118.
 
 ## Demo sites
 
@@ -180,11 +189,12 @@ There are a few demo sites that you can use to test the feature:
 [explainer]: https://github.com/WICG/compression-dictionary-transport
 [flag]: chrome://flags/#enable-compression-dictionary-transport
 [backend-flag]: chrome://flags/#enable-compression-dictionary-transport-backend
+[shared-zstd-flag]: chrome://flags/#enable-shared-zstd
 [shared_dictionary_readme]: ../../services/network/shared_dictionary/README.md#flags
 [ot-blog]: https://developer.chrome.com/blog/origin-trials/
 [ot-console]: https://developer.chrome.com/origintrials/#/trials/active
-[zstd-issue]: https://crbug.com/1462543
 [third-party-ot-dd]: https://docs.google.com/document/d/1xALH9W7rWmX0FpjudhDeS2TNTEOXuPn4Tlc9VmuPdHA/edit#heading=h.bvw2lcb2dczg
 [httpbis-draft]: https://datatracker.ietf.org/doc/draft-meenan-httpbis-compression-dictionary/
 [net-internals-sd]: chrome://net-internals/#sharedDictionary
 [type-option-cl]: https://chromiumdash.appspot.com/commit/169031f4af2cbdc529f48160f1df20b4ca8b6cc1
+[100mb-limit-line]: https://source.chromium.org/chromium/chromium/src/+/main:services/network/shared_dictionary/shared_dictionary_constants.cc;l=14;drc=eef4762779d05708d5dfc7d5fe4ea16288069a35

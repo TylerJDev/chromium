@@ -272,6 +272,8 @@ constexpr auto kAshAcceleratorsWithoutLayout =
         AcceleratorAction::kToggleWifi,
         AcceleratorAction::kTouchHudClear,
         AcceleratorAction::kTouchHudModeChange,
+        AcceleratorAction::kVolumeMuteToggle,
+        AcceleratorAction::kUnpin,
     });
 
 // A fixed array of accelerator layouts used for categorization and styling of
@@ -422,10 +424,6 @@ constexpr AcceleratorLayoutDetails kAcceleratorLayouts[] = {
      mojom::AcceleratorSource::kAmbient},
     {AcceleratorAction::kLaunchLastApp,
      IDS_ASH_ACCELERATOR_DESCRIPTION_LAUNCH_LAST_APP,
-     mojom::AcceleratorCategory::kGeneral, mojom::AcceleratorSubcategory::kApps,
-     /*locked=*/false, mojom::AcceleratorLayoutStyle::kDefault,
-     mojom::AcceleratorSource::kAsh},
-    {AcceleratorAction::kUnpin, IDS_ASH_ACCELERATOR_DESCRIPTION_UNPIN,
      mojom::AcceleratorCategory::kGeneral, mojom::AcceleratorSubcategory::kApps,
      /*locked=*/false, mojom::AcceleratorLayoutStyle::kDefault,
      mojom::AcceleratorSource::kAsh},

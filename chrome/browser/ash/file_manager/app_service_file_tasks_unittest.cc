@@ -652,6 +652,21 @@ TEST_F(AppServiceFileTasksTestEnabled, FindAppServiceExtension) {
   EXPECT_FALSE(tasks[0].is_file_extension_match);
 }
 
+TEST_F(AppServiceFileTasksTestEnabled,
+       FindAppServiceArcAppWithExtensionMatching) {
+  // Create an app with a text file filter.
+  std::string package_name = "com.example.xyzViewer";
+  std::string activity = "xyzViewerActivity";
+  std::string app_id = AddArcAppWithIntentFilter(
+      package_name, activity,
+      CreateExtensionTypeFileIntentFilter(apps_util::kIntentActionView, "xyz"));
+  std::vector<FullTaskDescriptor> tasks = FindAppServiceTasks({{"foo.xyz"}});
+  ASSERT_EQ(1U, tasks.size());
+  EXPECT_EQ(app_id, tasks[0].task_descriptor.app_id);
+  EXPECT_FALSE(tasks[0].is_generic_file_handler);
+  EXPECT_TRUE(tasks[0].is_file_extension_match);
+}
+
 // Enable MV3 File Handlers.
 class AppServiceFileHandlersTest : public AppServiceFileTasksTestEnabled {
  public:
@@ -940,8 +955,9 @@ class AppServiceFileTasksPolicyTest : public AppServiceFileTasksTestEnabled {
  protected:
   class MockFilesController : public policy::DlpFilesControllerAsh {
    public:
-    explicit MockFilesController(const policy::DlpRulesManager& rules_manager)
-        : DlpFilesControllerAsh(rules_manager) {}
+    explicit MockFilesController(const policy::DlpRulesManager& rules_manager,
+                                 Profile* profile)
+        : DlpFilesControllerAsh(rules_manager, profile) {}
     ~MockFilesController() override = default;
 
     MOCK_METHOD(bool,
@@ -987,7 +1003,7 @@ class AppServiceFileTasksPolicyTest : public AppServiceFileTasksTestEnabled {
     ON_CALL(*rules_manager_, IsFilesPolicyEnabled)
         .WillByDefault(testing::Return(true));
     mock_files_controller_ =
-        std::make_unique<MockFilesController>(*rules_manager_);
+        std::make_unique<MockFilesController>(*rules_manager_, profile_.get());
     ON_CALL(*rules_manager_, GetDlpFilesController)
         .WillByDefault(testing::Return(mock_files_controller_.get()));
   }

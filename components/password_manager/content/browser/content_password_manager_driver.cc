@@ -252,10 +252,6 @@ bool ContentPasswordManagerDriver::CanShowAutofillUi() const {
   return render_frame_host_->IsActive();
 }
 
-::ui::AXTreeID ContentPasswordManagerDriver::GetAxTreeId() const {
-  return render_frame_host_->GetAXTreeID();
-}
-
 const GURL& ContentPasswordManagerDriver::GetLastCommittedURL() const {
   return render_frame_host_->GetLastCommittedURL();
 }
@@ -509,26 +505,6 @@ void ContentPasswordManagerDriver::LogFirstFillingResult(
           render_frame_host_))
     return;
   GetPasswordManager()->LogFirstFillingResult(this, form_renderer_id, result);
-}
-
-void ContentPasswordManagerDriver::SetKeyPressHandler(
-    const content::RenderWidgetHost::KeyPressEventCallback& handler) {
-  UnsetKeyPressHandler();
-  content::RenderWidgetHostView* view = render_frame_host_->GetView();
-  if (!view)
-    return;
-  view->GetRenderWidgetHost()->AddKeyPressEventCallback(handler);
-  key_press_handler_ = handler;
-}
-
-void ContentPasswordManagerDriver::UnsetKeyPressHandler() {
-  if (key_press_handler_.is_null())
-    return;
-  content::RenderWidgetHostView* view = render_frame_host_->GetView();
-  if (!view)
-    return;
-  view->GetRenderWidgetHost()->RemoveKeyPressEventCallback(key_press_handler_);
-  key_press_handler_.Reset();
 }
 
 const mojo::AssociatedRemote<autofill::mojom::AutofillAgent>&

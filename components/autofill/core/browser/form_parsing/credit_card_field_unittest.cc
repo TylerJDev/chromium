@@ -90,9 +90,10 @@ class CreditCardFieldTestBase : public FormFieldTestBase {
  protected:
   std::unique_ptr<FormField> Parse(
       AutofillScanner* scanner,
+      const GeoIpCountryCode& client_country,
       const LanguageCode& page_language = LanguageCode("us")) override {
-    return CreditCardField::Parse(scanner, page_language,
-                                  GetActivePatternSource(), nullptr);
+    return CreditCardField::Parse(scanner, client_country, page_language,
+                                  *GetActivePatternSource(), nullptr);
   }
 
   // Runs multiple parsing attempts until the end of the form is reached.
@@ -102,7 +103,7 @@ class CreditCardFieldTestBase : public FormFieldTestBase {
     while (!scanner.IsEnd()) {
       // An empty page_language means the language is unknown and patterns of
       // all languages are used.
-      field_ = Parse(&scanner, page_language);
+      field_ = Parse(&scanner, GeoIpCountryCode(""), page_language);
       if (field_ == nullptr) {
         scanner.Advance();
       } else {
@@ -160,6 +161,31 @@ TEST_P(CreditCardFieldTest, ParseMiniumCreditCard) {
   ClassifyAndVerify(ParseResult::PARSED);
 }
 
+// Ensure that a placeholder hint for a 2-digit year is respected
+TEST_P(CreditCardFieldTest, ParseMiniumCreditCardWith2DigitYearHint) {
+  base::test::ScopedFeatureList scoped_features{
+      features::kAutofillEnableExpirationDateImprovements};
+  AddTextFormFieldData("card_number", "Card Number", CREDIT_CARD_NUMBER);
+  AddTextFormFieldData("ccmonth", "Exp Month", CREDIT_CARD_EXP_MONTH);
+  AddTextFormFieldData("ccyear", "Exp Year", CREDIT_CARD_EXP_2_DIGIT_YEAR);
+  list_.back()->placeholder = u"YY";
+  ClassifyAndVerify(ParseResult::PARSED);
+}
+
+// Ensure that a max-length can trump an incorrect 4-digit placeholder hint.
+TEST_P(CreditCardFieldTest, ParseMiniumCreditCardWithMaxLength) {
+  base::test::ScopedFeatureList scoped_features{
+      features::kAutofillEnableExpirationDateImprovements};
+  AddTextFormFieldData("card_number", "Card Number", CREDIT_CARD_NUMBER);
+  AddTextFormFieldData("ccmonth", "Exp Month", CREDIT_CARD_EXP_MONTH);
+  AddTextFormFieldData("ccyear", "Exp Year", CREDIT_CARD_EXP_2_DIGIT_YEAR);
+  // Even though the placehodler indicates YYYY, the max-length only enables
+  // a YY expiration format.
+  list_.back()->max_length = 2u;
+  list_.back()->placeholder = u"YYYY";
+  ClassifyAndVerify(ParseResult::PARSED);
+}
+
 struct CreditCardFieldYearTestCase {
   bool with_noise;
   ServerFieldType expected_type;
@@ -197,13 +223,13 @@ class CreditCardFieldYearTest
 };
 
 TEST_P(CreditCardFieldYearTest, ParseMinimumCreditCardWithExpiryDateOptions) {
+  base::test::ScopedFeatureList scoped_features{
+      features::kAutofillEnableExpirationDateImprovements};
   AddTextFormFieldData("card_number", "Card Number", CREDIT_CARD_NUMBER);
   AddSelectOneFormFieldData("Random Label", "Random Label", GetMonths(),
                             CREDIT_CARD_EXP_MONTH);
-  AddSelectOneFormFieldDataWithLength(
-      "Random Label", "Random Label",
-      expected_type() == CREDIT_CARD_EXP_2_DIGIT_YEAR ? 2 : 4,
-      MakeOptionVector(), expected_type());
+  AddSelectOneFormFieldData("Random Label", "Random Label", MakeOptionVector(),
+                            expected_type());
 
   if (ShouldSwapMonthAndYear())
     std::swap(list_[1], list_[2]);
@@ -476,34 +502,6 @@ TEST_P(CreditCardFieldTest, ParseCreditCardExpYear_2DigitMaxLength) {
                              CREDIT_CARD_EXP_2_DIGIT_YEAR);
 
   ClassifyAndVerify(ParseResult::PARSED);
-}
-
-TEST_P(CreditCardFieldTest, ParseCreditCardNumberWithSplit) {
-  FormFieldData field;
-  field.form_control_type = "text";
-  AddFormFieldDataWithLength("text", "card_number_q1", "Card Number", 4,
-                             CREDIT_CARD_NUMBER);
-  AddFormFieldDataWithLength("text", "card_number_q2", "Card Number", 4,
-                             CREDIT_CARD_NUMBER);
-  AddFormFieldDataWithLength("text", "card_number_q3", "Card Number", 4,
-                             CREDIT_CARD_NUMBER);
-  // For last credit card number input field it simply ignores the |max_length|
-  // attribute. So even having a very big number, does not conside it an invalid
-  // split for autofilling.
-  AddFormFieldDataWithLength("text", "card_number_q4", "Card Number", 20,
-                             CREDIT_CARD_NUMBER);
-
-  AddTextFormFieldData("ccmonth", "Exp Month", CREDIT_CARD_EXP_MONTH);
-  AddTextFormFieldData("ccyear", "Exp Year", CREDIT_CARD_EXP_4_DIGIT_YEAR);
-
-  ClassifyAndVerify(ParseResult::PARSED);
-
-  // Test the for the right credit card number offsets.
-  ASSERT_TRUE(list_.size() > 4);
-  EXPECT_EQ(list_[0]->credit_card_number_offset(), 0U);
-  EXPECT_EQ(list_[1]->credit_card_number_offset(), 4U);
-  EXPECT_EQ(list_[2]->credit_card_number_offset(), 8U);
-  EXPECT_EQ(list_[3]->credit_card_number_offset(), 12U);
 }
 
 TEST_P(CreditCardFieldTest, ParseMultipleCreditCardNumbers) {

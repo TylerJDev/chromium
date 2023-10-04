@@ -15,6 +15,7 @@
 #include "base/timer/elapsed_timer.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
+#include "chrome/browser/ash/login/oobe_quick_start/connectivity/account_transfer_client_data.h"
 #include "chrome/browser/ash/login/oobe_quick_start/connectivity/fido_assertion_info.h"
 #include "chrome/browser/ash/login/oobe_quick_start/connectivity/session_context.h"
 #include "chrome/browser/ash/login/oobe_quick_start/connectivity/target_device_connection_broker.h"
@@ -34,8 +35,8 @@ namespace ash::quick_start {
 
 class QuickStartMessage;
 
-// Represents a connection to the remote source device and is an abstraction of
-// a Nearby Connection.
+// Represents a high-level connection used to exchange Quick Start messages with
+// the remote source device using a NearbyConnection.
 class Connection
     : public TargetDeviceConnectionBroker::AuthenticatedConnection {
  public:
@@ -111,10 +112,8 @@ class Connection
       base::OnceCallback<void(absl::optional<std::vector<uint8_t>>)>;
 
   // TargetDeviceConnectionBroker::AuthenticatedConnection:
-  void RequestWifiCredentials(int32_t session_id,
-                              RequestWifiCredentialsCallback callback) override;
-  void NotifySourceOfUpdate(int32_t session_id,
-                            NotifySourceOfUpdateCallback callback) override;
+  void RequestWifiCredentials(RequestWifiCredentialsCallback callback) override;
+  void NotifySourceOfUpdate(NotifySourceOfUpdateCallback callback) override;
   void RequestAccountTransferAssertion(
       const Base64UrlString& challenge,
       RequestAccountTransferAssertionCallback callback) override;
@@ -130,8 +129,14 @@ class Connection
       NotifySourceOfUpdateCallback callback,
       absl::optional<std::vector<uint8_t>> response_bytes);
 
-  void HandleNotifySourceOfUpdateResponse(NotifySourceOfUpdateCallback callback,
-                                          absl::optional<bool> ack_received);
+  // Called when the source device's NotifySourceOfUpdateResponse has been
+  // decoded. Either |notify_source_of_update_response| will be non-null and
+  // |error| will be nullopt, or |notify_source_of_update_response| will be null
+  // and |error| will have a value.
+  void HandleNotifySourceOfUpdateResponse(
+      NotifySourceOfUpdateCallback callback,
+      mojom::NotifySourceOfUpdateResponsePtr notify_source_of_update_response,
+      absl::optional<mojom::QuickStartDecoderError> error);
 
   // Parses a raw AssertionResponse and converts it into a FidoAssertionInfo
   void OnRequestAccountTransferAssertionResponse(
@@ -195,6 +200,18 @@ class Connection
                   OnDecodingCompleteCallback<T> on_decoding_complete,
                   absl::optional<std::vector<uint8_t>> data);
 
+  template <typename T>
+  using OnDecodingSuccessCallback = base::OnceCallback<void(T)>;
+
+  // Decode data using QuickStartDecoder, allowing a separate callback for
+  // success and failure. Used to decode messages that could be one of several
+  // different types by trying each type in succession.
+  template <typename T>
+  void TryDecodeData(DecoderMethod<T> decoder_method,
+                     OnDecodingSuccessCallback<T> on_decoding_success,
+                     ConnectionResponseCallback on_decoding_failed,
+                     absl::optional<std::vector<uint8_t>> data);
+
   base::OneShotTimer response_timeout_timer_;
   raw_ptr<NearbyConnection, ExperimentalAsh> nearby_connection_;
   SessionContext session_context_;
@@ -206,6 +223,7 @@ class Connection
   mojo::SharedRemote<mojom::QuickStartDecoder> decoder_;
   std::unique_ptr<base::ElapsedTimer> message_elapsed_timer_;
   std::unique_ptr<base::ElapsedTimer> handshake_elapsed_timer_;
+  std::unique_ptr<AccountTransferClientData> client_data_;
 
   // Separate WeakPtrFactory for use with |OnResponseReceived()| to allow for
   // canceling the response.

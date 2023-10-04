@@ -22,6 +22,7 @@
 #include "ash/focus_cycler.h"
 #include "ash/frame/non_client_frame_view_ash.h"
 #include "ash/game_dashboard/game_dashboard_controller.h"
+#include "ash/glanceables/glanceables_controller.h"
 #include "ash/ime/ime_controller_impl.h"
 #include "ash/keyboard/keyboard_controller_impl.h"
 #include "ash/media/media_controller_impl.h"
@@ -892,7 +893,7 @@ void MoveActiveItem(bool going_left) {
   const bool in_overview = overview_controller->InOverviewSession();
   if (in_overview) {
     window_to_move =
-        overview_controller->overview_session()->GetHighlightedWindow();
+        overview_controller->overview_session()->GetFocusedWindow();
   } else {
     window_to_move = GetTargetWindow();
   }
@@ -1267,8 +1268,21 @@ void ToggleCalendar() {
   aura::Window* target_root = Shell::GetRootWindowForNewWindows();
   StatusAreaWidget* status_area_widget =
       RootWindowController::ForWindow(target_root)->GetStatusAreaWidget();
-  UnifiedSystemTray* tray = status_area_widget->unified_system_tray();
 
+  DateTray* date_tray = status_area_widget->date_tray();
+  GlanceablesController* const glanceables_controller =
+      Shell::Get()->glanceables_controller();
+  if (glanceables_controller &&
+      glanceables_controller->AreGlanceablesAvailable()) {
+    if (date_tray->is_active()) {
+      date_tray->HideGlanceableBubble();
+    } else {
+      date_tray->ShowGlanceableBubble(/*from_keyboard=*/true);
+    }
+    return;
+  }
+
+  UnifiedSystemTray* tray = status_area_widget->unified_system_tray();
   // If currently showing the calendar view, close it.
   if (tray->IsShowingCalendarView()) {
     tray->CloseBubble();
@@ -1673,13 +1687,6 @@ void UnpinWindow() {
 void VolumeDown() {
   auto* audio_handler = CrasAudioHandler::Get();
   if (features::IsQsRevampEnabled()) {
-    if (audio_handler->IsOutputMuted() &&
-        !audio_handler->IsOutputVolumeBelowDefaultMuteLevel()) {
-      // The output node can be muted while the previous level is preserved.
-      // First update the mute state to update the slider style if the level is
-      // greater than `kMuteThresholdPercent`, and then adjust the volume level.
-      audio_handler->SetOutputMute(false);
-    }
     // Only plays the audio if unmuted.
     if (!audio_handler->IsOutputMuted()) {
       AcceleratorController::PlayVolumeAdjustmentSound();
@@ -1702,6 +1709,14 @@ void VolumeDown() {
 void VolumeMute() {
   CrasAudioHandler::Get()->SetOutputMute(
       true, CrasAudioHandler::AudioSettingsChangeSource::kAccelerator);
+}
+
+void VolumeMuteToggle() {
+  auto* audio_handler = CrasAudioHandler::Get();
+  CHECK(audio_handler);
+  audio_handler->SetOutputMute(
+      !audio_handler->IsOutputMuted(),
+      CrasAudioHandler::AudioSettingsChangeSource::kAccelerator);
 }
 
 void VolumeUp() {

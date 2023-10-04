@@ -18,6 +18,7 @@
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "components/sync/engine/data_type_activation_response.h"
 #include "components/sync/engine/events/protocol_event.h"
 #include "components/sync/engine/nigori/nigori.h"
@@ -129,14 +130,6 @@ SyncEngineImpl::~SyncEngineImpl() {
 void SyncEngineImpl::Initialize(InitParams params) {
   DCHECK(params.host);
   host_ = params.host;
-
-  // The gaia ID in sync prefs was introduced with M81, so having an empty value
-  // is legitimate and should be populated as a one-off migration.
-  // TODO(mastiz): Clean up this migration code after a grace period (e.g. 1
-  // year).
-  if (prefs_->GetGaiaId().empty()) {
-    prefs_->SetGaiaId(params.authenticated_account_info.gaia);
-  }
 
   const SyncTransportDataStartupState state =
       ValidateSyncTransportData(*prefs_, params.authenticated_account_info);
@@ -396,6 +389,8 @@ void SyncEngineImpl::HandleInitializationSuccessOnFrontendLoop(
     std::unique_ptr<ModelTypeConnector> model_type_connector,
     const std::string& birthday,
     const std::string& bag_of_chips) {
+  TRACE_EVENT0("sync",
+               "SyncEngineImpl::HandleInitializationSuccessOnFrontendLoop");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   model_type_connector_ = std::move(model_type_connector);
@@ -417,6 +412,9 @@ void SyncEngineImpl::HandleInitializationSuccessOnFrontendLoop(
   // there used to be local transport metadata or not.
   bool is_first_time_sync_configure = false;
 
+  // NOTE: Keep this logic consistent with how
+  // SyncApiComponentFactoryImpl::HasTransportDataIncludingFirstSync()
+  // determines whether transport data exists.
   if (prefs_->GetLastSyncedTime().is_null()) {
     is_first_time_sync_configure = true;
     UpdateLastSyncedTime();

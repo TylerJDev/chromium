@@ -471,6 +471,12 @@ class AuthenticatorRequestDialogModel {
   // was handled.
   bool OnHybridTransportError();
 
+  // To be called when there are no passkeys from an internal authenticator.
+  // This is a rare case but can happen when the user grants passkeys permission
+  // on macOS as part of a request flow and then Chromium realises that the
+  // request should never have been sent to iCloud Keychain in the first place.
+  bool OnNoPasskeys();
+
   // To be called when the Bluetooth adapter powered state changes.
   void OnBluetoothPoweredStateChanged(bool powered);
 
@@ -529,11 +535,13 @@ class AuthenticatorRequestDialogModel {
 
   virtual base::span<const Mechanism> mechanisms() const;
   absl::optional<int> priority_mechanism_index() const {
-    return priority_mechanism_index_;
+    return ephemeral_state_.priority_mechanism_index_;
   }
 
-  // Contacts the "priority" paired phone. This is only valid to call when there
-  // is a single phone paired.
+  // Contacts the "priority" paired phone. This is the phone from sync if there
+  // are a priori discovered GPM passkeys, or the first phone on the list
+  // otherwise.
+  // Only valid to call if |GetPriorityPhoneName()| returns a value.
   void ContactPriorityPhone();
 
   // ContactPhoneForTesting triggers a contact for a phone with the given name.
@@ -541,10 +549,10 @@ class AuthenticatorRequestDialogModel {
   // user-visible mechanisms and use the callbacks therein.
   void ContactPhoneForTesting(const std::string& name);
 
-  // Returns the name of the phone from sync that will be dispatched to when a
-  // user selects a Mechanism::Credential corresponding to a phone credential,
-  // or absl::nullopt if there isn't one.
-  virtual absl::optional<std::u16string> GetPrioritySyncedPhoneName() const;
+  // Returns the name of the "priority" paired phone. This is the phone from
+  // sync if there are a priori discovered GPM passkeys, or the first phone on
+  // the list otherwise.
+  virtual absl::optional<std::u16string> GetPriorityPhoneName() const;
 
   // StartTransportFlowForTesting moves the UI to focus on the given transport.
   // UI should use |mechanisms()| to enumerate the user-visible mechanisms and
@@ -645,6 +653,7 @@ class AuthenticatorRequestDialogModel {
                                    device::AuthenticatorType);
   void set_is_active_profile_authenticator_user(bool);
   void set_has_icloud_drive_enabled(bool);
+  void set_local_biometrics_override_for_testing(bool);
 #endif
 
   base::WeakPtr<AuthenticatorRequestDialogModel> GetWeakPtr();
@@ -660,6 +669,10 @@ class AuthenticatorRequestDialogModel {
     EphemeralState(EphemeralState&&);
     EphemeralState& operator=(EphemeralState&&);
     ~EphemeralState();
+
+    // priority_mechanism_index_ contains an index in `mechanisms_` for the
+    // mechanism that should immediately be triggered, if any.
+    absl::optional<size_t> priority_mechanism_index_;
 
     // Represents the id of the Bluetooth authenticator that the user is trying
     // to connect to or conduct WebAuthN request to via the WebAuthN UI.
@@ -683,6 +696,16 @@ class AuthenticatorRequestDialogModel {
     // creds_ contains possible credentials to select between before or after an
     // authenticator has responded to a request.
     std::vector<device::DiscoverableCredentialMetadata> creds_;
+
+    // did_dispatch_to_icloud_keychain_ is true if iCloud Keychain has been
+    // triggered.
+    bool did_dispatch_to_icloud_keychain_ = false;
+
+    // did_invoke_platform_despite_no_priority_mechanism_ is true if a platform
+    // authenticator was triggered despite there not being a
+    // `priority_mechanism_index_` set. For example, this can happen if there's
+    // an allowlist match.
+    bool did_invoke_platform_despite_no_priority_mechanism_ = false;
   };
 
   void ResetEphemeralState();
@@ -709,10 +732,6 @@ class AuthenticatorRequestDialogModel {
 
   void StartICloudKeychain();
 
-  // Contacts the "priority" paired phone from sync. At least one sync phone
-  // must be available to call this.
-  void ContactPrioritySyncedPhone();
-
   // Contacts a paired phone. The phone is specified by name.
   void ContactPhone(const std::string& name);
   void ContactPhoneAfterOffTheRecordInterstitial(std::string name);
@@ -726,7 +745,7 @@ class AuthenticatorRequestDialogModel {
 
   // Returns the index (into `paired_phones_`) of a phone that has been paired
   // through Chrome Sync, or absl::nullopt if there isn't one.
-  absl::optional<size_t> GetPrioritySyncedPhoneIndex() const;
+  absl::optional<size_t> GetIndexOfMostRecentlyUsedPhoneFromSync() const;
 
   // SortRecognizedCredentials sorts
   // `transport_availability_.recognized_credentials` into username order.
@@ -735,9 +754,16 @@ class AuthenticatorRequestDialogModel {
   // PopulateMechanisms fills in |mechanisms_|.
   void PopulateMechanisms();
 
+  // Adds a button that triggers Windows Hello with the specified string ID and
+  // transport icon.
+  void AddWindowsButton(int label, AuthenticatorTransport transport);
+
   // IndexOfPriorityMechanism returns the index, in |mechanisms_|, of the
   // Mechanism that should be triggered immediately, if any.
   absl::optional<size_t> IndexOfPriorityMechanism();
+
+  std::vector<device::DiscoverableCredentialMetadata> RecognizedCredentialsFor(
+      device::AuthenticatorType source);
 
   // Identifier for the RenderFrameHost of the frame that initiated the current
   // request.
@@ -813,18 +839,9 @@ class AuthenticatorRequestDialogModel {
   // extension.
   bool cable_extension_provided_ = false;
 
-  // have_restarted_due_to_windows_cancel_ is set to true if the request was
-  // restarted because the UI jumped directly to the Windows UI but the user
-  // hit cancel.
-  bool have_restarted_due_to_windows_cancel_ = false;
-
   // mechanisms contains the entries that appear in the "transport" selection
   // sheet and the drop-down menu.
   std::vector<Mechanism> mechanisms_;
-
-  // priority_mechanism_index_ contains an index in `mechanisms_` for the
-  // mechanism that should immediately be triggered, if any.
-  absl::optional<size_t> priority_mechanism_index_;
 
   // cable_ui_type_ contains the type of UI to display for a caBLE transaction.
   absl::optional<CableUIType> cable_ui_type_;
@@ -832,6 +849,10 @@ class AuthenticatorRequestDialogModel {
   // paired_phones_ contains details of caBLEv2-paired phones from both Sync and
   // QR-based pairing. The entries are sorted by name.
   std::vector<std::unique_ptr<device::cablev2::Pairing>> paired_phones_;
+
+  // priority_phone_index_ contains an index in `paired_phones_` for the phone
+  // that should be dispatched to by default, if any.
+  absl::optional<size_t> priority_phone_index_;
 
   // paired_phones_contacted_ is the same length as |paired_phones_| and
   // contains true whenever the corresponding phone as already been contacted.
@@ -888,6 +909,12 @@ class AuthenticatorRequestDialogModel {
   // enabled. This is used as an approximation for whether iCloud Keychain
   // syncing is enabled.
   bool has_icloud_drive_enabled_ = false;
+
+  // local_biometrics_override_for_testing_ can be set in tests to override
+  // whether or not the this model should consider local biometrics to be
+  // available. Biometrics can be unavailable on Macs because they're not
+  // present (e.g. a Mac Mini) or because it's a laptop in clamshell mode.
+  absl::optional<bool> local_biometrics_override_for_testing_;
 #endif
 
   base::WeakPtrFactory<AuthenticatorRequestDialogModel> weak_factory_{this};

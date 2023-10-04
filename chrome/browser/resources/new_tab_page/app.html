@@ -219,8 +219,13 @@
     --cr-button-height: 32px;
   }
 
+  @media (forced-colors: none) {
+    :host([show-background-image_]) #customizeIcon {
+      background-color: white;
+    }
+  }
+
   :host([show-background-image_]) #customizeIcon {
-    background-color: white;
     margin: 0;
   }
 
@@ -236,6 +241,23 @@
 
     #customizeText {
       display: none;
+    }
+  }
+
+  @media (max-width: 1110px) {
+    :host-context([chrome-refresh-2023]):host([modules-redesigned-enabled_][modules-shown-to-user])
+        #customizeButton {
+      padding-inline-start: 8px;
+    }
+
+    :host([modules-redesigned-enabled_][modules-shown-to-user]) #customizeText {
+      display: none;
+    }
+
+    :host([modules-redesigned-enabled_][modules-shown-to-user])
+        #customizeButton {
+      padding-inline-start: 0;
+      padding-inline-end: 0;
     }
   }
 
@@ -426,6 +448,7 @@
         </template>
         <template is="dom-if" if="[[modulesRedesignedEnabled_]]">
           <ntp-modules-v2 id="modules"
+              modules-shown-to-user="{{modulesShownToUser}}"
               on-customize-module="onCustomizeModule_"
               on-modules-loaded="onModulesLoaded_"
               hidden="[[!promoAndModulesLoaded_]]">

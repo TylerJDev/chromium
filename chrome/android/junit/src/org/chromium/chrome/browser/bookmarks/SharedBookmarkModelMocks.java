@@ -15,7 +15,6 @@ import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
 
 import java.util.Arrays;
-import java.util.Collections;
 
 /** Shared set of {@link BookmarkModel} mocks used by multiple tests. */
 public class SharedBookmarkModelMocks {
@@ -40,11 +39,11 @@ public class SharedBookmarkModelMocks {
     static final BookmarkId URL_BOOKMARK_ID_G = new BookmarkId(sId++, BookmarkType.NORMAL);
     static final BookmarkId URL_BOOKMARK_ID_H = new BookmarkId(sId++, BookmarkType.NORMAL);
 
-    static final GURL URL_A = new GURL(JUnitTestGURLs.RED_1);
-    static final GURL URL_B = new GURL(JUnitTestGURLs.RED_2);
-    static final GURL URL_C = new GURL(JUnitTestGURLs.RED_3);
-    static final GURL URL_D = new GURL(JUnitTestGURLs.BLUE_1);
-    static final GURL URL_E = new GURL(JUnitTestGURLs.BLUE_2);
+    static final GURL URL_A = JUnitTestGURLs.RED_1;
+    static final GURL URL_B = JUnitTestGURLs.RED_2;
+    static final GURL URL_C = JUnitTestGURLs.RED_3;
+    static final GURL URL_D = JUnitTestGURLs.BLUE_1;
+    static final GURL URL_E = JUnitTestGURLs.BLUE_2;
 
     static final BookmarkItem DESKTOP_BOOKMARK_ITEM =
             makeFolderItem(DESKTOP_BOOKMARK_ID, "Bookmarks bar", ROOT_BOOKMARK_ID);
@@ -82,9 +81,10 @@ public class SharedBookmarkModelMocks {
         doReturn(MOBILE_BOOKMARK_ID).when(bookmarkModel).getMobileFolderId();
         doReturn(READING_LIST_BOOKMARK_ID).when(bookmarkModel).getReadingListFolder();
         doReturn(PARTNER_BOOKMARK_ID).when(bookmarkModel).getPartnerFolderId();
-        doReturn(Collections.singletonList(READING_LIST_BOOKMARK_ID))
+        doReturn(Arrays.asList(DESKTOP_BOOKMARK_ID, OTHER_BOOKMARK_ID, MOBILE_BOOKMARK_ID,
+                         PARTNER_BOOKMARK_ID, READING_LIST_BOOKMARK_ID))
                 .when(bookmarkModel)
-                .getTopLevelFolderIds(/*getSpecial*/ true, /*getNormal*/ false);
+                .getTopLevelFolderIds();
 
         doReturn(DESKTOP_BOOKMARK_ITEM).when(bookmarkModel).getBookmarkById(DESKTOP_BOOKMARK_ID);
         doReturn(OTHER_BOOKMARK_ITEM).when(bookmarkModel).getBookmarkById(OTHER_BOOKMARK_ID);

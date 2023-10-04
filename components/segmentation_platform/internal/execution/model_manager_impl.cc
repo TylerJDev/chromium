@@ -4,15 +4,11 @@
 
 #include "components/segmentation_platform/internal/execution/model_manager_impl.h"
 
-#include <deque>
 #include <map>
 #include <memory>
-#include <vector>
 
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/location.h"
-#include "base/logging.h"
 #include "base/time/clock.h"
 #include "base/time/time.h"
 #include "base/trace_event/typed_macros.h"
@@ -36,13 +32,11 @@ ModelManagerImpl::ModelManagerImpl(
     ModelProviderFactory* model_provider_factory,
     base::Clock* clock,
     SegmentInfoDatabase* segment_database,
-    DefaultModelManager* default_model_manager,
     const SegmentationModelUpdatedCallback& model_updated_callback)
     : segment_ids_(segment_ids),
       model_provider_factory_(model_provider_factory),
       clock_(clock),
       segment_database_(segment_database),
-      default_model_manager_(default_model_manager),
       model_updated_callback_(model_updated_callback) {}
 
 void ModelManagerImpl::Initialize() {
@@ -58,13 +52,19 @@ void ModelManagerImpl::Initialize() {
         std::move(provider));
 
     // Default models
-    auto* default_provider =
-        default_model_manager_->GetDefaultProvider(segment_id);
+    std::unique_ptr<DefaultModelProvider> default_provider =
+        model_provider_factory_->CreateDefaultProvider(segment_id);
     if (!default_provider) {
+      segment_database_->UpdateSegment(segment_id,
+                                       ModelSource::DEFAULT_MODEL_SOURCE,
+                                       absl::nullopt, base::DoNothing());
       continue;
     }
     std::unique_ptr<DefaultModelProvider::ModelConfig> model_config =
         default_provider->GetModelConfig();
+    model_providers_.emplace(
+        std::make_pair(segment_id, ModelSource::DEFAULT_MODEL_SOURCE),
+        std::move(default_provider));
     OnSegmentationModelUpdated(ModelSource::DEFAULT_MODEL_SOURCE, segment_id,
                                model_config->metadata,
                                model_config->model_version);
@@ -76,13 +76,10 @@ ModelManagerImpl::~ModelManagerImpl() = default;
 ModelProvider* ModelManagerImpl::GetModelProvider(
     proto::SegmentId segment_id,
     proto::ModelSource model_source) {
-  // TODO(ritikagup) : Remove the explicit check once default models are stored
-  // in `model_providers_`.
-  if (model_source == ModelSource::DEFAULT_MODEL_SOURCE) {
-    return default_model_manager_->GetDefaultProvider(segment_id);
-  }
   auto it = model_providers_.find(std::make_pair(segment_id, model_source));
-  DCHECK(it != model_providers_.end());
+  if (it == model_providers_.end()) {
+    return nullptr;
+  }
   return it->second.get();
 }
 
@@ -94,7 +91,7 @@ void ModelManagerImpl::SetSegmentationModelUpdatedCallbackForTesting(
 void ModelManagerImpl::OnSegmentationModelUpdated(
     proto::ModelSource model_source,
     proto::SegmentId segment_id,
-    proto::SegmentationModelMetadata metadata,
+    absl::optional<proto::SegmentationModelMetadata> metadata,
     int64_t model_version) {
   TRACE_EVENT("segmentation_platform",
               "ModelManagerImpl::OnSegmentationModelUpdated");
@@ -103,21 +100,29 @@ void ModelManagerImpl::OnSegmentationModelUpdated(
     return;
   }
 
-  // Set or overwrite name hashes for metadata features based on the name
-  // field.
-  metadata_utils::SetFeatureNameHashesFromName(&metadata);
+  if (!metadata.has_value()) {
+    const auto* deleted_segment =
+        segment_database_->GetCachedSegmentInfo(segment_id, model_source);
+    if (!deleted_segment) {
+      return;
+    }
 
-  auto validation = metadata_utils::ValidateMetadataAndFeatures(metadata);
-  stats::RecordModelDeliveryMetadataValidation(
-      segment_id, model_source, /* processed = */ false, validation);
-  if (validation != metadata_utils::ValidationResult::kValidationSuccess) {
+    segment_database_->UpdateSegment(
+        segment_id, model_source, absl::nullopt,
+        base::BindOnce(&ModelManagerImpl::OnSegmentInfoDeleted,
+                       weak_ptr_factory_.GetWeakPtr(), segment_id, model_source,
+                       deleted_segment->model_version()));
     return;
   }
 
-  auto old_segment_info =
+  // Set or overwrite name hashes for metadata features based on the name
+  // field.
+  metadata_utils::SetFeatureNameHashesFromName(&metadata.value());
+
+  const auto* old_segment_info =
       segment_database_->GetCachedSegmentInfo(segment_id, model_source);
   OnSegmentInfoFetchedForModelUpdate(segment_id, model_source,
-                                     std::move(metadata), model_version,
+                                     std::move(metadata.value()), model_version,
                                      old_segment_info);
 }
 
@@ -126,7 +131,7 @@ void ModelManagerImpl::OnSegmentInfoFetchedForModelUpdate(
     proto::ModelSource model_source,
     proto::SegmentationModelMetadata metadata,
     int64_t model_version,
-    absl::optional<proto::SegmentInfo> old_segment_info) {
+    const proto::SegmentInfo* old_segment_info) {
   TRACE_EVENT("segmentation_platform",
               "ModelManagerImpl::OnSegmentInfoFetchedForModelUpdate");
   proto::SegmentInfo new_segment_info;
@@ -135,7 +140,7 @@ void ModelManagerImpl::OnSegmentInfoFetchedForModelUpdate(
 
   // Inject the newly updated metadata into the new SegmentInfo.
   auto* new_metadata = new_segment_info.mutable_model_metadata();
-  new_metadata->CopyFrom(metadata);
+  new_metadata->Swap(&metadata);
   new_segment_info.set_model_version(model_version);
 
   int64_t new_model_update_time_s =
@@ -145,7 +150,7 @@ void ModelManagerImpl::OnSegmentInfoFetchedForModelUpdate(
   // is valid, and we can copy over the PredictionResult to the new version
   // we are creating.
   absl::optional<int64_t> old_model_version;
-  if (old_segment_info.has_value()) {
+  if (old_segment_info) {
     // The retrieved SegmentInfo's ID should match the one we looked up,
     // otherwise the DB has not upheld its contract.
     // If does not match, we should just overwrite the old entry with one
@@ -189,17 +194,39 @@ void ModelManagerImpl::OnSegmentInfoFetchedForModelUpdate(
 
   stats::RecordModelDeliveryMetadataFeatureCount(
       segment_id, model_source,
-      new_segment_info.model_metadata().features_size());
+      new_segment_info.model_metadata().input_features_size());
+
   // Now that we've merged the old and the new SegmentInfo, we want to store
   // the new version in the database.
+  auto update_callback = base::BindOnce(
+      &ModelManagerImpl::OnUpdatedSegmentInfoStored,
+      weak_ptr_factory_.GetWeakPtr(), new_segment_info, old_model_version);
   segment_database_->UpdateSegment(
-      segment_id, model_source, absl::make_optional(new_segment_info),
-      base::BindOnce(&ModelManagerImpl::OnUpdatedSegmentInfoStored,
-                     weak_ptr_factory_.GetWeakPtr(), new_segment_info));
+      segment_id, model_source,
+      absl::make_optional(std::move(new_segment_info)),
+      std::move(update_callback));
+}
+
+void ModelManagerImpl::OnSegmentInfoDeleted(SegmentId segment_id,
+                                            proto::ModelSource model_source,
+                                            int64_t deleted_version,
+                                            bool success) {
+  stats::RecordModelDeliveryDeleteResult(segment_id, model_source, success);
+
+  // `model_updated_callback_` only supports server models.
+  if (model_source == proto::ModelSource::DEFAULT_MODEL_SOURCE) {
+    return;
+  }
+
+  proto::SegmentInfo deleted_segment_info;
+  deleted_segment_info.set_segment_id(segment_id);
+  deleted_segment_info.set_model_source(model_source);
+  model_updated_callback_.Run(std::move(deleted_segment_info), deleted_version);
 }
 
 void ModelManagerImpl::OnUpdatedSegmentInfoStored(
     proto::SegmentInfo segment_info,
+    absl::optional<int64_t> old_model_version,
     bool success) {
   TRACE_EVENT("segmentation_platform",
               "ModelManagerImpl::OnUpdatedSegmentInfoStored");
@@ -217,7 +244,7 @@ void ModelManagerImpl::OnUpdatedSegmentInfoStored(
   if (segment_info.model_source() == proto::ModelSource::DEFAULT_MODEL_SOURCE) {
     return;
   }
-  model_updated_callback_.Run(std::move(segment_info));
+  model_updated_callback_.Run(std::move(segment_info), old_model_version);
 }
 
 }  // namespace segmentation_platform

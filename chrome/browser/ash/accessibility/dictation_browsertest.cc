@@ -7,7 +7,9 @@
 #include <memory>
 
 #include "ash/constants/ash_pref_names.h"
+#include "ash/public/cpp/accessibility_controller_enums.h"
 #include "ash/public/cpp/system_tray_test_api.h"
+#include "ash/public/cpp/test/accessibility_controller_test_api.h"
 #include "ash/root_window_controller.h"
 #include "ash/shell.h"
 #include "ash/system/accessibility/dictation_button_tray.h"
@@ -47,6 +49,8 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/test_navigation_observer.h"
+#include "extensions/browser/api/audio/audio_api.h"
+#include "extensions/browser/api/audio/audio_service.h"
 #include "extensions/browser/browsertest_util.h"
 #include "extensions/browser/extension_host_test_helper.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -285,8 +289,8 @@ class DictationTestBase : public InProcessBrowserTest,
 
   void DisablePumpkin() { utils_->DisablePumpkin(); }
 
-  std::string ExecuteAccessibilityCommonScript(const std::string& script) {
-    return utils_->ExecuteAccessibilityCommonScript(script);
+  void ExecuteAccessibilityCommonScript(const std::string& script) {
+    utils_->ExecuteAccessibilityCommonScript(script);
   }
 
   std::string GetClipboardText() {
@@ -315,6 +319,8 @@ class DictationTestBase : public InProcessBrowserTest,
   void set_wait_for_accessibility_common_extension_load_(bool use) {
     utils_->set_wait_for_accessibility_common_extension_load_(use);
   }
+
+  DictationTestUtils* utils() { return utils_.get(); }
 
  private:
   std::unique_ptr<DictationTestUtils> utils_;
@@ -2238,6 +2244,165 @@ IN_PROC_BROWSER_TEST_P(DictationFormattedContentEditableTest,
   SendFinalResultAndWait("highlight everything between is and a");
   WaitForSelection(5, 9);
   SendFinalResultAndWaitForEditableValue("was one", "This was one test");
+}
+
+class AccessibilityToastCallbackManager {
+ public:
+  void OnToastShown(AccessibilityToastType type) {
+    if (type == type_) {
+      run_loop_.Quit();
+    }
+  }
+
+  void WaitForToastShown(AccessibilityToastType type) {
+    type_ = type;
+    run_loop_.Run();
+  }
+
+ private:
+  AccessibilityToastType type_;
+  base::RunLoop run_loop_;
+};
+
+class AudioCallbackManager {
+ public:
+  void OnSetMute(bool success) {
+    if (success) {
+      run_loop_.Quit();
+    }
+  }
+
+  void WaitForSetMute() { run_loop_.Run(); }
+
+ private:
+  base::RunLoop run_loop_;
+};
+
+class DictationKeyboardImprovementsTest : public DictationTestBase {
+ public:
+  DictationKeyboardImprovementsTest() = default;
+  ~DictationKeyboardImprovementsTest() override = default;
+  DictationKeyboardImprovementsTest(const DictationKeyboardImprovementsTest&) =
+      delete;
+  DictationKeyboardImprovementsTest& operator=(
+      const DictationKeyboardImprovementsTest&) = delete;
+
+ protected:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    DictationTestBase::SetUpCommandLine(command_line);
+
+    std::vector<base::test::FeatureRef> enabled_features{
+        ::features::kAccessibilityDictationKeyboardImprovements};
+    scoped_feature_list_.InitWithFeatures(
+        enabled_features, std::vector<base::test::FeatureRef>());
+  }
+
+  void SetUpOnMainThread() override {
+    DictationTestBase::SetUpOnMainThread();
+    test_api_ = AccessibilityControllerTestApi::Create();
+    toast_callback_manager_ =
+        std::make_unique<AccessibilityToastCallbackManager>();
+    test_api_->AddShowToastCallbackForTesting(
+        base::BindRepeating(&AccessibilityToastCallbackManager::OnToastShown,
+                            base::Unretained(toast_callback_manager_.get())));
+  }
+
+  void TabAwayFromEditableAndReduceNoFocusedImeTimeout() {
+    // Tab away from the editable.
+    ASSERT_NO_FATAL_FAILURE(ASSERT_TRUE(ui_test_utils::SendKeyPressToWindowSync(
+        /*window=*/nullptr, /*key=*/ui::KeyboardCode::VKEY_TAB,
+        /*control=*/false,
+        /*shift=*/false, /*alt=*/false, /*command=*/false)));
+    // Reduce the no focused IME timeout so that the nudge will be shown
+    // promptly.
+    ExecuteAccessibilityCommonScript(
+        "testSupport.setNoFocusedImeTimeout(500);");
+  }
+
+  void WaitForToastShown(AccessibilityToastType type) {
+    toast_callback_manager_->WaitForToastShown(type);
+  }
+
+  void MuteMicrophone(bool mute) {
+    AudioCallbackManager audio_callback_manager = AudioCallbackManager();
+    extensions::AudioService* service =
+        extensions::AudioAPI::GetFactoryInstance()
+            ->Get(browser()->profile())
+            ->GetService();
+    service->SetMute(/*is_input=*/true, /*is_muted=*/mute,
+                     base::BindOnce(&AudioCallbackManager::OnSetMute,
+                                    base::Unretained(&audio_callback_manager)));
+    audio_callback_manager.WaitForSetMute();
+  }
+
+ private:
+  std::unique_ptr<AccessibilityControllerTestApi> test_api_;
+  std::unique_ptr<AccessibilityToastCallbackManager> toast_callback_manager_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    NetworkDictationKeyboardImprovementsTest,
+    DictationKeyboardImprovementsTest,
+    ::testing::Values(TestConfig(speech::SpeechRecognitionType::kNetwork,
+                                 EditableType::kInput)));
+
+// Verifies that a nudge is shown in the system UI when Dictation is toggled
+// when there is no focused editable.
+IN_PROC_BROWSER_TEST_P(DictationKeyboardImprovementsTest,
+                       ToggledWithNoFocusShowsNudge) {
+  TabAwayFromEditableAndReduceNoFocusedImeTimeout();
+  // Disable the console observer because toggling Dictation in the following
+  // manner will cause an error to be emitted to the console.
+  utils()->DisableConsoleObserver();
+  ToggleDictationWithKeystroke();
+  WaitForToastShown(AccessibilityToastType::kDictationNoFocusedTextField);
+  WaitForRecognitionStopped();
+}
+
+IN_PROC_BROWSER_TEST_P(DictationKeyboardImprovementsTest,
+                       ToggledWithMuteShowsNudge) {
+  MuteMicrophone(true);
+  // Disable the console observer because toggling Dictation in the following
+  // manner will cause an error to be emitted to the console.
+  utils()->DisableConsoleObserver();
+  ToggleDictationWithKeystroke();
+  WaitForToastShown(AccessibilityToastType::kDictationMicMuted);
+  WaitForRecognitionStopped();
+
+  MuteMicrophone(false);
+  ToggleDictationWithKeystroke();
+  WaitForRecognitionStarted();
+  SendFinalResultAndWaitForEditableValue("Testing", "Testing");
+  ToggleDictationWithKeystroke();
+  WaitForRecognitionStopped();
+}
+
+// Verifies that ChromeVox announces a message when when Dictation is toggled
+// when there is no focused editable.
+// TODO(b:259352600): Flaky on MSAN & ASAN and Linux ChromiumOS in general.
+IN_PROC_BROWSER_TEST_P(DictationKeyboardImprovementsTest,
+                       DISABLED_ToggledWithNoFocusTriggersSpeech) {
+  TabAwayFromEditableAndReduceNoFocusedImeTimeout();
+  // Setup ChromeVox.
+  test::SpeechMonitor sm;
+  EXPECT_FALSE(GetManager()->IsSpokenFeedbackEnabled());
+  extensions::ExtensionHostTestHelper host_helper(
+      browser()->profile(), extension_misc::kChromeVoxExtensionId);
+  EnableChromeVox();
+  host_helper.WaitForHostCompletedFirstLoad();
+  EXPECT_TRUE(GetManager()->IsSpokenFeedbackEnabled());
+
+  // Disable the console observer because toggling Dictation in the following
+  // manner will cause an error to be emitted to the console.
+  utils()->DisableConsoleObserver();
+  ToggleDictationWithKeystroke();
+  WaitForToastShown(AccessibilityToastType::kDictationNoFocusedTextField);
+  WaitForRecognitionStopped();
+
+  // Assert speech from ChromeVox.
+  sm.ExpectSpeechPattern("*Go to a text field to use Dictation*");
+  sm.Replay();
 }
 
 }  // namespace ash

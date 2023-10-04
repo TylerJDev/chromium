@@ -21,15 +21,6 @@ class EditorConsentStoreTest : public ::testing::Test {
   content::BrowserTaskEnvironment task_environment_;
 };
 
-TEST_F(EditorConsentStoreTest, SettingConsentStatusShouldUpdateUserPrefs) {
-  TestingProfile profile_;
-  EditorConsentStore store(profile_.GetPrefs());
-
-  store.SetConsentStatus(ConsentStatus::kApproved);
-
-  EXPECT_EQ(store.GetConsentStatus(), ConsentStatus::kApproved);
-}
-
 TEST_F(EditorConsentStoreTest,
        ReceivingDeclineResponseWillLeadToConsentDecline) {
   TestingProfile profile_;
@@ -41,26 +32,38 @@ TEST_F(EditorConsentStoreTest,
 }
 
 TEST_F(EditorConsentStoreTest,
-       ReceivingApprovalResponseAfterDismissalWillLeadToConsentApproval) {
+       ReceivingApprovalResponseWillLeadToConsentApproval) {
   TestingProfile profile_;
   EditorConsentStore store(profile_.GetPrefs());
 
-  store.ProcessConsentAction(ConsentAction::kDismissed);
   store.ProcessConsentAction(ConsentAction::kApproved);
 
   EXPECT_EQ(store.GetConsentStatus(), ConsentStatus::kApproved);
 }
 
 TEST_F(EditorConsentStoreTest,
-       ManyConsentWindowDismissalsWillLeadToImplicitConsentDecline) {
+       SwitchingOnSettingToggleWillResetConsentWhichWasPreviouslyDeclined) {
   TestingProfile profile_;
   EditorConsentStore store(profile_.GetPrefs());
 
-  store.ProcessConsentAction(ConsentAction::kDismissed);
-  store.ProcessConsentAction(ConsentAction::kDismissed);
-  store.ProcessConsentAction(ConsentAction::kDismissed);
+  store.ProcessConsentAction(ConsentAction::kDeclined);
+  // Simulate a user action to switch on the orca toggle.
+  profile_.GetPrefs()->SetBoolean(prefs::kOrcaEnabled, true);
 
-  EXPECT_EQ(store.GetConsentStatus(), ConsentStatus::kImplicitlyDeclined);
+  EXPECT_EQ(store.GetConsentStatus(), ConsentStatus::kUnset);
+}
+
+TEST_F(EditorConsentStoreTest,
+       DecliningThePromoCardWillSwitchOffFeatureToggle) {
+  TestingProfile profile_;
+  EditorConsentStore store(profile_.GetPrefs());
+
+  // Switch on the orca toggle in the setting page.
+  profile_.GetPrefs()->SetBoolean(prefs::kOrcaEnabled, true);
+  // Simulate a user action to explicitly decline the promo card.
+  store.ProcessPromoCardAction(PromoCardAction::kDeclined);
+
+  EXPECT_FALSE(profile_.GetPrefs()->GetBoolean(prefs::kOrcaEnabled));
 }
 
 }  // namespace

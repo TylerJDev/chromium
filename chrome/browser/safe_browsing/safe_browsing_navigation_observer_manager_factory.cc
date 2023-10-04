@@ -8,6 +8,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/storage_partition.h"
 
 namespace safe_browsing {
 
@@ -39,11 +40,13 @@ SafeBrowsingNavigationObserverManagerFactory::
               .WithGuest(ProfileSelection::kOwnInstance)
               .Build()) {}
 
-KeyedService*
-SafeBrowsingNavigationObserverManagerFactory::BuildServiceInstanceFor(
-    content::BrowserContext* context) const {
+std::unique_ptr<KeyedService> SafeBrowsingNavigationObserverManagerFactory::
+    BuildServiceInstanceForBrowserContext(
+        content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
-  return new SafeBrowsingNavigationObserverManager(profile->GetPrefs());
+  return std::make_unique<SafeBrowsingNavigationObserverManager>(
+      profile->GetPrefs(),
+      profile->GetDefaultStoragePartition()->GetServiceWorkerContext());
 }
 
 }  // namespace safe_browsing

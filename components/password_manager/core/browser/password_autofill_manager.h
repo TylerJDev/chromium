@@ -22,10 +22,6 @@
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "ui/gfx/image/image.h"
 
-namespace autofill {
-class AutofillDriver;
-}
-
 namespace favicon_base {
 struct FaviconImageResult;
 }
@@ -54,7 +50,6 @@ class PasswordAutofillManager : public autofill::AutofillPopupDelegate {
   // AutofillPopupDelegate implementation.
   void OnPopupShown() override;
   void OnPopupHidden() override;
-  void OnPopupSuppressed() override;
 
   // The password manager doesn't distinguish between trigger sources and its
   // value is `kPasswordManager` for all password suggestions.
@@ -77,8 +72,6 @@ class PasswordAutofillManager : public autofill::AutofillPopupDelegate {
                         autofill::Suggestion::BackendId backend_id) override;
   void ClearPreviewedForm() override;
   autofill::PopupType GetPopupType() const override;
-  absl::variant<autofill::AutofillDriver*, PasswordManagerDriver*> GetDriver()
-      override;
   int32_t GetWebContentsPopupControllerAxId() const override;
   void RegisterDeletionCallback(base::OnceClosure deletion_callback) override;
 
@@ -233,7 +226,7 @@ class PasswordAutofillManager : public autofill::AutofillPopupDelegate {
   // Used to trigger a reauthentication prompt based on biometrics that needs
   // to be cleared before the password is filled. Currently only used
   // on Android, Mac and Windows.
-  scoped_refptr<device_reauth::DeviceAuthenticator> authenticator_;
+  std::unique_ptr<device_reauth::DeviceAuthenticator> authenticator_;
 
   base::WeakPtrFactory<PasswordAutofillManager> weak_ptr_factory_{this};
 };

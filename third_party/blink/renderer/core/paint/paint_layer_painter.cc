@@ -14,6 +14,7 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_fragmentation_utils.h"
 #include "third_party/blink/renderer/core/paint/clip_path_clipper.h"
+#include "third_party/blink/renderer/core/paint/fragment_data_iterator.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_box_fragment_painter.h"
 #include "third_party/blink/renderer/core/paint/object_paint_properties.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
@@ -59,7 +60,7 @@ bool PaintLayerPainter::PaintedOutputInvisible(const ComputedStyle& style) {
 
 PhysicalRect PaintLayerPainter::ContentsVisualRect(const FragmentData& fragment,
                                                    const LayoutBox& box) {
-  PhysicalRect contents_visual_rect = box.PhysicalContentsVisualOverflowRect();
+  PhysicalRect contents_visual_rect = box.ContentsVisualOverflowRect();
   contents_visual_rect.Move(fragment.PaintOffset());
   const auto* replaced_transform =
       fragment.PaintProperties()
@@ -100,8 +101,8 @@ static bool ShouldCreateSubsequence(const PaintLayer& paint_layer,
 static gfx::Rect FirstFragmentVisualRect(const LayoutBoxModelObject& object) {
   // We don't want to include overflowing contents.
   PhysicalRect overflow_rect =
-      object.IsBox() ? To<LayoutBox>(object).PhysicalSelfVisualOverflowRect()
-                     : object.PhysicalVisualOverflowRect();
+      object.IsBox() ? To<LayoutBox>(object).SelfVisualOverflowRect()
+                     : object.VisualOverflowRect();
   overflow_rect.Move(object.FirstFragment().PaintOffset());
   return ToEnclosingRect(overflow_rect);
 }
@@ -171,7 +172,7 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
       !paint_layer_.IsUnderSVGHiddenContainer() && is_self_painting_layer;
 
   PaintResult result = kFullyPainted;
-  if (object.FirstFragment().NextFragment() ||
+  if (object.IsFragmented() ||
       // When printing, the LayoutView's background should extend infinitely
       // regardless of LayoutView's visual rect, so don't check intersection
       // between the visual rect and the cull rect (custom for each page).
@@ -405,8 +406,8 @@ void PaintLayerPainter::PaintWithPhase(PaintPhase phase,
       layout_box_with_fragments ||
       CanPaintMultipleFragments(paint_layer_.GetLayoutObject());
 
-  for (const auto* fragment = &paint_layer_.GetLayoutObject().FirstFragment();
-       fragment; fragment = fragment->NextFragment(), ++fragment_idx) {
+  for (const FragmentData& fragment :
+       FragmentDataIterator(paint_layer_.GetLayoutObject())) {
     const NGPhysicalBoxFragment* physical_fragment = nullptr;
     if (layout_box_with_fragments) {
       physical_fragment =
@@ -418,11 +419,13 @@ void PaintLayerPainter::PaintWithPhase(PaintPhase phase,
     if (fragment_idx)
       scoped_display_item_fragment.emplace(context, fragment_idx);
 
-    PaintFragmentWithPhase(phase, *fragment, physical_fragment, context,
+    PaintFragmentWithPhase(phase, fragment, physical_fragment, context,
                            paint_flags);
 
     if (!multiple_fragments_allowed)
       break;
+
+    fragment_idx++;
   }
 }
 

@@ -7,10 +7,12 @@
 
 #include "chrome/browser/signin/bound_session_credentials/bound_session_refresh_cookie_fetcher.h"
 
+#include <cstddef>
 #include <memory>
 
 #include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
+#include "base/timer/elapsed_timer.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "net/cookies/canonical_cookie.h"
 #include "services/network/public/cpp/simple_url_loader.h"
@@ -49,7 +51,7 @@ class BoundSessionRefreshCookieFetcherImpl
   FRIEND_TEST_ALL_PREFIXES(BoundSessionRefreshCookieFetcherImplTest,
                            OnCookiesAccessedChange);
   FRIEND_TEST_ALL_PREFIXES(
-      BoundSessionRefreshCookieFetcherImplParsechallengeHeaderTest,
+      BoundSessionRefreshCookieFetcherImplParseChallengeHeaderTest,
       ParseChallengeHeader);
 
   // Returns empty if parsing challenge header failed. Otherwise, returns the
@@ -69,9 +71,11 @@ class BoundSessionRefreshCookieFetcherImpl
       const scoped_refptr<net::HttpResponseHeaders>& headers) const;
   void HandleBindingKeyAssertionRequired(
       const std::string& challenge_header_value);
-  void ReportChallengeRequiredUnexpectedFormat();
+  void CompleteRequestAndReportRefreshResult(Result result);
   void RefreshWithChallenge(const std::string& challenge);
-  void OnGenerateBindingKeyAssertion(std::string assertion);
+  void OnGenerateBindingKeyAssertion(
+      base::ElapsedTimer generate_assertion_timer,
+      std::string assertion);
 
   // network::mojom::CookieAccessObserver:
   void OnCookiesAccessed(std::vector<network::mojom::CookieAccessDetailsPtr>
@@ -97,11 +101,12 @@ class BoundSessionRefreshCookieFetcherImpl
   // Refresh request result.
   Result result_;
   bool cookie_refresh_completed_ = false;
-  bool has_assertion_been_already_requested_ = false;
+  size_t assertion_requests_count_ = 0;
 
   // Non-null after a fetch has started.
   std::unique_ptr<network::SimpleURLLoader> url_loader_;
   mojo::ReceiverSet<network::mojom::CookieAccessObserver> cookie_observers_;
+  absl::optional<base::TimeTicks> cookie_refresh_duration_;
   base::WeakPtrFactory<BoundSessionRefreshCookieFetcherImpl> weak_ptr_factory_{
       this};
 };

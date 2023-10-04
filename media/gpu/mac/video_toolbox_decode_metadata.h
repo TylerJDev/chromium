@@ -5,6 +5,7 @@
 #ifndef MEDIA_GPU_MAC_VIDEO_TOOLBOX_DECODE_METADATA_H_
 #define MEDIA_GPU_MAC_VIDEO_TOOLBOX_DECODE_METADATA_H_
 
+#include "base/apple/scoped_cftyperef.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "media/base/timestamp_constants.h"
@@ -17,6 +18,12 @@
 
 namespace media {
 
+struct MEDIA_GPU_EXPORT VideoToolboxSessionMetadata {
+  bool allow_software_decoding = false;
+  bool is_hbd = false;
+  bool has_alpha = false;
+};
+
 struct MEDIA_GPU_EXPORT VideoToolboxDecodeMetadata {
   VideoToolboxDecodeMetadata();
   ~VideoToolboxDecodeMetadata();
@@ -28,6 +35,8 @@ struct MEDIA_GPU_EXPORT VideoToolboxDecodeMetadata {
   VideoAspectRatio aspect_ratio;
   gfx::ColorSpace color_space;
   absl::optional<gfx::HDRMetadata> hdr_metadata;
+
+  VideoToolboxSessionMetadata session;
 };
 
 }  // namespace media

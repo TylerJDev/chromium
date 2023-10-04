@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "base/containers/flat_map.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/sequence_manager/task_queue.h"
@@ -120,10 +121,19 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   scoped_refptr<base::SingleThreadTaskRunner> CompositorTaskRunner() override;
 
   void OnFirstContentfulPaintInMainFrame() override;
-  void OnFirstMeaningfulPaint() override;
+  void OnFirstMeaningfulPaint(base::TimeTicks timestamp) override;
   void OnMainFrameInteractive() override;
+  void OnDispatchLoadEvent() override;
   bool IsWaitingForContentfulPaint() const;
   bool IsWaitingForMeaningfulPaint() const;
+
+  // Returns true when
+  // 1. the FrameSchedulerImpl is still waiting for the meaningful paint signal,
+  // or
+  // 2. the FrameSchedulerImpl has received the meaningful paint signal not
+  // longer than `GetLoadingPhaseBufferTimeAfterFirstMeaningfulPaint` ago, and
+  // the load event is not dispatched yet.
+  bool IsLoading() const;
 
   // An "ordinary" FrameScheduler is responsible for a frame whose parent page
   // is a fully-featured page owned by a web view (as opposed to, e.g.: a Page
@@ -319,9 +329,12 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   TraceableVariableController tracing_controller_;
   std::unique_ptr<FrameTaskQueueController> frame_task_queue_controller_;
 
-  MainThreadSchedulerImpl* const main_thread_scheduler_;  // NOT OWNED
-  PageSchedulerImpl* parent_page_scheduler_;              // NOT OWNED
-  FrameScheduler::Delegate* delegate_;                    // NOT OWNED
+  const raw_ptr<MainThreadSchedulerImpl, ExperimentalRenderer>
+      main_thread_scheduler_;  // NOT OWNED
+  raw_ptr<PageSchedulerImpl, ExperimentalRenderer>
+      parent_page_scheduler_;  // NOT OWNED
+  raw_ptr<FrameScheduler::Delegate, ExperimentalRenderer>
+      delegate_;  // NOT OWNED
   TraceableState<bool, TracingCategory::kInfo> frame_visible_;
   TraceableState<bool, TracingCategory::kInfo> frame_paused_;
   TraceableState<FrameOriginType, TracingCategory::kInfo> frame_origin_type_;
@@ -351,6 +364,8 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
 
   TraceableState<bool, TracingCategory::kInfo> waiting_for_contentful_paint_;
   TraceableState<bool, TracingCategory::kInfo> waiting_for_meaningful_paint_;
+  TraceableState<bool, TracingCategory::kInfo> is_load_event_dispatched_;
+  base::TimeTicks first_meaningful_paint_timestamp_;
 
   // TODO(altimin): Remove after we have have 1:1 relationship between frames
   // and documents.

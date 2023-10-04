@@ -301,8 +301,8 @@ bool SVGElement::HasNonCSSPropertyAnimations() const {
 }
 
 AffineTransform SVGElement::LocalCoordinateSpaceTransform(CTMScope) const {
-  // To be overriden by SVGGraphicsElement (or as special case SVGTextElement
-  // and SVGPatternElement)
+  // To be overridden by SVGTransformableElement (or as special case
+  // SVGTextElement and SVGPatternElement)
   return AffineTransform();
 }
 
@@ -1059,7 +1059,7 @@ void SVGElement::CollectExtraStyleForPresentationAttribute(
   // attributes that didn't change.
 }
 
-scoped_refptr<const ComputedStyle> SVGElement::CustomStyleForLayoutObject(
+const ComputedStyle* SVGElement::CustomStyleForLayoutObject(
     const StyleRecalcContext& style_recalc_context) {
   SVGElement* corresponding_element = CorrespondingElement();
   if (!corresponding_element) {

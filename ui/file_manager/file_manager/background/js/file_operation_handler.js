@@ -103,7 +103,8 @@ export class FileOperationHandler {
                   // Show the dialog to proceed/cancel.
                   chrome.fileManagerPrivate.showPolicyDialog(
                       event.taskId,
-                      chrome.fileManagerPrivate.PolicyDialogType.WARNING);
+                      chrome.fileManagerPrivate.PolicyDialogType.WARNING,
+                      util.checkAPIError);
                 });
           }
           break;
@@ -149,6 +150,13 @@ export class FileOperationHandler {
                 getPolicyErrorFromIOTaskPolicyError_(event.policyError.type);
             item.policyFileCount = event.policyError.policyFileCount;
             item.policyFileName = event.policyError.fileName;
+            item.dismissCallback = () => {
+              // For policy errors, we keep track of the task's info since it
+              // might be required to review the details. Notify when dismissed
+              // that this can be cleared.
+              chrome.fileManagerPrivate.dismissIOTask(
+                  event.taskId, util.checkAPIError);
+            };
             const extraButtonText = getPolicyExtraButtonText_(event);
             if (event.policyError.type !==
                     PolicyErrorType.DLP_WARNING_TIMEOUT &&
@@ -157,7 +165,8 @@ export class FileOperationHandler {
                   ProgressItemState.ERROR, extraButtonText, () => {
                     chrome.fileManagerPrivate.showPolicyDialog(
                         event.taskId,
-                        chrome.fileManagerPrivate.PolicyDialogType.ERROR);
+                        chrome.fileManagerPrivate.PolicyDialogType.ERROR,
+                        util.checkAPIError);
                   });
             } else {
               item.setExtraButton(
@@ -358,6 +367,7 @@ function getPolicyExtraButtonText_(event) {
       case chrome.fileManagerPrivate.IOTaskType.COPY:
         return str('DLP_FILES_COPY_WARN_CONTINUE_BUTTON');
       case chrome.fileManagerPrivate.IOTaskType.MOVE:
+      case chrome.fileManagerPrivate.IOTaskType.RESTORE_TO_DESTINATION:
         return str('DLP_FILES_MOVE_WARN_CONTINUE_BUTTON');
       default:
         console.error('Unexpected operation type: ' + event.type);

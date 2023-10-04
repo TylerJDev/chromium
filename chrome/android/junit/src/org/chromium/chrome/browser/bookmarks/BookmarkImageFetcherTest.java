@@ -8,12 +8,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+
+import static org.chromium.ui.test.util.MockitoHelper.doCallback;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
@@ -21,7 +22,6 @@ import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.util.Pair;
 
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 
 import org.junit.Before;
@@ -45,17 +45,18 @@ import org.chromium.components.bookmarks.BookmarkId;
 import org.chromium.components.bookmarks.BookmarkItem;
 import org.chromium.components.bookmarks.BookmarkType;
 import org.chromium.components.browser_ui.widget.RoundedIconGenerator;
-import org.chromium.components.browser_ui.widget.selectable_list.SelectableListLayout;
-import org.chromium.components.browser_ui.widget.selectable_list.SelectionDelegate;
 import org.chromium.components.favicon.IconType;
 import org.chromium.components.favicon.LargeIconBridge;
 import org.chromium.components.favicon.LargeIconBridge.LargeIconCallback;
 import org.chromium.components.image_fetcher.ImageFetcher;
+import org.chromium.components.sync.ModelType;
+import org.chromium.components.sync.SyncService;
 import org.chromium.ui.base.TestActivity;
 import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 /** Unit tests for {@link BookmarkImageFetcher}. */
 @Batch(Batch.UNIT_TESTS)
@@ -75,14 +76,6 @@ public class BookmarkImageFetcherTest {
     @Mock
     private BookmarkModel mBookmarkModel;
     @Mock
-    private BookmarkOpener mBookmarkOpener;
-    @Mock
-    private SelectableListLayout<BookmarkId> mSelectableListLayout;
-    @Mock
-    private SelectionDelegate<BookmarkId> mSelectionDelegate;
-    @Mock
-    private RecyclerView mRecyclerView;
-    @Mock
     private LargeIconBridge mLargeIconBridge;
     @Mock
     private RoundedIconGenerator mIconGenerator;
@@ -92,6 +85,8 @@ public class BookmarkImageFetcherTest {
     private Callback<Drawable> mDrawableCallback;
     @Mock
     private Callback<Pair<Drawable, Drawable>> mFolderDrawablesCallback;
+    @Mock
+    private SyncService mSyncService;
 
     @Captor
     private ArgumentCaptor<Drawable> mDrawableCaptor;
@@ -103,17 +98,13 @@ public class BookmarkImageFetcherTest {
     private final BookmarkId mFolderId = new BookmarkId(/*id=*/1, BookmarkType.NORMAL);
     private final BookmarkId mBookmarkId1 = new BookmarkId(/*id=*/2, BookmarkType.NORMAL);
     private final BookmarkId mBookmarkId2 = new BookmarkId(/*id=*/3, BookmarkType.NORMAL);
-    private final BookmarkId mReadingListFolderId =
-            new BookmarkId(/*id=*/5, BookmarkType.READING_LIST);
 
     private final BookmarkItem mFolderItem =
             new BookmarkItem(mFolderId, "Folder", null, true, null, true, false, 0, false, 0);
     private final BookmarkItem mBookmarkItem1 = new BookmarkItem(mBookmarkId1, "Bookmark1",
-            JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL), false, mFolderId, true, false, 0,
-            false, 0);
+            JUnitTestGURLs.EXAMPLE_URL, false, mFolderId, true, false, 0, false, 0);
     private final BookmarkItem mBookmarkItem2 = new BookmarkItem(mBookmarkId2, "Bookmark1",
-            JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL), false, mFolderId, true, false, 0,
-            false, 0);
+            JUnitTestGURLs.EXAMPLE_URL, false, mFolderId, true, false, 0, false, 0);
     private final Bitmap mBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
 
     private Activity mActivity;
@@ -134,32 +125,26 @@ public class BookmarkImageFetcherTest {
             doReturn(mBookmarkItem2).when(mBookmarkModel).getBookmarkById(mBookmarkId2);
 
             // Setup LargeIconBridge.
-            doAnswer(invocation -> {
-                LargeIconCallback cb = invocation.getArgument(2);
-                cb.onLargeIconAvailable(mBitmap, Color.GREEN, false, IconType.FAVICON);
-                return null;
-            })
-                    .when(mLargeIconBridge)
-                    .getLargeIconForUrl(any(), anyInt(), any());
+            doCallback(2, (LargeIconCallback callback) -> {
+                callback.onLargeIconAvailable(mBitmap, Color.GREEN, false, IconType.FAVICON);
+            }).when(mLargeIconBridge).getLargeIconForUrl(any(), anyInt(), any());
 
             // Setup image fetching.
-            doAnswer((invocation) -> {
-                Callback<GURL> callback = invocation.getArgument(1);
-                callback.onResult(JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL));
-                return null;
-            })
-                    .when(mBookmarkModel)
-                    .getImageUrlForBookmark(any(), any());
-            doAnswer((invocation) -> {
-                Callback<Bitmap> callback = invocation.getArgument(1);
+            doCallback(1, (Callback<GURL> callback) -> {
+                callback.onResult(JUnitTestGURLs.EXAMPLE_URL);
+            }).when(mBookmarkModel).getImageUrlForBookmark(any(), any());
+            doCallback(1, (Callback<Bitmap> callback) -> {
                 callback.onResult(mBitmap);
-                return null;
-            })
-                    .when(mImageFetcher)
-                    .fetchImage(any(), any());
+            }).when(mImageFetcher).fetchImage(any(), any());
+
+            // Setup SyncService.
+            doReturn(true).when(mSyncService).isSyncFeatureActive();
+            doReturn(Collections.singleton(ModelType.BOOKMARKS))
+                    .when(mSyncService)
+                    .getActiveDataTypes();
 
             mBookmarkImageFetcher = new BookmarkImageFetcher(mActivity, mBookmarkModel,
-                    mImageFetcher, mLargeIconBridge, mIconGenerator, 1, 1);
+                    mImageFetcher, mLargeIconBridge, mIconGenerator, 1, 1, mSyncService);
             mBookmarkImageFetcher.setupFetchProperties(mIconGenerator, 100, 100);
         });
     }
@@ -199,13 +184,9 @@ public class BookmarkImageFetcherTest {
 
     @Test
     public void testFetchImageForBookmarkWithFaviconFallback_fallbackToFavicon() {
-        doAnswer((invocation) -> {
-            Callback<GURL> callback = invocation.getArgument(1);
+        doCallback(1, (Callback<GURL> callback) -> {
             callback.onResult(null);
-            return null;
-        })
-                .when(mBookmarkModel)
-                .getImageUrlForBookmark(any(), any());
+        }).when(mBookmarkModel).getImageUrlForBookmark(any(), any());
 
         mBookmarkImageFetcher.fetchImageForBookmarkWithFaviconFallback(
                 mBookmarkItem1, mDrawableCallback);
@@ -228,8 +209,7 @@ public class BookmarkImageFetcherTest {
     @Test
     public void testFetchImageUrlWithFallbacks() {
         mBookmarkImageFetcher.fetchImageUrlWithFallbacks(
-                JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL), mBookmarkItem1,
-                mDrawableCallback);
+                JUnitTestGURLs.EXAMPLE_URL, mBookmarkItem1, mDrawableCallback);
         verify(mDrawableCallback).onResult(mDrawableCaptor.capture());
         verify(mImageFetcher, times(1)).fetchImage(any(), any());
         // There shouldn't be any interaction with large icon bridge since an image was found.
@@ -249,7 +229,7 @@ public class BookmarkImageFetcherTest {
 
         // Now that mBookmarkImageFetcher is destroyed, all the callbacks should have been
         // cancelled.
-        mGURLCallbackCaptor.getValue().onResult(JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL));
+        mGURLCallbackCaptor.getValue().onResult(JUnitTestGURLs.EXAMPLE_URL);
         verify(mImageFetcher, times(0)).fetchImage(any(), any());
     }
 }

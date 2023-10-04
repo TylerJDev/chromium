@@ -86,7 +86,6 @@
 #include "absl/strings/internal/cord_rep_btree.h"
 #include "absl/strings/internal/cord_rep_btree_reader.h"
 #include "absl/strings/internal/cord_rep_crc.h"
-#include "absl/strings/internal/cord_rep_ring.h"
 #include "absl/strings/internal/cordz_functions.h"
 #include "absl/strings/internal/cordz_info.h"
 #include "absl/strings/internal/cordz_statistics.h"
@@ -395,6 +394,12 @@ class Cord {
   // Determines whether the Cord ends with the passed string data `rhs`.
   bool EndsWith(absl::string_view rhs) const;
   bool EndsWith(const Cord& rhs) const;
+
+  // Cord::Contains()
+  //
+  // Determines whether the Cord contains the passed string data `rhs`.
+  bool Contains(absl::string_view rhs) const;
+  bool Contains(const Cord& rhs) const;
 
   // Cord::operator std::string()
   //
@@ -747,6 +752,14 @@ class Cord {
   // If the cord was already flat, the contents are not modified.
   absl::string_view Flatten() ABSL_ATTRIBUTE_LIFETIME_BOUND;
 
+  // Cord::Find()
+  //
+  // Returns an iterator to the first occurrance of the substring `needle`.
+  //
+  // If the substring `needle` does not occur, `Cord::char_end()` is returned.
+  CharIterator Find(absl::string_view needle) const;
+  CharIterator Find(const absl::Cord& needle) const;
+
   // Supports absl::Cord as a sink object for absl::Format().
   friend void AbslFormatFlush(absl::Cord* cord, absl::string_view part) {
     cord->Append(part);
@@ -840,7 +853,6 @@ class Cord {
     explicit constexpr InlineRep(absl::string_view sv, CordRep* rep);
 
     void Swap(InlineRep* rhs);
-    bool empty() const;
     size_t size() const;
     const char* data() const;  // Returns nullptr if holding pointer
     void set_data(const char* data, size_t n);  // Discards pointer, if any
@@ -1028,6 +1040,8 @@ class Cord {
   friend class CrcCord;
   void SetCrcCordState(crc_internal::CrcCordState state);
   const crc_internal::CrcCordState* MaybeGetCrcCordState() const;
+
+  CharIterator FindImpl(CharIterator it, absl::string_view needle) const;
 };
 
 ABSL_NAMESPACE_END
@@ -1154,8 +1168,6 @@ inline absl::cord_internal::CordRep* Cord::InlineRep::tree() const {
     return nullptr;
   }
 }
-
-inline bool Cord::InlineRep::empty() const { return data_.is_empty(); }
 
 inline size_t Cord::InlineRep::size() const {
   return is_tree() ? as_tree()->length : inline_size();

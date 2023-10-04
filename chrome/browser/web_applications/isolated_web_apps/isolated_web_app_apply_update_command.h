@@ -27,6 +27,7 @@
 #include "chrome/browser/web_applications/web_app_install_info.h"
 #include "chrome/browser/web_applications/web_app_sync_bridge.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
+#include "components/webapps/common/web_app_id.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
 
@@ -151,7 +152,7 @@ class IsolatedWebAppApplyUpdateCommand : public WebAppCommandTemplate<AppLock> {
 
   void Finalize(WebAppInstallInfo info);
 
-  void OnFinalized(const AppId& app_id,
+  void OnFinalized(const webapps::AppId& app_id,
                    webapps::InstallResultCode update_result_code,
                    OsHooksErrors os_hooks_errors);
 
@@ -171,7 +172,7 @@ class IsolatedWebAppApplyUpdateCommand : public WebAppCommandTemplate<AppLock> {
   std::unique_ptr<ScopedKeepAlive> optional_keep_alive_;
   std::unique_ptr<ScopedProfileKeepAlive> optional_profile_keep_alive_;
 
-  raw_ptr<const WebApp> installed_app_;
+  raw_ptr<const WebApp> installed_app_ = nullptr;
 
   base::OnceCallback<void(
       base::expected<void, IsolatedWebAppApplyUpdateCommandError>)>

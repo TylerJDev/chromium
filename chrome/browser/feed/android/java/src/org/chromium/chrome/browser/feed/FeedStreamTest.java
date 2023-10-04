@@ -53,7 +53,6 @@ import org.robolectric.shadows.ShadowLog;
 import org.chromium.base.Callback;
 import org.chromium.base.FeatureList;
 import org.chromium.base.supplier.Supplier;
-import org.chromium.base.task.test.ShadowPostTask;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.JniMocker;
 import org.chromium.chrome.browser.feed.v2.FeedUserActionType;
@@ -82,7 +81,6 @@ import org.chromium.components.feed.proto.FeedUiProto;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -92,14 +90,14 @@ import java.util.Map;
 
 /** Unit tests for {@link FeedStream}. */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(manifest = Config.NONE, shadows = {ShadowPostTask.class, ShadowGURL.class})
+@Config(manifest = Config.NONE)
 // TODO(crbug.com/1210371): Rewrite using paused loop. See crbug for details.
 @LooperMode(LooperMode.Mode.LEGACY)
 public class FeedStreamTest {
     private static final int LOAD_MORE_TRIGGER_LOOKAHEAD = 5;
     private static final int LOAD_MORE_TRIGGER_SCROLL_DISTANCE_DP = 100;
     private static final String TEST_DATA = "test";
-    private static final String TEST_URL = JUnitTestGURLs.EXAMPLE_URL;
+    private static final String TEST_URL = JUnitTestGURLs.EXAMPLE_URL.getSpec();
     private static final String HEADER_PREFIX = "header";
     private static final OpenUrlOptions DEFAULT_OPEN_URL_OPTIONS = new OpenUrlOptions() {};
 
@@ -212,7 +210,6 @@ public class FeedStreamTest {
                 /* isInterestFeed= */ StreamKind.FOR_YOU, mActionDelegate,
                 /*helpAndFeedbackLauncher=*/null, mFeedContentFirstLoadWatcher, mStreamsMediator,
                 /*SingleWebFeedHelper=*/null, new FeedSurfaceRendererBridgeFactory());
-        mFeedStream.mMakeGURL = url -> JUnitTestGURLs.getGURL(url);
         mRecyclerView = new RecyclerView(mActivity);
         mRecyclerView.setAdapter(mAdapter);
         mContentManager = new FeedListContentManager();
@@ -1054,10 +1051,9 @@ public class FeedStreamTest {
         assertEquals(2, mContentManager.getItemCount());
         assertEquals("a", mContentManager.getContent(1).getKey());
         FeedListContentManager.FeedContent content = mContentManager.getContent(1);
-        assertThat(mContentManager.getContent(1),
-                instanceOf(FeedListContentManager.NativeViewContent.class));
+        assertThat(content, instanceOf(FeedListContentManager.NativeViewContent.class));
         FeedListContentManager.NativeViewContent nativeViewContent =
-                (FeedListContentManager.NativeViewContent) mContentManager.getContent(1);
+                (FeedListContentManager.NativeViewContent) content;
 
         FrameLayout layout = new FrameLayout(mActivity);
 
@@ -1079,10 +1075,9 @@ public class FeedStreamTest {
         assertEquals(2, mContentManager.getItemCount());
         assertEquals("a", mContentManager.getContent(1).getKey());
         FeedListContentManager.FeedContent content = mContentManager.getContent(1);
-        assertThat(mContentManager.getContent(1),
-                instanceOf(FeedListContentManager.NativeViewContent.class));
+        assertThat(content, instanceOf(FeedListContentManager.NativeViewContent.class));
         FeedListContentManager.NativeViewContent nativeViewContent =
-                (FeedListContentManager.NativeViewContent) mContentManager.getContent(1);
+                (FeedListContentManager.NativeViewContent) content;
 
         FrameLayout layout = new FrameLayout(mActivity);
 

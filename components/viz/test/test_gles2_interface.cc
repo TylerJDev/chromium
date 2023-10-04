@@ -34,9 +34,6 @@ TestGLES2Interface::TestGLES2Interface() : context_id_(NextContextId()) {
   // For stream textures.
   test_capabilities_.egl_image_external = true;
   set_max_texture_size(2048);
-
-  // By default, luminance textures are supported in GLES2.
-  test_capabilities_.supports_luminance_shared_images = true;
 }
 
 TestGLES2Interface::~TestGLES2Interface() = default;
@@ -470,10 +467,6 @@ void TestGLES2Interface::set_gpu_rasterization(bool gpu_rasterization) {
 
 void TestGLES2Interface::set_avoid_stencil_buffers(bool avoid_stencil_buffers) {
   test_capabilities_.avoid_stencil_buffers = avoid_stencil_buffers;
-}
-
-void TestGLES2Interface::set_supports_scanout_shared_images(bool support) {
-  test_capabilities_.supports_scanout_shared_images = support;
 }
 
 void TestGLES2Interface::set_support_texture_npot(bool support) {

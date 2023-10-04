@@ -863,9 +863,7 @@ SkiaRenderer::SkiaRenderer(const RendererSettings* settings,
       can_skip_render_pass_overlay_(
           base::FeatureList::IsEnabled(features::kCanSkipRenderPassOverlay)),
 #endif
-      is_using_raw_draw_(features::IsUsingRawDraw()),
-      is_using_graphite_(
-          base::FeatureList::IsEnabled(features::kSkiaGraphite)) {
+      is_using_raw_draw_(features::IsUsingRawDraw()) {
   DCHECK(skia_output_surface_);
   lock_set_for_external_use_.emplace(resource_provider, skia_output_surface_);
 
@@ -998,6 +996,7 @@ void SkiaRenderer::SwapBuffers(SwapFrameData swap_frame_data) {
   output_frame.choreographer_vsync_id = swap_frame_data.choreographer_vsync_id;
   output_frame.size = viewport_size_for_swap_buffers();
   output_frame.data.seq = swap_frame_data.seq;
+  output_frame.data.swap_trace_id = swap_frame_data.swap_trace_id;
   if (use_partial_swap_) {
     swap_buffer_rect_.Intersect(gfx::Rect(surface_size_for_swap_buffers()));
     output_frame.sub_buffer_rect = swap_buffer_rect_;
@@ -1188,8 +1187,9 @@ void SkiaRenderer::BindFramebufferToTexture(
   // should be backing ready.
   RenderPassBacking& backing = iter->second;
   current_canvas_ = skia_output_surface_->BeginPaintRenderPass(
-      render_pass_id, backing.size, backing.format, backing.generate_mipmap,
-      backing.scanout_dcomp_surface, RenderPassBackingSkColorSpace(backing),
+      render_pass_id, backing.size, backing.format, backing.alpha_type,
+      backing.generate_mipmap, backing.scanout_dcomp_surface,
+      RenderPassBackingSkColorSpace(backing),
       /*is_overlay=*/is_root, backing.mailbox);
 
   if (is_root && debug_settings_->show_overdraw_feedback) {
@@ -1267,6 +1267,20 @@ void SkiaRenderer::DrawQuadInternal(const DrawQuad* quad,
                                     DrawQuadParams* params) {
   if (MustFlushBatchedQuads(quad, rpdq_params, *params)) {
     FlushBatchedQuads();
+  }
+
+  if (OverlayCandidate::RequiresOverlay(quad)) {
+    // We cannot composite this quad properly, replace it with a fallback
+    // solid color quad.
+    if (!batched_quads_.empty()) {
+      FlushBatchedQuads();
+    }
+#if DCHECK_IS_ON()
+    DrawColoredQuad(SkColors::kMagenta, rpdq_params, params);
+#else
+    DrawColoredQuad(SkColors::kBlack, rpdq_params, params);
+#endif
+    return;
   }
 
   switch (quad->material) {
@@ -1631,34 +1645,6 @@ void SkiaRenderer::PrepareColorOrCanvasForRPDQ(
   }
 }
 
-bool SkiaRenderer::NeedsFlipY(const DrawQuad* quad) const {
-  // TODO(crbug.com/1449764): remove this workaround when bottom left origin
-  // image is supported by graphite.
-  if (!is_using_graphite_) {
-    return false;
-  }
-  switch (quad->material) {
-    case DrawQuad::Material::kTextureContent:
-      return TextureDrawQuad::MaterialCast(quad)->y_flipped;
-    case DrawQuad::Material::kAggregatedRenderPass: {
-      auto* render_pass_quad = AggregatedRenderPassDrawQuad::MaterialCast(quad);
-      auto bypass =
-          render_pass_bypass_quads_.find(render_pass_quad->render_pass_id);
-      if (bypass == render_pass_bypass_quads_.end()) {
-        return false;
-      }
-      const DrawQuad* bypass_quad = bypass->second;
-      if (RenderPassRemainsTransparent(
-              bypass_quad->shared_quad_state->blend_mode)) {
-        return false;
-      }
-      return NeedsFlipY(bypass_quad);
-    }
-    default:
-      return false;
-  }
-}
-
 SkiaRenderer::DrawQuadParams SkiaRenderer::CalculateDrawQuadParams(
     const gfx::AxisTransform2d& target_to_device,
     const absl::optional<gfx::Rect>& scissor_rect,
@@ -1671,11 +1657,6 @@ SkiaRenderer::DrawQuadParams SkiaRenderer::CalculateDrawQuadParams(
       GetSampling(quad), draw_region);
 
   params.content_device_transform.PostConcat(target_to_device);
-  if (NeedsFlipY(quad)) {
-    float height = quad->visible_rect.height();
-    params.content_device_transform.Scale(1, -1);
-    params.content_device_transform.Translate(0, -height);
-  }
   params.content_device_transform.Flatten();
 
   // Respect per-quad setting overrides as highest priority setting
@@ -3042,17 +3023,6 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
   // TODO(weiliangc): ChromeOS would need backdrop_filter_quality implemented
   if (backdrop_filters) {
     DCHECK(!backdrop_filters->IsEmpty());
-    cc::FilterOperations filter_operations;
-    for (const cc::FilterOperation& op : backdrop_filters->operations()) {
-      if (op.type() == cc::FilterOperation::BLUR) {
-        cc::FilterOperation blur_op(op);
-        blur_op.set_amount(op.amount() * quad->backdrop_filter_quality);
-        filter_operations.Append(blur_op);
-      } else {
-        filter_operations.Append(op);
-      }
-    }
-
     rpdq_params.backdrop_filter_quality = quad->backdrop_filter_quality;
 
     // quad->rect represents the layer's bounds *after* any display scale has
@@ -3066,7 +3036,7 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
       SkIRect filter_rect =
           inv_local_matrix.mapRect(gfx::RectToSkRect(quad->rect)).roundOut();
       auto bg_paint_filter = cc::RenderSurfaceFilters::BuildImageFilter(
-          filter_operations, gfx::SkIRectToRect(filter_rect));
+          *backdrop_filters, gfx::SkIRectToRect(filter_rect));
 
       auto sk_bg_filter =
           bg_paint_filter ? bg_paint_filter->cached_sk_filter_ : nullptr;
@@ -3296,6 +3266,8 @@ void SkiaRenderer::UpdateRenderPassTextures(
     bool mipmap_appropriate =
         !requirements.generate_mipmap || backing.generate_mipmap;
     bool no_change_in_format = requirements.format == backing.format;
+    bool no_change_in_alpha_type =
+        requirements.alpha_type == backing.alpha_type;
     bool no_change_in_color_space =
         requirements.color_space == backing.color_space;
     bool scanout_appropriate =
@@ -3303,7 +3275,8 @@ void SkiaRenderer::UpdateRenderPassTextures(
         requirements.scanout_dcomp_surface == backing.scanout_dcomp_surface;
 
     if (!size_appropriate || !mipmap_appropriate || !no_change_in_format ||
-        !no_change_in_color_space || !scanout_appropriate) {
+        !no_change_in_alpha_type || !no_change_in_color_space ||
+        !scanout_appropriate) {
       passes_to_delete.push_back(backing_id);
     }
   }
@@ -3341,6 +3314,7 @@ void SkiaRenderer::AllocateRenderPassResourceIfNeeded(
     root_pass_backing.generate_mipmap = requirements.generate_mipmap;
     root_pass_backing.size = requirements.size;
     root_pass_backing.format = requirements.format;
+    root_pass_backing.alpha_type = requirements.alpha_type;
     root_pass_backing.color_space = requirements.color_space;
     root_pass_backing.is_scanout = true;
     root_pass_backing.scanout_dcomp_surface = false;
@@ -3391,13 +3365,15 @@ void SkiaRenderer::AllocateRenderPassResourceIfNeeded(
   }
 
   auto mailbox = skia_output_surface_->CreateSharedImage(
-      requirements.format, requirements.size, requirements.color_space, usage,
-      "RenderPassBacking", gpu::kNullSurfaceHandle);
+      requirements.format, requirements.size, requirements.color_space,
+      requirements.alpha_type, usage, "RenderPassBacking",
+      gpu::kNullSurfaceHandle);
   render_pass_backings_.emplace(
       render_pass_id,
       RenderPassBacking({requirements.size, requirements.generate_mipmap,
-                         requirements.color_space, requirements.format, mailbox,
-                         is_root, requirements.is_scanout,
+                         requirements.color_space, requirements.alpha_type,
+                         requirements.format, mailbox, is_root,
+                         requirements.is_scanout,
                          requirements.scanout_dcomp_surface}));
 }
 
@@ -3514,11 +3490,12 @@ SkiaRenderer::GetOrCreateRenderPassOverlayBacking(
         gpu::SHARED_IMAGE_USAGE_SCANOUT | gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
         gpu::SHARED_IMAGE_USAGE_DISPLAY_WRITE | gpu::SHARED_IMAGE_USAGE_RASTER;
     auto mailbox = skia_output_surface_->CreateSharedImage(
-        buffer_format, buffer_size, color_space, kOverlayUsage,
-        "RenderPassOverlay", gpu::kNullSurfaceHandle);
+        buffer_format, buffer_size, color_space, RenderPassAlphaType::kPremul,
+        kOverlayUsage, "RenderPassOverlay", gpu::kNullSurfaceHandle);
     overlay_params.render_pass_backing = {buffer_size,
                                           /*generate_mipmap=*/false,
                                           color_space,
+                                          RenderPassAlphaType::kPremul,
                                           buffer_format,
                                           mailbox,
                                           /*is_root=*/false,
@@ -3708,9 +3685,8 @@ void SkiaRenderer::PrepareRenderPassOverlay(
   } else {
     current_canvas_ = skia_output_surface_->BeginPaintRenderPass(
         quad->render_pass_id, dst_overlay_backing.size,
-        dst_overlay_backing.format,
-        /*mipmap=*/false,
-        /*scanout_dcomp_surface=*/false,
+        dst_overlay_backing.format, dst_overlay_backing.alpha_type,
+        /*mipmap=*/false, /*scanout_dcomp_surface=*/false,
         RenderPassBackingSkColorSpace(dst_overlay_backing),
         /*is_overlay=*/true, overlay->mailbox);
     if (!current_canvas_) {

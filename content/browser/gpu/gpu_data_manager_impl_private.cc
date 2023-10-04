@@ -452,7 +452,7 @@ NOINLINE void IntentionallyCrashBrowserForUnusableGpuProcess() {
 void CollectExtraDevicePerfInfo(const gpu::GPUInfo& gpu_info,
                                 gpu::DevicePerfInfo* device_perf_info) {
   device_perf_info->intel_gpu_generation = gpu::GetIntelGpuGeneration(gpu_info);
-  const gpu::GPUInfo::GPUDevice& device = gpu_info.active_gpu();
+  const gpu::GPUDevice& device = gpu_info.active_gpu();
   if (device.vendor_id == 0xffff /* internal flag for software rendering */ ||
       device.vendor_id == 0x15ad /* VMware */ ||
       device.vendor_id == 0x1414 /* Microsoft software renderer */ ||
@@ -486,6 +486,26 @@ class HDRProxy {
     display::win::ScreenWin::SetDXGIInfo(std::move(dxgi_info));
   }
 };
+
+int GetMaxMemory(const gpu::DxDiagNode& node) {
+  int memory = 0;
+  auto it = node.values.find("szDisplayMemoryEnglish");
+  if (it != node.values.end()) {
+    base::StringToInt(it->second, &memory);
+  }
+
+  for (const auto& child : node.children) {
+    memory = std::max(memory, GetMaxMemory(child.second));
+  }
+  return memory;
+}
+
+void RecordDxDiagNodeHistograms(const gpu::DxDiagNode& dx_diagnostics) {
+  int gpu_memory = GetMaxMemory(dx_diagnostics);
+  if (gpu_memory != 0) {
+    base::UmaHistogramMemoryLargeMB("GPU.Memory.Device", gpu_memory);
+  }
+}
 
 #endif  // BUILDFLAG(IS_WIN)
 }  // anonymous namespace
@@ -648,9 +668,7 @@ void GpuDataManagerImplPrivate::RequestDxdiagDx12VulkanVideoGpuInfoIfNeeded(
     GpuDataManagerImpl::GpuInfoRequest request,
     bool delayed) {
   if (request & GpuDataManagerImpl::kGpuInfoRequestDxDiag) {
-    // Delay is not supported in DxDiag request
-    DCHECK(!delayed);
-    RequestDxDiagNodeData();
+    RequestDxDiagNodeData(delayed);
   }
 
   if (request & GpuDataManagerImpl::kGpuInfoRequestDx12)
@@ -668,11 +686,14 @@ void GpuDataManagerImplPrivate::RequestDxdiagDx12VulkanVideoGpuInfoIfNeeded(
   }
 }
 
-void GpuDataManagerImplPrivate::RequestDxDiagNodeData() {
+void GpuDataManagerImplPrivate::RequestDxDiagNodeData(bool delayed) {
 #if BUILDFLAG(IS_WIN)
-  if (gpu_info_dx_diag_requested_)
-    return;
-  gpu_info_dx_diag_requested_ = true;
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  base::TimeDelta delta;
+  if (delayed &&
+      !command_line->HasSwitch(switches::kNoDelayForDX12VulkanInfoCollection)) {
+    delta = base::Seconds(120);
+  }
 
   base::OnceClosure task = base::BindOnce([]() {
     GpuDataManagerImpl* manager = GpuDataManagerImpl::GetInstance();
@@ -681,7 +702,7 @@ void GpuDataManagerImplPrivate::RequestDxDiagNodeData() {
     // exit_or_terminate_process() during process teardown. The GPU ID
     // should be available by the time this task starts to run.
     // This request comes from chrome://gpu page.
-    const gpu::GPUInfo::GPUDevice gpu = manager->GetGPUInfo().gpu;
+    const gpu::GPUDevice gpu = manager->GetGPUInfo().gpu;
     if ((gpu.vendor_id == 0xffff && gpu.device_id == 0xffff) ||
         (gpu.vendor_id == 0 && gpu.device_id == 0)) {
       manager->UpdateDxDiagNodeRequestStatus(false);
@@ -701,10 +722,11 @@ void GpuDataManagerImplPrivate::RequestDxDiagNodeData() {
           GpuDataManagerImpl* manager = GpuDataManagerImpl::GetInstance();
           manager->UpdateDxDiagNode(dx_diagnostics);
           manager->TerminateInfoCollectionGpuProcess();
+          RecordDxDiagNodeHistograms(dx_diagnostics);
         }));
   });
 
-  GetUIThreadTaskRunner({})->PostTask(FROM_HERE, std::move(task));
+  GetUIThreadTaskRunner({})->PostDelayedTask(FROM_HERE, std::move(task), delta);
 #endif
 }
 
@@ -737,7 +759,7 @@ void GpuDataManagerImplPrivate::RequestGpuSupportedDx12Version(bool delayed) {
         // should be available by the time this task starts to run. In the case
         // of no delay, which is for testing only, don't check the GPU ID
         // because the ID is not available yet.
-        const gpu::GPUInfo::GPUDevice gpu = manager->GetGPUInfo().gpu;
+        const gpu::GPUDevice gpu = manager->GetGPUInfo().gpu;
         if ((gpu.vendor_id == 0xffff && gpu.device_id == 0xffff) ||
             (!delta.is_zero() && gpu.vendor_id == 0 && gpu.device_id == 0)) {
           manager->UpdateDx12RequestStatus(false);
@@ -796,7 +818,7 @@ void GpuDataManagerImplPrivate::RequestGpuSupportedVulkanVersion(bool delayed) {
         // should be available by the time this task starts to run. In the case
         // of no delay, which is for testing only, don't check the GPU ID
         // because the ID is not available yet.
-        const gpu::GPUInfo::GPUDevice gpu = manager->GetGPUInfo().gpu;
+        const gpu::GPUDevice gpu = manager->GetGPUInfo().gpu;
         if ((gpu.vendor_id == 0xffff && gpu.device_id == 0xffff) ||
             (!delta.is_zero() && gpu.vendor_id == 0 && gpu.device_id == 0)) {
           manager->UpdateVulkanRequestStatus(false);
@@ -1052,8 +1074,8 @@ void GpuDataManagerImplPrivate::UpdateGpuInfo(
     // On multi-GPU system, when switching to a different GPU, we want to reset
     // GPUInfo for hardware GPU, because we want to know on which GPU Chrome
     // crashes multiple times and falls back to SwiftShader.
-    const gpu::GPUInfo::GPUDevice& active_gpu = gpu_info_.active_gpu();
-    const gpu::GPUInfo::GPUDevice& cached_active_gpu =
+    const gpu::GPUDevice& active_gpu = gpu_info_.active_gpu();
+    const gpu::GPUDevice& cached_active_gpu =
         gpu_info_for_hardware_gpu_.active_gpu();
 #if BUILDFLAG(IS_WIN)
     if (active_gpu.luid.HighPart != cached_active_gpu.luid.HighPart &&
@@ -1074,7 +1096,7 @@ void GpuDataManagerImplPrivate::UpdateGpuInfo(
       bool valid_info = true;
       if (gpu_info_for_hardware_gpu->UsesSwiftShader()) {
         valid_info = false;
-      } else if (gpu_info_for_hardware_gpu->gl_renderer.empty() &&
+      } else if (gpu_info_for_hardware_gpu->active_gpu().gl_renderer.empty() &&
                  gpu_info_for_hardware_gpu->active_gpu().vendor_id == 0u) {
         valid_info = false;
       }
@@ -1141,6 +1163,7 @@ void GpuDataManagerImplPrivate::UpdateDXGIInfo(
 
 void GpuDataManagerImplPrivate::UpdateDxDiagNodeRequestStatus(
     bool request_continues) {
+  gpu_info_dx_diag_requested_ = true;
   gpu_info_dx_diag_request_failed_ = !request_continues;
 
   if (gpu_info_dx_diag_request_failed_)
@@ -1215,13 +1238,21 @@ void GpuDataManagerImplPrivate::PostCreateThreads() {
         GpuDataManagerImpl::kGpuInfoRequestDx12Vulkan,
         /*delayed=*/false);
   } else {
+    GpuDataManagerImpl::GpuInfoRequest request =
+        GpuDataManagerImpl::kGpuInfoRequestDx12;
+
+    static BASE_FEATURE(kCollectGpuMemoryMetrics, "CollectGpuMemoryMetrics",
+                        base::FEATURE_ENABLED_BY_DEFAULT);
+    if (base::FeatureList::IsEnabled(kCollectGpuMemoryMetrics)) {
+      request = static_cast<GpuDataManagerImpl::GpuInfoRequest>(
+          request | GpuDataManagerImpl::kGpuInfoRequestDxDiag);
+    }
+
     // Launch the info collection GPU process to collect DX12 support
     // information for UMA at the start of the browser.
     // Not to affect Chrome startup, this is done in a delayed mode,  i.e., 120
     // seconds after Chrome startup.
-    RequestDxdiagDx12VulkanVideoGpuInfoIfNeeded(
-        GpuDataManagerImpl::kGpuInfoRequestDx12,
-        /*delayed=*/true);
+    RequestDxdiagDx12VulkanVideoGpuInfoIfNeeded(request, /*delayed=*/true);
   }
 
   // Observer for display change.
@@ -1503,7 +1534,7 @@ void GpuDataManagerImplPrivate::OnDisplayAdded(
     gpu_info_.dx_diagnostics = gpu::DxDiagNode();
     // This DxDiag request goes to the unsandboxed GPU info collection GPU
     // process while the notification below goes to the sandboxed GPU process.
-    RequestDxDiagNodeData();
+    RequestDxDiagNodeData(/*delayed=*/false);
   }
 #endif
 
@@ -1529,7 +1560,7 @@ void GpuDataManagerImplPrivate::OnDisplayRemoved(
     gpu_info_.dx_diagnostics = gpu::DxDiagNode();
     // This DxDiag request goes to the unsandboxed GPU info collection GPU
     // process while the notification below goes to the sandboxed GPU process.
-    RequestDxDiagNodeData();
+    RequestDxDiagNodeData(/*delayed=*/false);
   }
 #endif
 
@@ -1556,7 +1587,7 @@ void GpuDataManagerImplPrivate::OnDisplayMetricsChanged(
     gpu_info_.dx_diagnostics = gpu::DxDiagNode();
     // This DxDiag request goes to the unsandboxed GPU info collection GPU
     // process while the notification below goes to the sandboxed GPU process.
-    RequestDxDiagNodeData();
+    RequestDxDiagNodeData(/*delayed=*/false);
   }
 #endif
 
@@ -1594,15 +1625,19 @@ void GpuDataManagerImplPrivate::NotifyGpuInfoUpdate() {
 }
 
 bool GpuDataManagerImplPrivate::IsGpuProcessUsingHardwareGpu() const {
-  if (base::StartsWith(gpu_info_.gl_renderer, "Google SwiftShader",
-                       base::CompareCase::SENSITIVE))
+  const gpu::GPUDevice& active_gpu = gpu_info_.active_gpu();
+  if (base::StartsWith(active_gpu.gl_renderer, "Google SwiftShader",
+                       base::CompareCase::SENSITIVE)) {
     return false;
-  if (base::StartsWith(gpu_info_.gl_renderer, "ANGLE",
+  }
+  if (base::StartsWith(active_gpu.gl_renderer, "ANGLE",
                        base::CompareCase::SENSITIVE) &&
-      gpu_info_.gl_renderer.find("SwiftShader Device") != std::string::npos)
+      active_gpu.gl_renderer.find("SwiftShader Device") != std::string::npos) {
     return false;
-  if (gpu_info_.gl_renderer == "Disabled")
+  }
+  if (active_gpu.gl_renderer == "Disabled") {
     return false;
+  }
   return true;
 }
 

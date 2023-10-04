@@ -25,6 +25,7 @@ static_library("performance_manager") {
     "decorators/process_metrics_decorator.cc",
     "decorators/process_priority_aggregator.cc",
     "decorators/process_priority_aggregator.h",
+    "decorators/tab_connectedness_decorator.cc",
     "decorators/tab_page_decorator.cc",
     "embedder/binders.h",
     "embedder/graph_features.h",
@@ -127,6 +128,7 @@ static_library("performance_manager") {
     "public/decorators/page_live_state_decorator.h",
     "public/decorators/page_load_tracker_decorator_helper.h",
     "public/decorators/process_metrics_decorator.h",
+    "public/decorators/tab_connectedness_decorator.h",
     "public/decorators/tab_page_decorator.h",
     "public/execution_context/execution_context.h",
     "public/execution_context/execution_context_attached_data.h",
@@ -161,6 +163,15 @@ static_library("performance_manager") {
     "public/render_process_host_id.h",
     "public/render_process_host_proxy.h",
     "public/resource_attribution/attribution_helpers.h",
+    "public/resource_attribution/cpu_measurement_monitor.h",
+    "public/resource_attribution/frame_context_registry.h",
+    "public/resource_attribution/graph_change.h",
+    "public/resource_attribution/page_context_registry.h",
+    "public/resource_attribution/process_context_registry.h",
+    "public/resource_attribution/query_results.h",
+    "public/resource_attribution/resource_contexts.h",
+    "public/resource_attribution/type_helpers.h",
+    "public/resource_attribution/worker_context_registry.h",
     "public/user_tuning/prefs.h",
     "public/v8_memory/v8_detailed_memory.h",
     "public/v8_memory/v8_detailed_memory_any_seq.h",
@@ -173,6 +184,13 @@ static_library("performance_manager") {
     "render_process_user_data.cc",
     "render_process_user_data.h",
     "resource_attribution/attribution_impl_helpers.h",
+    "resource_attribution/cpu_measurement_monitor.cc",
+    "resource_attribution/frame_context_registry.cc",
+    "resource_attribution/page_context_registry.cc",
+    "resource_attribution/process_context_registry.cc",
+    "resource_attribution/resource_context_registry_storage.cc",
+    "resource_attribution/resource_context_registry_storage.h",
+    "resource_attribution/worker_context_registry.cc",
     "service_worker_client.cc",
     "service_worker_client.h",
     "service_worker_context_adapter.cc",
@@ -220,6 +238,8 @@ static_library("performance_manager") {
     "//third_party/blink/public/common",
     "//url",
   ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   if (!is_android) {
     sources += [
@@ -283,6 +303,7 @@ source_set("unit_tests") {
     "decorators/process_hosted_content_types_aggregator_unittest.cc",
     "decorators/process_metrics_decorator_unittest.cc",
     "decorators/process_priority_aggregator_unittest.cc",
+    "decorators/tab_connectedness_decorator_unittest.cc",
     "decorators/tab_page_decorator_unittest.cc",
     "execution_context/execution_context_attached_data_unittest.cc",
     "execution_context/execution_context_registry_impl_unittest.cc",
@@ -320,6 +341,9 @@ source_set("unit_tests") {
     "performance_manager_unittest.cc",
     "registered_objects_unittest.cc",
     "render_process_host_id_unittest.cc",
+    "resource_attribution/cpu_measurement_monitor_unittest.cc",
+    "resource_attribution/resource_contexts_unittest.cc",
+    "test_support/mock_graphs_unittest.cc",
     "user_tuning/prefs_unittest.cc",
     "v8_memory/v8_context_tracker_helpers_unittest.cc",
     "v8_memory/v8_context_tracker_internal_unittest.cc",
@@ -347,6 +371,10 @@ source_set("unit_tests") {
     "//testing/gmock",
     "//testing/gtest",
   ]
+
+  if (is_ios) {
+    deps += [ "//components/test:performance_manager_test_bundle_data" ]
+  }
 
   # The site data database isn't supported on Android.
   if (!is_android) {
@@ -386,6 +414,10 @@ source_set("browser_tests") {
     "performance_manager_browsertest.cc",
     "prerendering_browsertest.cc",
     "render_process_host_proxy_browsertest.cc",
+    "resource_attribution/frame_context_registry_browsertest.cc",
+    "resource_attribution/page_context_registry_browsertest.cc",
+    "resource_attribution/process_context_registry_browsertest.cc",
+    "resource_attribution/worker_context_registry_browsertest.cc",
     "v8_memory/v8_context_tracker_browsertest.cc",
   ]
 

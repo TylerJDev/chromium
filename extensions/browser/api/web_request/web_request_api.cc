@@ -397,15 +397,18 @@ bool WebRequestAPI::MaybeProxyURLLoaderFactory(
     // Create a proxy URLLoader even when there is no CRX
     // installed with webRequest permissions. This allows the extension
     // requests to be intercepted for CRX telemetry service if enabled.
-    // TODO(zackhan): This is here for the current implementation, but if it's
-    // expanded, it should live somewhere else so that we don't have to create
-    // a full proxy just for telemetry.
+    // Only proxy if the new RHC interception logic is disabled.
+    // TODO(crbug.com/1447587): Clean up collection logic here once new RHC
+    // interception logic is fully launched.
     const std::string& request_scheme = request_initiator.scheme();
     if (extensions::kExtensionScheme == request_scheme &&
         ExtensionsBrowserClient::Get()->IsExtensionTelemetryServiceEnabled(
             browser_context) &&
         base::FeatureList::IsEnabled(
-            safe_browsing::kExtensionTelemetryReportContactedHosts)) {
+            safe_browsing::kExtensionTelemetryReportContactedHosts) &&
+        !base::FeatureList::IsEnabled(
+            safe_browsing::
+                kExtensionTelemetryInterceptRemoteHostsContactedInRenderer)) {
       skip_proxy = false;
     }
     if (skip_proxy) {
@@ -544,13 +547,18 @@ bool WebRequestAPI::MayHaveProxies() const {
 }
 
 bool WebRequestAPI::MayHaveWebsocketProxiesForExtensionTelemetry() const {
+  // TODO(crbug.com/1447587): Clean up once new RHC interception logic is fully
+  // launched.
   return ExtensionsBrowserClient::Get()->IsExtensionTelemetryServiceEnabled(
              browser_context_) &&
          base::FeatureList::IsEnabled(
              safe_browsing::kExtensionTelemetryReportContactedHosts) &&
          base::FeatureList::IsEnabled(
              safe_browsing::
-                 kExtensionTelemetryReportHostsContactedViaWebSocket);
+                 kExtensionTelemetryReportHostsContactedViaWebSocket) &&
+         !base::FeatureList::IsEnabled(
+             safe_browsing::
+                 kExtensionTelemetryInterceptRemoteHostsContactedInRenderer);
 }
 
 bool WebRequestAPI::HasExtraHeadersListenerForTesting() {
@@ -719,7 +727,15 @@ WebRequestInternalAddEventListenerFunction::Run() {
   std::string extension_name =
       extension ? extension->name() : extension_id_safe();
 
-  if (!web_view_instance_id) {
+  if (web_view_instance_id) {
+    // If a web view ID has been supplied and the call is from an extension
+    // (i.e. not from WebUI), we require the extension to have the webview
+    // permission.
+    if (extension && !extension->permissions_data()->HasAPIPermission(
+                         mojom::APIPermissionID::kWebView)) {
+      return RespondNow(Error("Missing webview permission."));
+    }
+  } else {
     auto has_blocking_permission = [&extension, &event_name]() {
       if (extension->permissions_data()->HasAPIPermission(
               APIPermissionID::kWebRequestBlocking)) {
@@ -780,7 +796,7 @@ void WebRequestInternalEventHandledFunction::OnError(
   ExtensionWebRequestEventRouter::GetInstance()->OnEventHandled(
       browser_context(), extension_id_safe(), event_name, sub_event_name,
       request_id, render_process_id, web_view_instance_id, worker_thread_id(),
-      service_worker_version_id(), response.release());
+      service_worker_version_id(), std::move(response));
 }
 
 ExtensionFunction::ResponseAction
@@ -925,7 +941,7 @@ WebRequestInternalEventHandledFunction::Run() {
   ExtensionWebRequestEventRouter::GetInstance()->OnEventHandled(
       browser_context(), extension_id_safe(), event_name, sub_event_name,
       request_id, render_process_id, web_view_instance_id, worker_thread_id(),
-      service_worker_version_id(), response.release());
+      service_worker_version_id(), std::move(response));
 
   return RespondNow(NoArguments());
 }
@@ -956,38 +972,6 @@ ExtensionFunction::ResponseAction
 WebRequestHandlerBehaviorChangedFunction::Run() {
   helpers::ClearCacheOnNavigation();
   return RespondNow(NoArguments());
-}
-
-ExtensionWebRequestEventRouter::EventListener::ID::ID(
-    content::BrowserContext* browser_context,
-    const std::string& extension_id,
-    const std::string& sub_event_name,
-    int render_process_id,
-    int web_view_instance_id,
-    int worker_thread_id,
-    int64_t service_worker_version_id)
-    : browser_context(browser_context),
-      extension_id(extension_id),
-      sub_event_name(sub_event_name),
-      render_process_id(render_process_id),
-      web_view_instance_id(web_view_instance_id),
-      worker_thread_id(worker_thread_id),
-      service_worker_version_id(service_worker_version_id) {}
-
-ExtensionWebRequestEventRouter::EventListener::ID::ID(const ID& source) =
-    default;
-
-bool ExtensionWebRequestEventRouter::EventListener::ID::operator==(
-    const ID& that) const {
-  // Since EventListeners are segmented by browser_context, check that
-  // last, as it is exceedingly unlikely to be different.
-  return extension_id == that.extension_id &&
-         sub_event_name == that.sub_event_name &&
-         web_view_instance_id == that.web_view_instance_id &&
-         render_process_id == that.render_process_id &&
-         worker_thread_id == that.worker_thread_id &&
-         service_worker_version_id == that.service_worker_version_id &&
-         browser_context == that.browser_context;
 }
 
 }  // namespace extensions

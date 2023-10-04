@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "base/allocator/partition_alloc_features.h"
-#include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_buildflags.h"
 #include "base/command_line.h"
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
@@ -115,7 +115,7 @@
 #include "url/gurl.h"
 
 #if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && BUILDFLAG(USE_STARSCAN)
-#include "base/allocator/partition_allocator/starscan/pcscan.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/starscan/pcscan.h"
 #endif
 
 namespace content {
@@ -488,7 +488,13 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest,
   EXPECT_EQ(new_size, shell()->web_contents()->GetContainerBounds().size());
 }
 
-IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, SetTitleOnUnload) {
+// TODO(crbug.com/1486164): Times out on Mac.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_SetTitleOnUnload DISABLED_SetTitleOnUnload
+#else
+#define MAYBE_SetTitleOnUnload SetTitleOnUnload
+#endif
+IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, MAYBE_SetTitleOnUnload) {
   GURL url(
       "data:text/html,"
       "<title>A</title>"
@@ -3662,7 +3668,7 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, FrozenAndUnfrozenIPC) {
 
   // Delete an iframe when the page is active(not frozen), which should succeed.
   rfh_b->GetMojomFrameInRenderer()->Delete(
-      mojom::FrameDeleteIntention::kNotMainFrame, mojo::NullRemote());
+      mojom::FrameDeleteIntention::kNotMainFrame);
   delete_rfh_b.WaitUntilDeleted();
   EXPECT_TRUE(delete_rfh_b.deleted());
   EXPECT_FALSE(delete_rfh_c.deleted());
@@ -3673,7 +3679,7 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, FrozenAndUnfrozenIPC) {
 
   // Try to delete an iframe, and succeeds because the message is unfreezable.
   rfh_c->GetMojomFrameInRenderer()->Delete(
-      mojom::FrameDeleteIntention::kNotMainFrame, mojo::NullRemote());
+      mojom::FrameDeleteIntention::kNotMainFrame);
   delete_rfh_c.WaitUntilDeleted();
   EXPECT_TRUE(delete_rfh_c.deleted());
 }

@@ -135,6 +135,8 @@
 #include "components/permissions/permission_uma_util.h"
 #include "components/permissions/permission_util.h"
 #include "components/permissions/request_type.h"
+#include "components/privacy_sandbox/privacy_sandbox_attestations/privacy_sandbox_attestations.h"
+#include "components/privacy_sandbox/privacy_sandbox_attestations/scoped_privacy_sandbox_attestations.h"
 #include "components/privacy_sandbox/privacy_sandbox_settings.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
@@ -973,7 +975,6 @@ class RemoveAutofillTester {
   // Add one profile and two credit cards to the database. One credit card has a
   // web origin and the other has a Chrome origin.
   void AddProfilesAndCards() {
-    std::vector<autofill::AutofillProfile> profiles;
     autofill::AutofillProfile profile;
     profile.set_guid(base::Uuid::GenerateRandomV4().AsLowercaseString());
     profile.SetRawInfo(autofill::NAME_FIRST, u"Bob");
@@ -981,10 +982,7 @@ class RemoveAutofillTester {
     profile.SetRawInfo(autofill::ADDRESS_HOME_ZIP, u"94043");
     profile.SetRawInfo(autofill::EMAIL_ADDRESS, u"sue@example.com");
     profile.SetRawInfo(autofill::COMPANY_NAME, u"Company X");
-    profiles.push_back(profile);
-
-    personal_data_manager_->SetProfilesForAllSources(&profiles);
-
+    personal_data_manager_->AddProfile(profile);
     WaitForOnPersonalDataFinishedProfileTasks();
 
     std::vector<autofill::CreditCard> cards;
@@ -1722,7 +1720,7 @@ TEST_F(IsolatedWebAppChromeBrowsingDataRemoverDelegateTest, ClearData) {
 }
 
 TEST_F(IsolatedWebAppChromeBrowsingDataRemoverDelegateTest,
-       ControlledFramesNotClearedIfNotInFilter) {
+       ForwardClearDataParameterToControlledFrame) {
   const GURL iwa_url(
       "isolated-app://"
       "berugqztij5biqquuk3mfwpsaibuegaqcitgfchwuosuofdjabzqaaic");
@@ -1740,7 +1738,8 @@ TEST_F(IsolatedWebAppChromeBrowsingDataRemoverDelegateTest,
       UnorderedElementsAre(
           RemovalInfo{DATA_TYPE_INDEXED_DB},
           RemovalInfo{DATA_TYPE_INDEXED_DB,
-                      iwa_url_info.storage_partition_config(GetProfile())}));
+                      iwa_url_info.storage_partition_config(GetProfile())},
+          RemovalInfo{DATA_TYPE_INDEXED_DB, controlled_frame_partition}));
 }
 
 TEST_F(IsolatedWebAppChromeBrowsingDataRemoverDelegateTest,
@@ -1802,17 +1801,15 @@ TEST_F(IsolatedWebAppChromeBrowsingDataRemoverDelegateTest,
   content::StoragePartitionConfig controlled_frame_partition =
       CreateControlledFrameStoragePartition(iwa_url_info, "controlled_frame");
 
-  std::vector<RemovalInfo> removal_tasks = ClearDataAndWait(
-      AnHourAgo(), base::Time::Max(),
-      DATA_TYPE_INDEXED_DB | constants::DATA_TYPE_CONTROLLED_FRAME,
-      BrowsingDataFilterBuilder::Create(
-          BrowsingDataFilterBuilder::Mode::kPreserve));
+  std::vector<RemovalInfo> removal_tasks =
+      ClearDataAndWait(AnHourAgo(), base::Time::Max(), DATA_TYPE_INDEXED_DB,
+                       BrowsingDataFilterBuilder::Create(
+                           BrowsingDataFilterBuilder::Mode::kPreserve));
 
   EXPECT_THAT(
       removal_tasks,
       UnorderedElementsAre(
-          RemovalInfo{DATA_TYPE_INDEXED_DB |
-                      constants::DATA_TYPE_CONTROLLED_FRAME},
+          RemovalInfo{DATA_TYPE_INDEXED_DB},
           RemovalInfo{DATA_TYPE_INDEXED_DB,
                       iwa_url_info.storage_partition_config(GetProfile())},
           RemovalInfo{DATA_TYPE_INDEXED_DB, controlled_frame_partition}));
@@ -3204,6 +3201,13 @@ TEST_F(ChromeBrowsingDataRemoverDelegateTest, RemoveFledgeJoinSettings) {
       PrivacySandboxSettingsFactory::GetForProfile(GetProfile());
   privacy_sandbox_settings->SetAllPrivacySandboxAllowedForTesting();
 
+  privacy_sandbox::ScopedPrivacySandboxAttestations scoped_attestations(
+      privacy_sandbox::PrivacySandboxAttestations::CreateForTesting());
+  // Mark all Privacy Sandbox APIs as attested since the test case is testing
+  // behaviors not related to attestations.
+  privacy_sandbox::PrivacySandboxAttestations::GetInstance()
+      ->SetAllPrivacySandboxAttestedForTesting(true);
+
   auto auction_party = url::Origin::Create(GURL("https://auction-party.com"));
 
   const std::string etld_one = "example.com";
@@ -3800,7 +3804,7 @@ TEST_F(ChromeBrowsingDataRemoverDelegateTest, AllTypesAreGettingDeleted) {
                                        some_value.Clone());
 
     // Check that the exception was created.
-    base::Value value = map->GetWebsiteSetting(url, url, info->type(), nullptr);
+    base::Value value = map->GetWebsiteSetting(url, url, info->type());
     EXPECT_FALSE(value.is_none()) << "Not created: " << info->name();
     EXPECT_EQ(some_value, value) << "Not created: " << info->name();
   }
@@ -3817,7 +3821,7 @@ TEST_F(ChromeBrowsingDataRemoverDelegateTest, AllTypesAreGettingDeleted) {
     if (base::Contains(non_deletable_types, info->type())) {
       continue;
     }
-    base::Value value = map->GetWebsiteSetting(url, url, info->type(), nullptr);
+    base::Value value = map->GetWebsiteSetting(url, url, info->type());
 
     if (value.is_int()) {
       EXPECT_EQ(CONTENT_SETTING_BLOCK, value.GetInt())

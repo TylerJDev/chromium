@@ -1,5 +1,5 @@
 This is a testharness.js-based test.
-Found 364 tests; 350 PASS, 14 FAIL, 0 TIMEOUT, 0 NOTRUN.
+Found 363 tests; 349 PASS, 14 FAIL, 0 TIMEOUT, 0 NOTRUN.
 PASS Loading data…
 PASS Parsing origin: <http://example	.
 org> against <http://example.org/foo/bar>
@@ -225,7 +225,6 @@ FAIL Parsing origin: <h://.> against <about:blank> assert_equals: origin expecte
 PASS Parsing origin: <http://foo:💩@example.com/bar> against <http://other.com/>
 PASS Parsing origin: <#> against <test:test>
 PASS Parsing origin: <#x> against <mailto:x@x.com>
-PASS Parsing origin: <#x> against <data:,>
 PASS Parsing origin: <#x> against <about:blank>
 PASS Parsing origin: <#x:y> against <about:blank>
 PASS Parsing origin: <#> against <test:test?test>
@@ -266,7 +265,7 @@ PASS Parsing origin: <wow:%NBD> against <about:blank>
 PASS Parsing origin: <wow:%1G> against <about:blank>
 PASS Parsing origin: <wow:￿> against <about:blank>
 FAIL Parsing origin: <http://example.com/U+d800𐟾U+dfff﷐﷏﷯ﷰ￾￿?U+d800𐟾U+dfff﷐﷏﷯ﷰ￾￿> against <about:blank> assert_equals: origin expected "http://example.com" but got ""
-FAIL Parsing origin: <http://!"$&'()*+,-.;=_`{}~/> against <about:blank> assert_equals: origin expected "http://!\"$&'()*+,-.;=_`{}~" but got ""
+FAIL Parsing origin: <http://!"$&'()*+,-.;=_`{}~/> against <about:blank> assert_equals: origin expected "http://!\"$&'()*+,-.;=_`{}~" but got "http://!\"$&'()%2A+,-.;=_`{}~"
 PASS Parsing origin: <sc://!"$%&'()*+,-.;=_`{}~/> against <about:blank>
 PASS Parsing origin: <ftp://%e2%98%83> against <about:blank>
 PASS Parsing origin: <https://%e2%98%83> against <about:blank>
@@ -341,7 +340,7 @@ PASS Parsing origin: <wss:// !"$%&'()*+,-.;<=>@[]^_`{|}~@host/> against <about:b
 PASS Parsing origin: <foo://joe: !"$%&'()*+,-.:;<=>@[\]^_`{|}~@host/> against <about:blank>
 PASS Parsing origin: <wss://joe: !"$%&'()*+,-.:;<=>@[]^_`{|}~@host/> against <about:blank>
 PASS Parsing origin: <foo://!"$%&'()*+,-.;=_`{}~/> against <about:blank>
-FAIL Parsing origin: <wss://!"$&'()*+,-.;=_`{}~/> against <about:blank> assert_equals: origin expected "wss://!\"$&'()*+,-.;=_`{}~" but got ""
+FAIL Parsing origin: <wss://!"$&'()*+,-.;=_`{}~/> against <about:blank> assert_equals: origin expected "wss://!\"$&'()*+,-.;=_`{}~" but got "wss://!\"$&'()%2A+,-.;=_`{}~"
 PASS Parsing origin: <foo://host/ !"$%&'()*+,-./:;<=>@[\]^_`{|}~> against <about:blank>
 PASS Parsing origin: <wss://host/ !"$%&'()*+,-./:;<=>@[\]^_`{|}~> against <about:blank>
 PASS Parsing origin: <foo://host/dir/? !"$%&'()*+,-./:;<=>?@[\]^_`{|}~> against <about:blank>

@@ -47,6 +47,7 @@ import org.chromium.android_webview.renderer_priority.RendererPriority;
 import org.chromium.android_webview.test.TestAwContentsClient.OnDownloadStartHelper;
 import org.chromium.android_webview.test.util.CommonResources;
 import org.chromium.android_webview.test.util.GraphicsTestUtils;
+import org.chromium.base.BaseFeatures;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.FakeTimeTestRule;
 import org.chromium.base.Log;
@@ -153,7 +154,7 @@ public class AwContentsTest {
     @Feature({"AndroidWebView"})
     public void testCreateLoadDestroyManyAtOnce() throws Throwable {
         mActivityTestRule.startBrowserProcess();
-        AwTestContainerView views[] = new AwTestContainerView[10];
+        AwTestContainerView[] views = new AwTestContainerView[10];
 
         for (int i = 0; i < views.length; ++i) {
             views[i] = mActivityTestRule.createAwTestContainerViewOnMainSync(mContentsClient);
@@ -1006,7 +1007,7 @@ public class AwContentsTest {
                 mContentsClient.getOnPageFinishedHelper(), html, "text/html", false);
         mActivityTestRule.waitForVisualStateCallback(testView.getAwContents());
 
-        int expectedQuadrantColors[] = {Color.rgb(255, 0, 0), Color.rgb(0, 255, 0),
+        int[] expectedQuadrantColors = {Color.rgb(255, 0, 0), Color.rgb(0, 255, 0),
                 Color.rgb(0, 0, 255), Color.rgb(r, g, b)};
 
         GraphicsTestUtils.pollForQuadrantColors(testView, expectedQuadrantColors);
@@ -1026,7 +1027,7 @@ public class AwContentsTest {
     @MinAndroidSdkLevel(Build.VERSION_CODES.P)
     public void testHardwareRenderingSmokeTestVulkanWhereSupported() throws Throwable {
         // Manually curated list.
-        final String supportedModels[] = {
+        final String[] supportedModels = {
                 "Pixel",
                 "Pixel 2",
                 "Pixel 3",
@@ -1442,7 +1443,7 @@ public class AwContentsTest {
                     "http://foo.bar", null);
 
             // Check initial iframe is displayed.
-            int expectedQuadrantColors[] = {
+            int[] expectedQuadrantColors = {
                     Color.rgb(0, 255, 0),
                     Color.rgb(0, 255, 0),
                     Color.rgb(255, 0, 0),
@@ -1766,6 +1767,7 @@ public class AwContentsTest {
     @DisableHardwareAcceleration
     @SmallTest
     @Feature({"AndroidWebView"})
+    @Features.EnableFeatures({BaseFeatures.COLLECT_ANDROID_FRAME_TIMELINE_METRICS})
     public void testNoCrashWithoutHardwareAcceleration() throws Throwable {
         mActivityTestRule.startBrowserProcess();
         AwContents.resetRecordMemoryForTesting();

@@ -8,6 +8,7 @@
 <translation id="1056898198331236512">সতর্কতা</translation>
 <translation id="1060368002126861100"><ph name="APP_NAME" /> ব্যবহার করে ফাইল খুলতে, সেগুলি প্রথমে Windows ফাইল ফোল্ডারে সরিয়ে রাখুন।</translation>
 <translation id="1062407476771304334">প্রতিস্থাপন করুন</translation>
+<translation id="1119383441774809183">টেক্সট মেসেজ দেখুন</translation>
 <translation id="1119447706177454957">অভ্যন্তরীণ ত্রুটি</translation>
 <translation id="1120073797882051782">হাঙ্গুল রোমাজা</translation>
 <translation id="112387589102719461">ইংরেজি (মার্কিন যুক্তরাষ্ট্র) ভাষায় প্রোগ্রামার Dvorak কীবোর্ড</translation>
@@ -95,6 +96,7 @@
 <translation id="174937106936716857">মোট ফাইল সংখ্যা</translation>
 <translation id="1755345808328621801">Windows সফ্টওয়্যার ব্যবহার করে এমন একটি কম্পিউটারের জন্য এই ফাইলটি ডিজাইন করা হয়েছে৷ ChromeOS দ্বারা চালিত আপনার ডিভাইসটির সাথে এটি সামঞ্জস্যপূর্ণ নয়৷ একটি উপযুক্ত প্রতিস্থাপনযোগ্য অ্যাপের জন্য অনুগ্রহ করে Chrome ওয়েব স্টোর-এ সার্চ করুন।</translation>
 <translation id="1757915090001272240">প্রশস্ত ল্যাটিন</translation>
+<translation id="1761091787730831947"><ph name="VM_NAME" /> দিয়ে শেয়ার করুন</translation>
 <translation id="1773212559869067373">স্থানীয়ভাবে যাচাইকরণ সার্টিফিকেট বাতিল করা হয়েছে</translation>
 <translation id="1775381402323441512">ভিডিওর তথ্য</translation>
 <translation id="180035236176489073">এই ফাইলগুলিতে অ্যাক্সেস পেতে আপনাকে অনলাইন হতে হবে৷</translation>
@@ -170,6 +172,7 @@
 <translation id="23721837607121582">মোবাইল প্রোফাইল ডাউনলোড করুন, <ph name="NETWORK_COUNT" />টির মধ্যে <ph name="NETWORK_INDEX" /> নম্বর নেটওয়ার্ক, <ph name="NETWORK_NAME" /></translation>
 <translation id="2377319039870049694">তালিকা দৃশ্যে যান</translation>
 <translation id="2377590462528165447"><ph name="NUMBER_OF_ITEMS" />টি ফোল্ডার Linux-এর সাথে শেয়ার করা হয়েছে</translation>
+<translation id="2379576081295865700">স্টোরেজের জায়গা চেক করা হচ্ছে… ১টি আইটেম খুঁজে পাওয়া গেছে</translation>
 <translation id="2383454254762599978">ট্র্যাশে সরান</translation>
 <translation id="2387458720915042159">প্রক্সি কানেকশনের ধরণ</translation>
 <translation id="2389832672041313158">বার্মিজ/মায়ানমার</translation>
@@ -211,6 +214,7 @@
 <translation id="2718540689505416944">Linux ব্যবহার করে অ্যাপ ইনস্টল করুন</translation>
 <translation id="2719020180254996569"><ph name="NETWORK_COUNT" />টির মধ্যে <ph name="NETWORK_INDEX" /> নম্বর নেটওয়ার্ক, <ph name="NETWORK_NAME" />, <ph name="CONNECTION_STATUS" />, বিবরণ</translation>
 <translation id="2724954091494693138">তুর্কি ভাষায় এফ (F) কীবোর্ড</translation>
+<translation id="2732288874651063549"><ph name="VM_NAME" /> শেয়ার করা ম্যানেজ করুন</translation>
 <translation id="2732839045120506979">ভিয়েতনামি ভিএনআই (VNI)</translation>
 <translation id="2735623501230989521">Parallels Desktop-কে <ph name="FOLDER_NAME" /> ফোল্ডারে ফাইল অ্যাক্সেস করার অনুমতি দিন</translation>
 <translation id="2764206540577097904">আপনার সমস্ত ব্যক্তিগত Google Workspace স্টোরেজ ব্যবহার করেছেন।</translation>
@@ -275,6 +279,7 @@
 <translation id="3264582393905923483">প্রসঙ্গ</translation>
 <translation id="3272909651715601089">"<ph name="PATH" />" খোলা যায়নি</translation>
 <translation id="3280431534455935878">প্রস্তুতি</translation>
+<translation id="3280719573299097127">আপনি পরিমাপ করা নেটওয়ার্ক ব্যবহার করছেন। 'ফাইল সিঙ্ক' পজ হয়ে গেছে।</translation>
 <translation id="3280987981688031357">ভিনাইল রেকর্ড</translation>
 <translation id="3290356915286466215">সুরক্ষিত নেই</translation>
 <translation id="3291218047831493686">সিম লক সেটিং পরিবর্তন করতে এই নেটওয়ার্কে কানেক্ট করুন</translation>
@@ -305,6 +310,7 @@
 <translation id="3509680540198371098"><ph name="NETWORK_COUNT" />টির মধ্যে <ph name="NETWORK_INDEX" /> নম্বর নেটওয়ার্ক, <ph name="NETWORK_NAME" />, <ph name="SECURITY_STATUS" />, <ph name="CONNECTION_STATUS" />, সিগন্যাল: <ph name="SIGNAL_STRENGTH" />%, বিবরণ</translation>
 <translation id="3511705761158917664"><ph name="NUMBER_OF_ITEMS" />টি আইটেম সিঙ্ক করার জন্য প্রস্তুত করা হচ্ছে...</translation>
 <translation id="3522708245912499433">পর্তুগিজ</translation>
+<translation id="3523225005467146490"><ph name="VM_NAME" /> দিয়ে ১টি ফোল্ডার শেয়ার করা হয়েছে</translation>
 <translation id="3524311639100184459">সতর্কতা: এই ফাইলগুলি অস্থায়ী এবং ডিস্কের জায়গা খালি করতে হয়ত অটোমেটিক মুছে ফেলা হবে।  <ph name="BEGIN_LINK" />আরও জানুন<ph name="END_LINK" /></translation>
 <translation id="3527085408025491307">ফোল্ডার</translation>
 <translation id="3548125359243647069">একটি ভুল পিন অনেকবার লেখা হয়েছে।</translation>
@@ -550,7 +556,6 @@
 <translation id="5283101102242354279">ছদ্মবেশী মোডে এক্সটেনশনটি চালু করুন:</translation>
 <translation id="5286194356314741248">স্ক্যান হচ্ছে</translation>
 <translation id="5288441970121584418">বার্গার</translation>
-<translation id="5288481194217812690"><ph name="FILENAME" /></translation>
 <translation id="5293615890992542006">অ্যাডমিনিস্ট্রেটরের সেট করা নীতি অনুযায়ী এই ফাইল সরিয়ে দেওয়ার সুবিধা ব্লক করা হয়েছে</translation>
 <translation id="5305688511332277257">কিছুই ইনস্টল নেই</translation>
 <translation id="5317780077021120954">সেভ করুন</translation>
@@ -627,6 +632,7 @@
 <translation id="5838451609423551646">সব বেছে নেওয়া এন্ট্রি সরিয়ে দেওয়া হয়েছে।</translation>
 <translation id="5838825566232597749">মার্কিন ওয়ার্কম্যান আন্তর্জাতিক</translation>
 <translation id="5845721951356578987">নার্স</translation>
+<translation id="5858478190805449225">'ব্যাটারি সেভার' মোড চালু আছে। 'ব্যাটারি সেভার' মোড বন্ধ করা হলে আবার চেষ্টা করুন।</translation>
 <translation id="5860491529813859533">চালু করুন</translation>
 <translation id="5861477046012235702">গেমার</translation>
 <translation id="5864471791310927901">DHCP লুকআপ ব্যর্থ</translation>
@@ -661,6 +667,8 @@
 <translation id="6164412158936057769">প্রজাপতি</translation>
 <translation id="6165508094623778733">আরও জানুন</translation>
 <translation id="6170470584681422115">স্যান্ডউইচ</translation>
+<translation id="6177854567773392726">স্টোরেজের জায়গা চেক করা হচ্ছে… <ph name="ITEMS_FOUND" />টি আইটেম খুঁজে পাওয়া গেছে</translation>
+<translation id="6181912134988520389"><ph name="VM_NAME" />কে আপনার Google Drive-এ থাকা ফাইল অ্যাক্সেস করার অনুমতি দিন। আপনার অন্যান্য ডিভাইসে পরিবর্তনগুলি সিঙ্ক হয়ে যাবে।</translation>
 <translation id="6187719147498869044">হাঙ্গেরিয়ান</translation>
 <translation id="6198252989419008588">পিন পরিবর্তন করুন</translation>
 <translation id="6199801702437275229">স্থান তথ্যের জন্য অপেক্ষারত...</translation>
@@ -764,6 +772,7 @@
 <translation id="6989942356279143254">সুইডিশ</translation>
 <translation id="6990081529015358884">আপনার ডিভাইসে স্পেশ নেই৷</translation>
 <translation id="6993826899923627728">এই আইটেমগুলি আপনার ট্র্যাশে রয়েছে</translation>
+<translation id="6996593023542748157"><ph name="VM_NAME" /> ব্যবহার করে ফোল্ডার শেয়ার করুন</translation>
 <translation id="7008426324576352165">আপলোড সম্পূর্ণ করার জন্য আপনার প্রতিষ্ঠানের আরও স্টোরেজ প্রয়োজন।</translation>
 <translation id="7009985720488544166">অ্যাডমিনিস্ট্রেটরের সেট করা নীতি অনুযায়ী <ph name="COUNT" />টি ফাইল সরিয়ে দেওয়ার সুবিধা ব্লক করা হয়েছে</translation>
 <translation id="7012943028104619157"><ph name="ROOT_TITLE" /> (<ph name="ROOT_SUMMARY" />)</translation>
@@ -890,7 +899,6 @@
 <translation id="7911118814695487383">Linux</translation>
 <translation id="7920501309908018401">আমার ড্রাইভে থাকা আপনার ফাইল অটোমেটিক আপনার Chromebook-এ সিঙ্ক করে যাবে, তাই ইন্টারনেট কানেকশন ছাড়াই আপনি সেগুলি অ্যাক্সেস করতে পারবেন।</translation>
 <translation id="7925247922861151263">AAA চেক করা যায়নি</translation>
-<translation id="7925686952655276919">সিঙ্ক-এর জন্য মোবাইল ডেটা ব্যবহার করবেন না</translation>
 <translation id="7928710562641958568">বের করে দেওযার ডিভাইস</translation>
 <translation id="7933875256234974853">Drive ফাইল সিঙ্ক করার জন্য প্রস্তুত হচ্ছে...</translation>
 <translation id="7943385054491506837">মার্কিন যুক্তরাষ্ট্রীয় কোলেম্যাক</translation>
@@ -913,6 +921,7 @@
 <translation id="8087576439476816834"><ph name="PROFILE_NAME" />, ডাউনলোড করুন</translation>
 <translation id="8106045200081704138">আমার সাথে শেয়ার করা</translation>
 <translation id="8116072619078571545">বরফ জল</translation>
+<translation id="8120392982188717723">পরিমাপ করা নেটওয়ার্ক সিঙ্ক করতে দিন</translation>
 <translation id="8124093710070495550">সিঙ্ক করা সম্পর্কিত সমস্যা</translation>
 <translation id="8128733386027980860">ইংরেজি (যুক্তরাজ্য) ভাষায় Dvorak কীবোর্ড</translation>
 <translation id="8137331602592933310">"<ph name="FILENAME" />" আপনার সাথে শেয়ার করা হয়েছে৷ আপনি এটিকে মুছে ফেলতে পারবেন না কারণ আপনি এটির মালিক নন৷</translation>
@@ -950,6 +959,7 @@
 <translation id="8335837413233998004">বেলারুশীয়</translation>
 <translation id="8336153091935557858">গতলাক <ph name="YESTERDAY_DAYTIME" /></translation>
 <translation id="8342318071240498787">একই নাম সহ ফাইল অথবা একটি নির্দেশিকা ইতিমধ্যেই বিদ্যমান আছে৷</translation>
+<translation id="83651606385705612"><ph name="VM_NAME" />কে <ph name="FOLDER_NAME" /> ফোল্ডারে থাকা ফাইল অ্যাক্সেস করার অনুমতি দিন</translation>
 <translation id="8372369524088641025">খারাপ WEP কী</translation>
 <translation id="8372852072747894550">গ্রিক</translation>
 <translation id="8386903983509584791">স্ক্যান করা সম্পন্ন হয়েছে</translation>
@@ -959,6 +969,7 @@
 <translation id="8408068190360279472"><ph name="NETWORK_TYPE" /> নেটওয়ার্ক, কানেক্ট করা হচ্ছে</translation>
 <translation id="8425213833346101688">পরিবর্তন</translation>
 <translation id="8428213095426709021">সেটিংস</translation>
+<translation id="8429998526804961548"><ph name="VM_NAME" /> দিয়ে <ph name="NUMBER_OF_ITEMS" />টি ফোল্ডার শেয়ার করা হয়েছে</translation>
 <translation id="8431909052837336408">সিম পিন পরিবর্তন করুন</translation>
 <translation id="8437209419043462667">মার্কিন যুক্তরাষ্ট্রীয়</translation>
 <translation id="8452135315243592079">সিম কার্ড পাওয়া যাচ্ছে না</translation>
@@ -1002,6 +1013,7 @@
 <translation id="8698877009525468705">এই ফাইলটি গোপনীয় এবং অ্যাডমিনিস্ট্রেটর নীতির মাধ্যমে প্রযোজ্য বিধিনিষেধ পালন করেই এটি শেয়ার করা হয়।</translation>
 <translation id="8712637175834984815">বুঝেছি</translation>
 <translation id="8713112442029511308">মল্টিজ</translation>
+<translation id="8714138378966541668">পরিষেবা প্রদানকারী লক করে দিয়েছে</translation>
 <translation id="8714406895390098252">সাইকেল</translation>
 <translation id="8719721339511222681"><ph name="ENTRY_NAME" /> বেছে নেওয়া হয়েছে।</translation>
 <translation id="872537912056138402">ক্রোয়েশিয়</translation>
@@ -1039,6 +1051,7 @@
 <translation id="9038620279323455325">"<ph name="FILE_NAME" />" নামের ফাইল আগে থেকেই আছে। অন্য একটি নাম লিখুন।</translation>
 <translation id="9046895021617826162">সংযোগ ব্যর্থ হয়েছে</translation>
 <translation id="9065512565307033593">আপনি যাচাই না করলে, আপনার নেটওয়ার্ক অ্যাক্সেস করার সুবিধা বন্ধ হয়ে যাবে।</translation>
+<translation id="9083722265619106011">{0,plural, =1{১টি সতর্কতা।}one{<ph name="COUNT" />টি সতর্কতা।}other{<ph name="COUNT" />টি সতর্কতা।}}</translation>
 <translation id="908378762078012445">রাশিয়ান ভাষায় ফোনেটিক আটসিল (AATSEEL) কীবোর্ড</translation>
 <translation id="9086302186042011942">সিঙ্ক হচ্ছে</translation>
 <translation id="9099674669267916096">পৃষ্ঠার সংখ্যা</translation>

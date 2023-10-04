@@ -8,7 +8,7 @@
 #import "components/content_settings/core/browser/host_content_settings_map.h"
 #import "components/content_settings/core/common/content_settings.h"
 #import "components/supervised_user/core/common/supervised_user_utils.h"
-#import "ios/chrome/browser/content_settings/host_content_settings_map_factory.h"
+#import "ios/chrome/browser/content_settings/model/host_content_settings_map_factory.h"
 #import "ios/chrome/browser/overlays/public/overlay_callback_manager.h"
 #import "ios/chrome/browser/overlays/public/overlay_modality.h"
 #import "ios/chrome/browser/overlays/public/overlay_request.h"
@@ -17,7 +17,8 @@
 #import "ios/chrome/browser/overlays/public/web_content_area/http_auth_overlay.h"
 #import "ios/chrome/browser/permissions/permissions_tab_helper.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
-#import "ios/chrome/browser/snapshots/snapshot_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
+#import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
 #import "ios/chrome/browser/ui/context_menu/context_menu_configuration_provider.h"
 #import "ios/chrome/browser/ui/dialogs/nsurl_protection_space_util.h"
 #import "ios/chrome/browser/url_loading/url_loading_browser_agent.h"
@@ -25,7 +26,6 @@
 #import "ios/chrome/browser/web/blocked_popup_tab_helper.h"
 #import "ios/chrome/browser/web/repost_form_tab_helper.h"
 #import "ios/chrome/browser/web/web_state_container_view_provider.h"
-#import "ios/chrome/browser/web_state_list/tab_insertion_browser_agent.h"
 #import "ios/components/security_interstitials/ios_blocking_page_tab_helper.h"
 #import "ios/web/public/permissions/permissions.h"
 #import "ios/web/public/ui/context_menu_params.h"
@@ -230,25 +230,25 @@ web::WebState* WebStateDelegateBrowserAgent::OpenURLFromWebState(
   load_params.is_renderer_initiated = params.is_renderer_initiated;
   load_params.virtual_url = params.virtual_url;
 
+  TabInsertion::Params insertion_params;
+  insertion_params.parent = source;
+
   switch (params.disposition) {
     case WindowOpenDisposition::NEW_FOREGROUND_TAB:
     case WindowOpenDisposition::NEW_BACKGROUND_TAB: {
-      return tab_insertion_agent_->InsertWebState(
-          load_params, source, false, TabInsertion::kPositionAutomatically,
-          (params.disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB),
-          /*inherit_opener=*/false, /*should_show_start_surface=*/false,
-          /*should_skip_new_tab_animation=*/false);
+      insertion_params.in_background =
+          params.disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB;
+      return tab_insertion_agent_->InsertWebState(load_params,
+                                                  insertion_params);
     }
     case WindowOpenDisposition::CURRENT_TAB: {
       source->GetNavigationManager()->LoadURLWithParams(load_params);
       return source;
     }
     case WindowOpenDisposition::NEW_POPUP: {
-      return tab_insertion_agent_->InsertWebState(
-          load_params, source, true, TabInsertion::kPositionAutomatically,
-          /*in_background=*/false, /*inherit_opener=*/false,
-          /*should_show_start_surface=*/false,
-          /*should_skip_new_tab_animation=*/false);
+      insertion_params.opened_by_dom = true;
+      return tab_insertion_agent_->InsertWebState(load_params,
+                                                  insertion_params);
     }
     default:
       NOTIMPLEMENTED();

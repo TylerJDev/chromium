@@ -3,20 +3,25 @@
 // found in the LICENSE file.
 
 import '../../definitions/file_manager_private.js';
+import '../../widgets/xf_jellybean.js';
+import 'chrome://resources/cros_components/switch/switch.js';
+import '../../background/js/test_util.js';
 
 import {assert, assertInstanceof} from 'chrome://resources/ash/common/assert.js';
 import {NativeEventTarget as EventTarget} from 'chrome://resources/ash/common/event_target.js';
 import {loadTimeData} from 'chrome://resources/ash/common/load_time_data.m.js';
 import {ColorChangeUpdater} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 
-import {getBulkPinProgress, getDialogCaller, getDlpBlockedComponents, getPreferences} from '../../common/js/api.js';
+import {background} from '../../background/js/file_manager_base.js';
+import {VolumeManagerImpl} from '../../background/js/volume_manager_impl.js';
+import {getBulkPinProgress, getDialogCaller, getDlpBlockedComponents, getDriveConnectionState, getPreferences} from '../../common/js/api.js';
 import {ArrayDataModel} from '../../common/js/array_data_model.js';
 import {DialogType, isFolderDialogType} from '../../common/js/dialog_type.js';
 import {getKeyModifiers, queryDecoratedElement, queryRequiredElement} from '../../common/js/dom_utils.js';
 import {FakeEntryImpl} from '../../common/js/files_app_entry_types.js';
 import {FilesAppState} from '../../common/js/files_app_state.js';
 import {FilteredVolumeManager} from '../../common/js/filtered_volume_manager.js';
-import {metrics} from '../../common/js/metrics.js';
+import {recordEnum, recordInterval, startInterval} from '../../common/js/metrics.js';
 import {ProgressItemState} from '../../common/js/progress_center_common.js';
 import {TrashRootEntry} from '../../common/js/trash.js';
 import {str, util} from '../../common/js/util.js';
@@ -32,12 +37,14 @@ import {FakeEntry, FilesAppDirEntry} from '../../externs/files_app_entry_interfa
 import {ForegroundWindow} from '../../externs/foreground_window.js';
 import {PropStatus} from '../../externs/ts/state.js';
 import {Store} from '../../externs/ts/store.js';
-import {updateBulkPinProgress} from '../../state/actions/bulk_pinning.js';
-import {updatePreferences} from '../../state/actions/preferences.js';
-import {addUiEntry, removeUiEntry} from '../../state/actions/ui_entries.js';
-import {updateSearch} from '../../state/ducks/search.js';
-import {getMyFiles} from '../../state/reducers/all_entries.js';
-import {trashRootKey} from '../../state/reducers/volumes.js';
+import {getMyFiles} from '../../state/ducks/all_entries.js';
+import {updateBulkPinProgress} from '../../state/ducks/bulk_pinning.js';
+import {updateDeviceConnectionState} from '../../state/ducks/device.js';
+import {updateDriveConnectionStatus} from '../../state/ducks/drive.js';
+import {updatePreferences} from '../../state/ducks/preferences.js';
+import {getDefaultSearchOptions, updateSearch} from '../../state/ducks/search.js';
+import {addUiEntry, removeUiEntry} from '../../state/ducks/ui_entries.js';
+import {trashRootKey} from '../../state/ducks/volumes.js';
 import {getEmptyState, getStore} from '../../state/store.js';
 
 import {ActionsController} from './actions_controller.js';
@@ -50,7 +57,6 @@ import {DialogActionController} from './dialog_action_controller.js';
 import {FileFilter} from './directory_contents.js';
 import {DirectoryModel} from './directory_model.js';
 import {DirectoryTreeNamingController} from './directory_tree_naming_controller.js';
-import {DriveDialogController} from './drive_dialog_controller.js';
 import {importElements} from './elements_importer.js';
 import {EmptyFolderController} from './empty_folder_controller.js';
 import {CommandHandler, CommandUtil} from './file_manager_commands.js';
@@ -181,12 +187,6 @@ export class FileManager extends EventTarget {
      * @private {ActionsController}
      */
     this.actionsController_ = null;
-
-    /**
-     * Controller for showing dialogs from Drive.
-     * @private {?DriveDialogController}
-     */
-    this.driveDialogController_ = null;
 
     /**
      * Handler for command events.
@@ -594,10 +594,10 @@ export class FileManager extends EventTarget {
    * @private
    */
   async startInitSettings_() {
-    metrics.startInterval('Load.InitSettings');
+    startInterval('Load.InitSettings');
     this.appStateController_ = new AppStateController(this.dialogType);
     await this.appStateController_.loadInitialViewOptions();
-    metrics.recordInterval('Load.InitSettings');
+    recordInterval('Load.InitSettings');
   }
 
   /**
@@ -691,14 +691,8 @@ export class FileManager extends EventTarget {
         /** @type {!A11yAnnounce} */ (this.ui_));
     this.actionsController_ = new ActionsController(
         this.volumeManager_, assert(this.metadataModel_), this.directoryModel_,
-        assert(this.folderShortcutsModel_),
-        this.fileBrowserBackground_.driveSyncHandler, this.selectionHandler_,
+        assert(this.folderShortcutsModel_), this.selectionHandler_,
         assert(this.ui_));
-    if (this.dialogType === DialogType.FULL_PAGE) {
-      this.driveDialogController_ = new DriveDialogController(this.ui_);
-      this.fileBrowserBackground_.driveSyncHandler.addDialog(
-          window.appID, this.driveDialogController_);
-    }
     this.lastModifiedController_ = new LastModifiedController(
         this.ui_.listContainer.table, this.directoryModel_);
 
@@ -907,14 +901,14 @@ export class FileManager extends EventTarget {
     this.dialogDom_ = dialogDom;
     this.document_ = this.dialogDom_.ownerDocument;
 
-    metrics.startInterval('Load.InitDocuments');
+    startInterval('Load.InitDocuments');
     // importElements depend on loadTimeData which is initialized in the
     // initBackgroundPagePromise_.
     await this.initBackgroundPagePromise_;
     await importElements();
-    metrics.recordInterval('Load.InitDocuments');
+    recordInterval('Load.InitDocuments');
 
-    metrics.startInterval('Load.InitUI');
+    startInterval('Load.InitUI');
     this.document_.documentElement.classList.add('files-ng');
     this.dialogDom_.classList.add('files-ng');
 
@@ -938,7 +932,13 @@ export class FileManager extends EventTarget {
     const store = getStore();
     store.init(getEmptyState());
     this.initUIFocus_();
-    metrics.recordInterval('Load.InitUI');
+    recordInterval('Load.InitUI');
+
+    chrome.fileManagerPrivate.onDeviceConnectionStatusChanged.addListener(
+        this.updateDeviceConnectionState_.bind(this));
+    chrome.fileManagerPrivate.getDeviceConnectionState(
+        this.updateDeviceConnectionState_.bind(this));
+
     return fileSystemUIPromise;
   }
 
@@ -983,7 +983,7 @@ export class FileManager extends EventTarget {
    * @private
    */
   async startInitBackgroundPage_() {
-    metrics.startInterval('Load.InitBackgroundPage');
+    startInterval('Load.InitBackgroundPage');
 
     this.fileBrowserBackground_ =
         /** @type {!ForegroundWindow} */ (window).background;
@@ -1002,7 +1002,7 @@ export class FileManager extends EventTarget {
         this.fileBrowserBackground_.fileOperationManager;
     this.crostini_ = this.fileBrowserBackground_.crostini;
 
-    metrics.recordInterval('Load.InitBackgroundPage');
+    recordInterval('Load.InitBackgroundPage');
   }
 
   /**
@@ -1030,6 +1030,8 @@ export class FileManager extends EventTarget {
         allowedPaths, writableOnly,
         this.fileBrowserBackground_.getVolumeManager(),
         this.launchParams_.volumeFilter, disabledVolumes);
+
+    await this.fileBrowserBackground_.getVolumeManager();
   }
 
   /**
@@ -1044,7 +1046,7 @@ export class FileManager extends EventTarget {
     // array enumerating the types. It must be in sync with
     // FileDialogType enum in tools/metrics/histograms/histogram.xml.
     const metricName = 'SWA.Create';
-    metrics.recordEnum(metricName, this.dialogType, [
+    recordEnum(metricName, this.dialogType, [
       DialogType.SELECT_FOLDER,
       DialogType.SELECT_UPLOAD_FOLDER,
       DialogType.SELECT_SAVEAS_FILE,
@@ -1191,8 +1193,6 @@ export class FileManager extends EventTarget {
     this.searchController_ = new SearchController(
         this.ui_.searchContainer,
         this.directoryModel_,
-        this.volumeManager_,
-        assert(this.taskController_),
         assert(this.ui_),
     );
 
@@ -1303,6 +1303,11 @@ export class FileManager extends EventTarget {
       this.onPreferencesChanged_();
     });
     this.onPreferencesChanged_();
+
+    chrome.fileManagerPrivate.onDriveConnectionStatusChanged.addListener(() => {
+      this.onDriveConnectionStatusChanged_();
+    });
+    this.onDriveConnectionStatusChanged_();
 
     // The fmp.onCrostiniChanged receives enabled/disabled events via a pref
     // watcher and share/unshare events.  The enabled/disabled prefs are
@@ -1441,7 +1446,7 @@ export class FileManager extends EventTarget {
     // query, and select it if exists.
     const searchQuery = this.launchParams_.searchQuery;
     if (searchQuery) {
-      metrics.startInterval('Load.ProcessInitialSearchQuery');
+      startInterval('Load.ProcessInitialSearchQuery');
       this.store_.dispatch(updateSearch({
         query: searchQuery,
         status: PropStatus.STARTED,
@@ -1457,7 +1462,7 @@ export class FileManager extends EventTarget {
         nextCurrentDirEntry = queryMatchedDirEntry;
       }
       hideSpinnerCallback();
-      metrics.recordInterval('Load.ProcessInitialSearchQuery');
+      recordInterval('Load.ProcessInitialSearchQuery');
     }
 
     // Resolve the currentDirectoryURL to currentDirectoryEntry (if not done by
@@ -1607,7 +1612,8 @@ export class FileManager extends EventTarget {
           this.directoryModel_.selectEntry(opt_selectionEntry);
         }
         if (this.launchParams_.searchQuery) {
-          this.searchController_.setSearchQuery(this.launchParams_.searchQuery);
+          this.searchController_.setSearchQuery(
+              this.launchParams_.searchQuery, getDefaultSearchOptions());
         }
       } else {
         console.warn('No entry for finishSetupCurrentDirectory_');
@@ -1659,10 +1665,6 @@ export class FileManager extends EventTarget {
 
     if (this.ui_ && this.ui_.progressCenterPanel) {
       this.progressCenter.removePanel(this.ui_.progressCenterPanel);
-    }
-
-    if (this.driveDialogController_) {
-      this.fileBrowserBackground_.driveSyncHandler.removeDialog(window.appID);
     }
   }
 
@@ -1757,13 +1759,20 @@ export class FileManager extends EventTarget {
 
     this.updateOfficePrefs_(prefs);
 
-    if (util.isSearchV2Enabled()) {
-      this.ui_.nudgeContainer.showNudge(NudgeType['SEARCH_V2_EDUCATION_NUDGE']);
-    }
-
     if (redraw && !util.isFilesAppExperimental()) {
       this.ui_.directoryTree.redraw(false);
     }
+  }
+
+  async onDriveConnectionStatusChanged_() {
+    let connectionState = null;
+    try {
+      connectionState = await getDriveConnectionState();
+    } catch (e) {
+      console.error('Failed to retrieve drive connection state:', e);
+      return;
+    }
+    this.store_.dispatch(updateDriveConnectionStatus(connectionState));
   }
 
   /**
@@ -1796,6 +1805,15 @@ export class FileManager extends EventTarget {
       this.ui_.nudgeContainer.clearSeen(NudgeType['DRIVE_MOVED_FILE_NUDGE']);
       console.debug('Reset Google Drive move to cloud nudge');
     }
+  }
+
+  /**
+   * Invoked when the device connection status changes.
+   * @param {chrome.fileManagerPrivate.DeviceConnectionState} state
+   * @private
+   */
+  updateDeviceConnectionState_(state) {
+    this.store_.dispatch(updateDeviceConnectionState({connection: state}));
   }
 
   /**

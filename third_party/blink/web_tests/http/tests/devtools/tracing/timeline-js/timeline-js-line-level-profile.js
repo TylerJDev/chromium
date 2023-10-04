@@ -5,9 +5,10 @@
 import {TestRunner} from 'test_runner';
 import {SourcesTestRunner} from 'sources_test_runner';
 
+import * as SDK from 'devtools/core/sdk/sdk.js';
+
 (async function() {
   TestRunner.addResult(`Tests that a line-level CPU profile is shown in the text editor.\n`);
-  await TestRunner.loadLegacyModule('sources');
   await TestRunner.loadLegacyModule("perf_ui");
   await TestRunner.loadLegacyModule('source_frame');
   await TestRunner.showPanel('timeline');
@@ -54,7 +55,7 @@ import {SourcesTestRunner} from 'sources_test_runner';
     TestRunner.addResult(TestRunner.formatters.formatAsURL(url));
     cpuProfile.nodes.forEach(n => n.callFrame.url = url);
     const lineProfile = PerfUI.LineLevelProfile.Performance.instance();
-    lineProfile.appendCPUProfile(new SDK.CPUProfileDataModel(cpuProfile));
+    lineProfile.appendCPUProfile(new SDK.CPUProfileDataModel.CPUProfileDataModel(cpuProfile));
     setTimeout(() => TestRunner.completeTest(), 0);
   }
 })();

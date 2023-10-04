@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Kopyalamağa keçildi</translation>
 <translation id="2031987842108996681">Qırmızı kanal</translation>
 <translation id="2060505056492490888">'<ph name="DOT" />' '<ph name="INVALIDDOMAIN" />' daxilində yanlış pozisiya işlətdi.</translation>
+<translation id="2068711044993563745">Minimum dəyər (<ph name="MINIMUM" />) maksimum dəyərdən (<ph name="MAXIMUM" />) az olmalıdır.</translation>
 <translation id="2148716181193084225">Bu gün</translation>
 <translation id="2226276347425096477">Mətni <ph name="MAX_CHARACTERS" /> və ya daha az simvola qədər azaldın (hazırda <ph name="CURRENT_LENGTH" /> simvol işlədirsiniz).</translation>
 <translation id="2247351761944213033"><ph name="WEEKNUMBER" /> həftə, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Davam etmək istəyirsinizsə, bu qutunu işarələyin.</translation>
 <translation id="2908441821576996758">Lütfən, e-poçt ünvanlarının vergüllə ayrılmış siyahısını daxil edin.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">audiotəsvir menyusunu göstərin</translation>
 <translation id="3075154866155599887">Lütfən, etibarlı dəyər daxil edin. Sahə natamamdır və ya tarix yanlışdır.</translation>
 <translation id="310520048233152454">URL daxil edin.</translation>
 <translation id="3220661731597678625">cari addım</translation>

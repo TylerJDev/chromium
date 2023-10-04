@@ -6,10 +6,11 @@
 load("//lib/args.star", "args")
 load("//lib/builder_config.star", "builder_config")
 load("//lib/builder_health_indicators.star", "health_spec")
-load("//lib/builders.star", "os", "reclient", "sheriff_rotations")
+load("//lib/builders.star", "cpu", "os", "reclient", "sheriff_rotations")
 load("//lib/branches.star", "branches")
 load("//lib/ci.star", "ci")
 load("//lib/consoles.star", "consoles")
+load("//lib/gn_args.star", "gn_args")
 
 ci.defaults.set(
     executable = ci.DEFAULT_EXECUTABLE,
@@ -42,40 +43,6 @@ consoles.console_view(
         "win": "*type*",
     },
     include_experimental_builds = True,
-)
-
-ci.builder(
-    name = "android-archive-dbg",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(
-            config = "chromium",
-            apply_configs = [
-                "android",
-            ],
-        ),
-        chromium_config = builder_config.chromium_config(
-            config = "android",
-            apply_configs = [
-                "clobber",
-                "mb",
-            ],
-            build_config = builder_config.build_config.DEBUG,
-            target_arch = builder_config.target_arch.ARM,
-            target_platform = builder_config.target_platform.ANDROID,
-        ),
-        android_config = builder_config.android_config(
-            config = "main_builder",
-        ),
-    ),
-    cores = 8,
-    tree_closing = True,
-    # Bump to 32 if needed.
-    console_view_entry = consoles.console_view_entry(
-        category = "android",
-        short_name = "dbg",
-    ),
-    execution_timeout = 4 * time.hour,
-    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
 
 ci.builder(
@@ -237,6 +204,46 @@ ci.builder(
     # TODO: Change this back down to something reasonable once these builders
     # have populated their cached by getting through the compile step
     execution_timeout = 10 * time.hour,
+    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
+)
+
+ci.builder(
+    name = "linux-chromeos-archive-rel",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "chromeos",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.CHROMEOS,
+        ),
+        build_gs_bucket = "chromium-chromiumos-archive",
+    ),
+    cores = 8,
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "cros",
+        short_name = "lnx",
+    ),
+    properties = {
+        # The format of these properties is defined at archive/properties.proto
+        "$build/archive": {
+            "source_side_spec_path": [
+                "src",
+                "infra",
+                "archive_config",
+                "linux-chromiumos-full.json",
+            ],
+        },
+    },
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
 
@@ -415,34 +422,6 @@ ci.builder(
 )
 
 ci.builder(
-    name = "linux-archive-dbg",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(
-            config = "chromium",
-            apply_configs = [
-            ],
-        ),
-        chromium_config = builder_config.chromium_config(
-            config = "chromium",
-            apply_configs = [
-                "clobber",
-                "mb",
-            ],
-            build_config = builder_config.build_config.DEBUG,
-            target_bits = 64,
-        ),
-    ),
-    # Bump to 32 if needed.
-    cores = 8,
-    tree_closing = True,
-    console_view_entry = consoles.console_view_entry(
-        category = "linux",
-        short_name = "dbg",
-    ),
-    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
-)
-
-ci.builder(
     name = "linux-archive-rel",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(
@@ -466,6 +445,7 @@ ci.builder(
         category = "linux",
         short_name = "rel",
     ),
+    contact_team_email = "chrome-browser-infra-team@google.com",
     notifies = ["linux-archive-rel"],
     properties = {
         # The format of these properties is defined at archive/properties.proto
@@ -506,35 +486,13 @@ ci.builder(
         short_name = "off",
     ),
     execution_timeout = 7 * time.hour,
+    gn_args = gn_args.config(
+        configs = ["official_optimize", "reclient"],
+    ),
     health_spec = health_spec.modified_default(
         build_time = struct(
             p50_mins = 240,
         ),
-    ),
-)
-
-ci.builder(
-    name = "mac-archive-dbg",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(
-            config = "chromium",
-        ),
-        chromium_config = builder_config.chromium_config(
-            config = "chromium",
-            apply_configs = [
-                "clobber",
-                "mb",
-            ],
-            build_config = builder_config.build_config.DEBUG,
-            target_bits = 64,
-        ),
-    ),
-    cores = 12,
-    os = os.MAC_DEFAULT,
-    tree_closing = True,
-    console_view_entry = consoles.console_view_entry(
-        category = "mac",
-        short_name = "dbg",
     ),
 )
 
@@ -572,31 +530,6 @@ ci.builder(
             ],
         },
     },
-)
-
-ci.builder(
-    name = "mac-arm64-archive-dbg",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(
-            config = "chromium",
-        ),
-        chromium_config = builder_config.chromium_config(
-            config = "chromium",
-            apply_configs = [
-                "clobber",
-                "mb",
-            ],
-            build_config = builder_config.build_config.DEBUG,
-            target_bits = 64,
-        ),
-    ),
-    cores = 12,
-    os = os.MAC_DEFAULT,
-    tree_closing = True,
-    console_view_entry = consoles.console_view_entry(
-        category = "mac|arm",
-        short_name = "dbg",
-    ),
 )
 
 ci.builder(
@@ -655,35 +588,15 @@ ci.builder(
     ),
     builderless = False,
     os = os.MAC_ANY,
+    cpu = cpu.ARM64,
     console_view_entry = consoles.console_view_entry(
         category = "mac",
         short_name = "off",
     ),
+    contact_team_email = "bling-engprod@google.com",
     # TODO(crbug.com/1279290) builds with PGO change take long time.
     # Keep in sync with mac-official in try/chromium.star.
     execution_timeout = 15 * time.hour,
-)
-
-ci.builder(
-    name = "win-archive-dbg",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(config = "chromium"),
-        chromium_config = builder_config.chromium_config(
-            config = "chromium",
-            apply_configs = [
-                "clobber",
-                "mb",
-            ],
-            build_config = builder_config.build_config.DEBUG,
-            target_bits = 64,
-        ),
-    ),
-    cores = 32,
-    os = os.WINDOWS_DEFAULT,
-    console_view_entry = consoles.console_view_entry(
-        category = "win|dbg",
-        short_name = "64",
-    ),
 )
 
 ci.builder(
@@ -749,30 +662,6 @@ ci.builder(
     # TODO(crbug.com/1155416) builds with PGO change take long time.
     execution_timeout = 7 * time.hour,
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
-)
-
-ci.builder(
-    name = "win32-archive-dbg",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(
-            config = "chromium",
-        ),
-        chromium_config = builder_config.chromium_config(
-            config = "chromium",
-            apply_configs = [
-                "clobber",
-                "mb",
-            ],
-            build_config = builder_config.build_config.DEBUG,
-            target_bits = 32,
-        ),
-    ),
-    cores = 32,
-    os = os.WINDOWS_DEFAULT,
-    console_view_entry = consoles.console_view_entry(
-        category = "win|dbg",
-        short_name = "32",
-    ),
 )
 
 ci.builder(

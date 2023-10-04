@@ -37,7 +37,9 @@ class CanvasColorCache;
 class CanvasImageSource;
 class Color;
 class Image;
+class OffscreenCanvas;
 class Path2D;
+class TextMetrics;
 struct V8CanvasStyle;
 enum class V8CanvasStyleType;
 class V8UnionCanvasFilterOrString;
@@ -46,6 +48,11 @@ using cc::UsePaintCache;
 class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
  public:
   static constexpr unsigned kFallbackToCPUAfterReadbacks = 2;
+
+  // Try to restore context 4 times in the event that the context is lost. If
+  // the context is unable to be restored after 4 attempts, we discard the
+  // backing storage of the context and allocate a new one.
+  static const unsigned kMaxTryRestoreContextAttempts = 4;
 
   BaseRenderingContext2D(const BaseRenderingContext2D&) = delete;
   BaseRenderingContext2D& operator=(const BaseRenderingContext2D&) = delete;
@@ -255,10 +262,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   virtual int Width() const = 0;
   virtual int Height() const = 0;
 
-  virtual bool IsAccelerated() const {
-    NOTREACHED();
-    return false;
-  }
+  bool IsAccelerated() const;
   virtual bool CanCreateCanvas2dResourceProvider() const = 0;
 
   virtual RespectImageOrientationEnum RespectImageOrientation() const = 0;
@@ -279,9 +283,9 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
                         CanvasPerformanceMonitor::DrawType) = 0;
 
   virtual sk_sp<PaintFilter> StateGetFilter() = 0;
-  virtual void SnapshotStateForFilter() = 0;
+  void SnapshotStateForFilter();
 
-  CanvasRenderingContextHost* GetCanvasRenderingContextHost() override {
+  virtual CanvasRenderingContextHost* GetCanvasRenderingContextHost() const {
     return nullptr;
   }
 
@@ -306,6 +310,9 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
 
   void RestoreMatrixClipStack(cc::PaintCanvas*) const;
 
+  String direction() const;
+  void setDirection(const String&);
+
   String textAlign() const;
   void setTextAlign(const String&);
 
@@ -313,15 +320,31 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   void setTextBaseline(const String&);
 
   String letterSpacing() const;
+  void setLetterSpacing(const String&);
+
   String wordSpacing() const;
+  void setWordSpacing(const String&);
+
   String textRendering() const;
+  void setTextRendering(const String&);
 
   String fontKerning() const;
+  void setFontKerning(const String&);
+
   String fontStretch() const;
+  void setFontStretch(const String&);
+
   String fontVariantCaps() const;
+  void setFontVariantCaps(const String&);
 
   String font() const;
   void setFont(const String& new_font);
+
+  void fillText(const String& text, double x, double y);
+  void fillText(const String& text, double x, double y, double max_width);
+  void strokeText(const String& text, double x, double y);
+  void strokeText(const String& text, double x, double y, double max_width);
+  TextMetrics* measureText(const String& text);
 
   void Trace(Visitor*) const override;
 
@@ -418,7 +441,12 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   unsigned try_restore_context_attempt_count_ = 0;
 
  protected:
-  virtual void WillUseCurrentFont() const;
+  virtual HTMLCanvasElement* HostAsHTMLCanvasElement() const;
+  virtual OffscreenCanvas* HostAsOffscreenCanvas() const;
+  virtual FontSelector* GetFontSelector() const;
+  const Font& AccessFont(HTMLCanvasElement* canvas);
+
+  void WillUseCurrentFont() const;
   virtual bool WillSetFont() const;
   virtual bool ResolveFont(const String& new_font);
   virtual bool CurrentFontResolvedAndUpToDate() const;
@@ -461,8 +489,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
     NOTREACHED();
     return false;
   }
-  virtual scoped_refptr<StaticBitmapImage> GetImage(
-      CanvasResourceProvider::FlushReason) {
+  virtual scoped_refptr<StaticBitmapImage> GetImage(FlushReason) {
     NOTREACHED();
     return nullptr;
   }
@@ -477,7 +504,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   int layer_count_ = 0;
   AntiAliasingMode clip_antialiasing_;
 
-  virtual void FinalizeFrame(CanvasResourceProvider::FlushReason) {}
+  virtual void FinalizeFrame(FlushReason) {}
 
   float GetFontBaseline(const SimpleFontData&) const;
   virtual void DispatchContextLostEvent(TimerBase*);
@@ -541,6 +568,12 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
       CanvasRenderingContext::kNotLostContext};
 
  private:
+  void DrawTextInternal(const String& text,
+                        double x,
+                        double y,
+                        CanvasRenderingContext2DState::PaintType paint_type,
+                        double* max_width = nullptr);
+
   // Returns the color from `v8_style`. This may return a cached value as well
   // as updating the cache (if possible).
   bool ExtractColorFromV8ValueAndUpdateCache(const V8CanvasStyle& v8_style,
@@ -662,7 +695,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
     return false;
   }
 
-  virtual void FlushCanvas(CanvasResourceProvider::FlushReason) = 0;
+  virtual void FlushCanvas(FlushReason) = 0;
 
   // Only call if identifiability_study_helper_.ShouldUpdateBuilder() returns
   // true.
@@ -860,7 +893,7 @@ void BaseRenderingContext2D::DrawInternal(
     // This happens if draw_func called flush() on the PaintCanvas. The flush
     // cannot be performed inside the scope of draw_func because it would break
     // the logic of CompositedDraw.
-    FlushCanvas(CanvasResourceProvider::FlushReason::kVolatileSourceImage);
+    FlushCanvas(FlushReason::kVolatileSourceImage);
   }
 }
 

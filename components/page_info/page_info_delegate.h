@@ -113,9 +113,15 @@ class PageInfoDelegate {
   // the site and relevant permission prompts should be shown respectively.
   virtual bool IsSubresourceFilterActivated(const GURL& site_url) = 0;
 
+  // True if the site has registered for auto picture-in-picture.
+  virtual bool HasAutoPictureInPictureBeenRegistered() = 0;
+
   virtual std::unique_ptr<
       content_settings::PageSpecificContentSettings::Delegate>
   GetPageSpecificContentSettingsDelegate() = 0;
+  virtual bool IsTrackingProtection3pcdEnabled() = 0;
+  virtual bool AreAllThirdPartyCookiesBlocked() = 0;
+
   virtual bool IsContentDisplayedInVrHeadset() = 0;
   virtual security_state::SecurityLevel GetSecurityLevel() = 0;
   virtual security_state::VisibleSecurityState GetVisibleSecurityState() = 0;

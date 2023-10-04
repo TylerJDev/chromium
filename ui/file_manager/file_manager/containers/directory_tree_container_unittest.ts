@@ -7,7 +7,6 @@ import {assertArrayEquals, assertEquals, assertFalse, assertTrue} from 'chrome:/
 
 import {MockVolumeManager} from '../background/js/mock_volume_manager.js';
 import {EntryList, FakeEntryImpl, VolumeEntry} from '../common/js/files_app_entry_types.js';
-import {metrics} from '../common/js/metrics.js';
 import {installMockChrome} from '../common/js/mock_chrome.js';
 import {MockFileSystem} from '../common/js/mock_entry.js';
 import {waitUntil} from '../common/js/test_error_reporting.js';
@@ -17,10 +16,9 @@ import {State} from '../externs/ts/state.js';
 import {MetadataItem} from '../foreground/js/metadata/metadata_item.js';
 import {MetadataModel} from '../foreground/js/metadata/metadata_model.js';
 import {MockMetadataModel} from '../foreground/js/metadata/mock_metadata.js';
-import {addVolume, removeVolume} from '../state/actions/volumes.js';
+import {convertEntryToFileData} from '../state/ducks/all_entries.js';
+import {addVolume, convertVolumeInfoAndMetadataToVolume, driveRootEntryListKey, removeVolume} from '../state/ducks/volumes.js';
 import {createFakeVolumeMetadata, setUpFileManagerOnWindow, setupStore} from '../state/for_tests.js';
-import {convertEntryToFileData} from '../state/reducers/all_entries.js';
-import {convertVolumeInfoAndMetadataToVolume, driveRootEntryListKey} from '../state/reducers/volumes.js';
 import {getEmptyState, getEntry, getFileData, getStore} from '../state/store.js';
 import {XfTree} from '../widgets/xf_tree.js';
 
@@ -61,14 +59,6 @@ export function tearDown() {
   }
   document.body.innerHTML = window.trustedTypes!.emptyHTML;
 }
-
-/**
- * Mock metrics.
- */
-metrics.recordEnum = function() {};
-metrics.recordSmallCount = function() {};
-metrics.startInterval = function() {};
-metrics.recordInterval = function() {};
 
 /**
  * Returns a mock MetadataModel.

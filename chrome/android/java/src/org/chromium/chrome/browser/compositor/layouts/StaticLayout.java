@@ -144,7 +144,8 @@ public class StaticLayout extends Layout {
         mViewHost = viewHost;
         mRequestSupplier = requestSupplier;
 
-        setTabModelSelector(tabModelSelector, tabContentManager);
+        setTabContentManager(tabContentManager);
+        setTabModelSelector(tabModelSelector);
 
         mModel = new PropertyModel.Builder(LayoutTab.ALL_KEYS)
                          .with(LayoutTab.TAB_ID, Tab.INVALID_TAB_ID)
@@ -186,19 +187,17 @@ public class StaticLayout extends Layout {
         } else {
             mSceneLayer = new StaticTabSceneLayer();
         }
-        mSceneLayer.setTabContentManager(tabContentManager);
+        mSceneLayer.setTabContentManager(mTabContentManager);
 
         mMcp = CompositorModelChangeProcessor.create(
                 mModel, mSceneLayer, StaticTabSceneLayer::bind, mRequestSupplier);
     }
 
     @Override
-    public void setTabModelSelector(
-            TabModelSelector tabModelSelector, TabContentManager tabContentManager) {
+    public void setTabModelSelector(TabModelSelector tabModelSelector) {
         assert tabModelSelector != null;
-        assert tabContentManager != null;
         assert mTabModelSelector == null : "The TabModelSelector should set at most once";
-        super.setTabModelSelector(tabModelSelector, tabContentManager);
+        super.setTabModelSelector(tabModelSelector);
 
         // TODO(crbug.com/1070281): Investigating to use ActivityTabProvider instead.
         mTabModelSelectorTabModelObserver = new TabModelSelectorTabModelObserver(tabModelSelector) {
@@ -324,8 +323,11 @@ public class StaticLayout extends Layout {
     private void requestFocus(Tab tab) {
         // TODO(crbug/1395495): Investigating guarded removal of this behavior (requesting focus on
         // a tab) since it may no longer be relevant.
+        // We will restrict avoidance of tab focus request only on tablet devices, since this is
+        // known to cause regressions on phones - see crbug.com/1471887 for details.
         if (ChromeFeatureList.isEnabled(
-                    ChromeFeatureList.AVOID_SELECTED_TAB_FOCUS_ON_LAYOUT_DONE_SHOWING)) {
+                    ChromeFeatureList.AVOID_SELECTED_TAB_FOCUS_ON_LAYOUT_DONE_SHOWING)
+                && DeviceFormFactor.isNonMultiDisplayContextOnTablet(mContext)) {
             return;
         }
 

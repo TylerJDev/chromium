@@ -1127,14 +1127,6 @@ TEST_F(PeopleHandlerTest, DashboardClearWhileSettingsOpen_ConfirmSoon) {
 
   handler_->HandleShowSyncSetupUI(base::Value::List());
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-  // Now sync gets reset from the dashboard (the user clicked the "Manage synced
-  // data" link), which results in the first-setup-complete bit being cleared.
-  // While first-setup isn't completed, IsSyncFeatureDisabledViaDashboard() also
-  // returns false.
-  ON_CALL(*mock_sync_service_, IsSyncFeatureDisabledViaDashboard())
-      .WillByDefault(Return(false));
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
   ON_CALL(*mock_sync_service_->GetMockUserSettings(),
           IsInitialSyncFeatureSetupComplete())
       .WillByDefault(Return(false));
@@ -1154,6 +1146,7 @@ TEST_F(PeopleHandlerTest, DashboardClearWhileSettingsOpen_ConfirmSoon) {
                 Return(syncer::SyncService::TransportState::INITIALIZING));
         NotifySyncStateChanged();
       });
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   EXPECT_CALL(*mock_sync_service_->GetMockUserSettings(),
               SetInitialSyncFeatureSetupComplete(
                   syncer::SyncFirstSetupCompleteSource::ADVANCED_FLOW_CONFIRM))
@@ -1163,6 +1156,7 @@ TEST_F(PeopleHandlerTest, DashboardClearWhileSettingsOpen_ConfirmSoon) {
             .WillByDefault(Return(true));
         NotifySyncStateChanged();
       });
+#endif
 
   base::Value::List did_abort;
   did_abort.Append(false);
@@ -1179,15 +1173,16 @@ TEST_F(PeopleHandlerTest, DashboardClearWhileSettingsOpen_ConfirmLater) {
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   // Now sync gets reset from the dashboard (the user clicked the "Manage synced
-  // data" link), which results in the first-setup-complete bit being cleared.
-  // While first-setup isn't completed, IsSyncFeatureDisabledViaDashboard() also
-  // returns false.
+  // data" link), which results in IsSyncFeatureDisabledViaDashboard() returning
+  // true.
   ON_CALL(*mock_sync_service_, IsSyncFeatureDisabledViaDashboard())
-      .WillByDefault(Return(false));
-#endif
+      .WillByDefault(Return(true));
+#else
   ON_CALL(*mock_sync_service_->GetMockUserSettings(),
           IsInitialSyncFeatureSetupComplete())
       .WillByDefault(Return(false));
+#endif
+
   // Sync will eventually start again in transport mode.
   ON_CALL(*mock_sync_service_, GetTransportState())
       .WillByDefault(
@@ -1200,7 +1195,7 @@ TEST_F(PeopleHandlerTest, DashboardClearWhileSettingsOpen_ConfirmLater) {
   ON_CALL(*mock_sync_service_, GetTransportState())
       .WillByDefault(Return(syncer::SyncService::TransportState::ACTIVE));
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-  // The first-setup-complete bit gets set automatically during engine startup.
+  // The first-setup-complete bit is always true on ChromeOS Ash.
   ON_CALL(*mock_sync_service_->GetMockUserSettings(),
           IsInitialSyncFeatureSetupComplete())
       .WillByDefault(Return(true));
@@ -1208,8 +1203,8 @@ TEST_F(PeopleHandlerTest, DashboardClearWhileSettingsOpen_ConfirmLater) {
   NotifySyncStateChanged();
 
   // Now the user confirms sync again. This should set the sync-requested bit
-  // and (if it wasn't automatically set above already) also the
-  // first-setup-complete bit.
+  // and also the first-setup-complete bit (except on ChromeOS Ash where it is
+  // always true).
   EXPECT_CALL(*mock_sync_service_, SetSyncFeatureRequested())
       .WillOnce([&]() {
         ON_CALL(*mock_sync_service_, GetTransportState())
@@ -1284,8 +1279,7 @@ TEST(PeopleHandlerMainProfile, Signout) {
 
   std::unique_ptr<TestingProfile> profile =
       IdentityTestEnvironmentProfileAdaptor::
-          CreateProfileForIdentityTestEnvironment(
-              builder, signin::AccountConsistencyMethod::kMirror);
+          CreateProfileForIdentityTestEnvironment(builder);
 
   auto identity_test_env_adaptor =
       std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile.get());
@@ -1319,8 +1313,7 @@ TEST(PeopleHandlerMainProfile, DeleteProfileCrashes) {
 
   std::unique_ptr<TestingProfile> profile =
       IdentityTestEnvironmentProfileAdaptor::
-          CreateProfileForIdentityTestEnvironment(
-              builder, signin::AccountConsistencyMethod::kMirror);
+          CreateProfileForIdentityTestEnvironment(builder);
 
   PeopleHandler handler(profile.get());
   base::Value::List args;
@@ -1337,8 +1330,7 @@ TEST(PeopleHandlerSecondaryProfile, SignoutWhenSyncing) {
 
   std::unique_ptr<TestingProfile> profile =
       IdentityTestEnvironmentProfileAdaptor::
-          CreateProfileForIdentityTestEnvironment(
-              builder, signin::AccountConsistencyMethod::kMirror);
+          CreateProfileForIdentityTestEnvironment(builder);
 
   auto identity_test_env_adaptor =
       std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile.get());
@@ -1368,8 +1360,7 @@ TEST(PeopleHandlerMainProfile, GetStoredAccountsList) {
 
   std::unique_ptr<TestingProfile> profile =
       IdentityTestEnvironmentProfileAdaptor::
-          CreateProfileForIdentityTestEnvironment(
-              builder, signin::AccountConsistencyMethod::kMirror);
+          CreateProfileForIdentityTestEnvironment(builder);
 
   auto identity_test_env_adaptor =
       std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile.get());
@@ -1400,8 +1391,7 @@ TEST(PeopleHandlerSecondaryProfile, GetStoredAccountsList) {
 
   std::unique_ptr<TestingProfile> profile =
       IdentityTestEnvironmentProfileAdaptor::
-          CreateProfileForIdentityTestEnvironment(
-              builder, signin::AccountConsistencyMethod::kMirror);
+          CreateProfileForIdentityTestEnvironment(builder);
 
   auto identity_test_env_adaptor =
       std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile.get());
@@ -1510,8 +1500,7 @@ class PeopleHandlerSignoutTest : public BrowserWithTestWindowTest {
  private:
   TestingProfile::TestingFactories GetTestingFactories() override {
     return IdentityTestEnvironmentProfileAdaptor::
-        GetIdentityTestEnvironmentFactories(
-            signin::AccountConsistencyMethod::kDice);
+        GetIdentityTestEnvironmentFactories();
   }
 
   void TearDown() override {

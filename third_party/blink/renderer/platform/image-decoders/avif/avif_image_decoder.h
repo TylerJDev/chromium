@@ -36,7 +36,7 @@ class PLATFORM_EXPORT AVIFImageDecoder final : public ImageDecoder {
   String FilenameExtension() const override;
   const AtomicString& MimeType() const override;
   bool ImageIsHighBitDepth() override;
-  void OnSetData(SegmentReader* data) override;
+  void OnSetData(scoped_refptr<SegmentReader> data) override;
   bool GetGainmapInfoAndData(
       SkGainmapInfo& out_gainmap_info,
       scoped_refptr<SegmentReader>& out_gainmap_data) const override;
@@ -75,7 +75,12 @@ class PLATFORM_EXPORT AVIFImageDecoder final : public ImageDecoder {
   };
 
   struct AvifIOData {
-    const SegmentReader* reader = nullptr;
+    AvifIOData();
+    AvifIOData(scoped_refptr<const SegmentReader> reader,
+               bool all_data_received);
+    ~AvifIOData();
+
+    scoped_refptr<const SegmentReader> reader;
     std::vector<uint8_t> buffer ALLOW_DISCOURAGED_TYPE("Required by libavif");
     bool all_data_received = false;
   };
@@ -141,7 +146,7 @@ class PLATFORM_EXPORT AVIFImageDecoder final : public ImageDecoder {
   avifPixelFormat avif_yuv_format_ = AVIF_PIXEL_FORMAT_NONE;
   wtf_size_t decoded_frame_count_ = 0;
   SkYUVColorSpace yuv_color_space_ = SkYUVColorSpace::kIdentity_SkYUVColorSpace;
-  // Used to call UpdateBppHistogram() at most once to record the
+  // Used to call UpdateBppHistogram<"Avif">() at most once to record the
   // bits-per-pixel value of the image when the image is successfully decoded.
   base::OnceCallback<void(gfx::Size, size_t)> update_bpp_histogram_callback_;
   absl::optional<AVIFCleanApertureType> clap_type_;
@@ -159,7 +164,7 @@ class PLATFORM_EXPORT AVIFImageDecoder final : public ImageDecoder {
   // Set by a successful DecodeImage() call to either decoder_->image or
   // cropped_image_.get() depending on whether the image has a 'clap' (clean
   // aperture) property.
-  const avifImage* decoded_image_ = nullptr;
+  raw_ptr<const avifImage, DanglingUntriaged> decoded_image_ = nullptr;
   std::unique_ptr<avifDecoder, decltype(&avifDecoderDestroy)> decoder_{
       nullptr, avifDecoderDestroy};
   avifIO avif_io_ = {};
@@ -167,8 +172,9 @@ class PLATFORM_EXPORT AVIFImageDecoder final : public ImageDecoder {
 
   const AnimationOption animation_option_;
 
-  // Used temporarily during incremental decoding.
-  Vector<uint32_t> previous_last_decoded_row_;
+  // Used temporarily for incremental decoding and for some YUV to RGB color
+  // conversions.
+  Vector<uint8_t> previous_last_decoded_row_;
 };
 
 }  // namespace blink

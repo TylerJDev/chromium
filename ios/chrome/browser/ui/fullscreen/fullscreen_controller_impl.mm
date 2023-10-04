@@ -11,6 +11,7 @@
 #import "ios/chrome/browser/ui/broadcaster/chrome_broadcast_observer_bridge.h"
 #import "ios/chrome/browser/ui/broadcaster/chrome_broadcaster.h"
 #import "ios/chrome/browser/ui/fullscreen/fullscreen_system_notification_observer.h"
+#import "ios/web/common/features.h"
 
 // static
 FullscreenController* FullscreenController::FromBrowser(Browser* browser) {
@@ -38,19 +39,21 @@ FullscreenControllerImpl::FullscreenControllerImpl(Browser* browser)
                     mediator:&mediator_]) {
   DCHECK(broadcaster_);
   [broadcaster_ addObserver:bridge_
-                forSelector:@selector(broadcastScrollViewSize:)];
-  [broadcaster_ addObserver:bridge_
                 forSelector:@selector(broadcastScrollViewContentSize:)];
-  [broadcaster_ addObserver:bridge_
-                forSelector:@selector(broadcastScrollViewContentInset:)];
-  [broadcaster_ addObserver:bridge_
-                forSelector:@selector(broadcastContentScrollOffset:)];
-  [broadcaster_ addObserver:bridge_
-                forSelector:@selector(broadcastScrollViewIsScrolling:)];
-  [broadcaster_ addObserver:bridge_
-                forSelector:@selector(broadcastScrollViewIsZooming:)];
-  [broadcaster_ addObserver:bridge_
-                forSelector:@selector(broadcastScrollViewIsDragging:)];
+  if (base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault)) {
+    [broadcaster_ addObserver:bridge_
+                  forSelector:@selector(broadcastScrollViewSize:)];
+    [broadcaster_ addObserver:bridge_
+                  forSelector:@selector(broadcastScrollViewIsScrolling:)];
+    [broadcaster_ addObserver:bridge_
+                  forSelector:@selector(broadcastScrollViewIsDragging:)];
+    [broadcaster_ addObserver:bridge_
+                  forSelector:@selector(broadcastScrollViewIsZooming:)];
+    [broadcaster_ addObserver:bridge_
+                  forSelector:@selector(broadcastScrollViewContentInset:)];
+    [broadcaster_ addObserver:bridge_
+                  forSelector:@selector(broadcastContentScrollOffset:)];
+  }
   [broadcaster_ addObserver:bridge_
                 forSelector:@selector(broadcastCollapsedTopToolbarHeight:)];
   [broadcaster_ addObserver:bridge_
@@ -66,19 +69,21 @@ FullscreenControllerImpl::~FullscreenControllerImpl() {
   web_state_list_observer_.Disconnect();
   [notification_observer_ disconnect];
   [broadcaster_ removeObserver:bridge_
-                   forSelector:@selector(broadcastScrollViewSize:)];
-  [broadcaster_ removeObserver:bridge_
                    forSelector:@selector(broadcastScrollViewContentSize:)];
-  [broadcaster_ removeObserver:bridge_
-                   forSelector:@selector(broadcastScrollViewContentInset:)];
-  [broadcaster_ removeObserver:bridge_
-                   forSelector:@selector(broadcastContentScrollOffset:)];
-  [broadcaster_ removeObserver:bridge_
-                   forSelector:@selector(broadcastScrollViewIsScrolling:)];
-  [broadcaster_ removeObserver:bridge_
-                   forSelector:@selector(broadcastScrollViewIsZooming:)];
-  [broadcaster_ removeObserver:bridge_
-                   forSelector:@selector(broadcastScrollViewIsDragging:)];
+  if (base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault)) {
+    [broadcaster_ removeObserver:bridge_
+                     forSelector:@selector(broadcastScrollViewSize:)];
+    [broadcaster_ removeObserver:bridge_
+                     forSelector:@selector(broadcastScrollViewIsScrolling:)];
+    [broadcaster_ removeObserver:bridge_
+                     forSelector:@selector(broadcastScrollViewIsDragging:)];
+    [broadcaster_ removeObserver:bridge_
+                     forSelector:@selector(broadcastScrollViewIsZooming:)];
+    [broadcaster_ removeObserver:bridge_
+                     forSelector:@selector(broadcastScrollViewContentInset:)];
+    [broadcaster_ removeObserver:bridge_
+                     forSelector:@selector(broadcastContentScrollOffset:)];
+  }
   [broadcaster_ removeObserver:bridge_
                    forSelector:@selector(broadcastCollapsedTopToolbarHeight:)];
   [broadcaster_ removeObserver:bridge_

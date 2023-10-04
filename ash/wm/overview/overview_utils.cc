@@ -9,6 +9,7 @@
 #include "ash/accessibility/accessibility_controller_impl.h"
 #include "ash/public/cpp/shelf_config.h"
 #include "ash/public/cpp/window_properties.h"
+#include "ash/root_window_controller.h"
 #include "ash/scoped_animation_disabler.h"
 #include "ash/screen_util.h"
 #include "ash/shelf/shelf.h"
@@ -18,12 +19,13 @@
 #include "ash/wm/overview/cleanup_animation_observer.h"
 #include "ash/wm/overview/delayed_animation_observer_impl.h"
 #include "ash/wm/overview/overview_controller.h"
+#include "ash/wm/overview/overview_focus_cycler.h"
 #include "ash/wm/overview/overview_grid.h"
-#include "ash/wm/overview/overview_highlight_controller.h"
 #include "ash/wm/overview/overview_item.h"
 #include "ash/wm/overview/overview_session.h"
 #include "ash/wm/overview/scoped_overview_animation_settings.h"
 #include "ash/wm/splitview/split_view_controller.h"
+#include "ash/wm/splitview/split_view_overview_session.h"
 #include "ash/wm/splitview/split_view_utils.h"
 #include "ash/wm/tablet_mode/tablet_mode_controller.h"
 #include "ash/wm/window_state.h"
@@ -43,6 +45,18 @@
 #include "ui/wm/core/window_animations.h"
 
 namespace ash {
+
+bool IsInOverviewSession() {
+  OverviewController* overview_controller = Shell::Get()->overview_controller();
+  return overview_controller && overview_controller->InOverviewSession();
+}
+
+OverviewSession* GetOverviewSession() {
+  OverviewController* overview_controller = Shell::Get()->overview_controller();
+  return overview_controller && overview_controller->InOverviewSession()
+             ? overview_controller->overview_session()
+             : nullptr;
+}
 
 bool CanCoverAvailableWorkspace(aura::Window* window) {
   SplitViewController* split_view_controller = SplitViewController::Get(window);
@@ -155,11 +169,12 @@ gfx::RectF GetTargetBoundsInScreen(aura::Window* window) {
     ::wm::TranslateRectToScreen(window_iter->parent(), &target_bounds);
     bounds.Union(target_bounds);
   }
+
   return bounds;
 }
 
 void SetTransform(aura::Window* window, const gfx::Transform& transform) {
-  gfx::PointF target_origin(GetTargetBoundsInScreen(window).origin());
+  const gfx::PointF target_origin(GetTargetBoundsInScreen(window).origin());
   for (auto* window_iter :
        window_util::GetVisibleTransientTreeIterator(window)) {
     aura::Window* parent_window = window_iter->parent();
@@ -198,8 +213,23 @@ gfx::Rect GetGridBoundsInScreen(
   auto* split_view_controller = SplitViewController::Get(target_root);
   SplitViewController::State state = split_view_controller->state();
 
+  // `split_view_overview_session` may have started without updating
+  // `split_view_controller->state()`, i.e. from SnapGroupController. Convert
+  // the split view overview session window to a split view state.
+  // TODO(sophiewen): See if we can remove `state` and just check this.
+  if (auto* split_view_overview_session =
+          RootWindowController::ForWindow(target_root)
+              ->split_view_overview_session()) {
+    const chromeos::WindowStateType window_state_type =
+        split_view_overview_session->GetWindowStateType();
+    state = window_state_type == chromeos::WindowStateType::kPrimarySnapped
+                ? SplitViewController::State::kPrimarySnapped
+                : SplitViewController::State::kSecondarySnapped;
+  }
+
   // If we are in splitview mode already just use the given state, otherwise
-  // convert |window_dragging_state| to a split view state.
+  // convert `window_dragging_state` to a split view state. Note this will
+  // override `state` from `split_view_overview_session` if there is any.
   if (!split_view_controller->InSplitViewMode() && window_dragging_state) {
     switch (*window_dragging_state) {
       case SplitViewDragIndicators::WindowDraggingState::kToSnapPrimary:
@@ -275,8 +305,9 @@ gfx::Rect GetGridBoundsInScreen(
     }
   }
 
-  if (!divider_changed)
+  if (!divider_changed) {
     return bounds;
+  }
 
   DCHECK(opposite_position);
   const bool horizontal = SplitViewController::IsLayoutHorizontal(target_root);
@@ -342,14 +373,12 @@ gfx::Rect ToStableSizeRoundedRect(const gfx::RectF& rect) {
                    gfx::ToRoundedSize(rect.size()));
 }
 
-void UpdateOverviewHighlightForFocus(OverviewHighlightableView* target_view) {
-  auto* highlight_controller = Shell::Get()
-                                   ->overview_controller()
-                                   ->overview_session()
-                                   ->highlight_controller();
-  DCHECK(highlight_controller);
+void MoveFocusToView(OverviewFocusableView* target_view) {
+  auto* focus_cycler =
+      Shell::Get()->overview_controller()->overview_session()->focus_cycler();
+  CHECK(focus_cycler);
 
-  highlight_controller->MoveHighlightToView(target_view);
+  focus_cycler->MoveFocusToView(target_view);
 }
 
 }  // namespace ash

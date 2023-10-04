@@ -6,6 +6,7 @@
 #define COMPONENTS_SIGNIN_PUBLIC_BASE_SIGNIN_SWITCHES_H_
 
 #include "base/feature_list.h"
+#include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "components/signin/public/base/signin_buildflags.h"
@@ -25,11 +26,23 @@ BASE_DECLARE_FEATURE(kIdentityStatusConsistency);
 
 extern const char kClearTokenService[];
 
-extern const char kDisableSigninScopedDeviceId[];
-
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 BASE_DECLARE_FEATURE(kEnableBoundSessionCredentials);
 bool IsBoundSessionCredentialsEnabled();
+
+// This parameter is applicable only to the platforms that use DICE as an
+// account consistency protocol.
+enum class EnableBoundSessionCredentialsDiceSupport {
+  // Device bound session credentials are enabled only in profiles that have
+  // account consistency disabled (Incognito, Chrome Sign-In disabled in
+  // Settings).
+  kDisabled,
+  // Device bound session credentials are enabled in all profiles, including
+  // DICE-enabled profiles.
+  kEnabled,
+};
+extern const base::FeatureParam<EnableBoundSessionCredentialsDiceSupport>
+    kEnableBoundSessionCredentialsDiceSupport;
 #endif
 
 BASE_DECLARE_FEATURE(kEnableFetchingAccountCapabilities);
@@ -40,14 +53,15 @@ BASE_DECLARE_FEATURE(kForceDisableExtendedSyncPromos);
 BASE_DECLARE_FEATURE(kForceStartupSigninPromo);
 #endif
 
-#if BUILDFLAG(IS_IOS)
-// Experiment to test whether it's possible to finch FRE screen on iOS.
-BASE_DECLARE_FEATURE(kFinchIosFre);
-#endif
-
 BASE_DECLARE_FEATURE(kTangibleSync);
 
 BASE_DECLARE_FEATURE(kSearchEngineChoice);
+
+BASE_DECLARE_FEATURE(kSearchEngineChoiceFre);
+
+// Used to experiment and validate the UNO model on Desktop. Not meant to be
+// launched to stable for the moment, while it's still in a prototype state.
+BASE_DECLARE_FEATURE(kUnoDesktop);
 
 }  // namespace switches
 

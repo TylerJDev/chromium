@@ -217,7 +217,7 @@ public class StartSurfaceTest {
         StartSurfaceTestUtils.waitForTabSwitcherVisible(cta);
         ViewUtils.waitForVisibleView(
                 allOf(withParent(withId(TabUiTestHelper.getTabSwitcherParentId(cta))),
-                        withId(R.id.tab_list_view)));
+                        withId(R.id.tab_list_recycler_view)));
 
         StartSurfaceTestUtils.pressBack(mActivityTestRule);
         onViewWaiting(allOf(withId(R.id.primary_tasks_surface_view), isDisplayed()));
@@ -628,7 +628,6 @@ public class StartSurfaceTest {
 
     @Test
     @MediumTest
-    @DisabledTest(message = "https://crbug.com/1471244")
     @Feature({"StartSurface"})
     @CommandLineFlags.Add({START_SURFACE_TEST_SINGLE_ENABLED_PARAMS})
     public void testShow_SingleAsHomepage_BottomSheet_WithBottomSheetGtsSupport() {
@@ -1103,5 +1102,70 @@ public class StartSurfaceTest {
                 ChromeColors.getSurfaceColor(cta,
                         org.chromium.chrome.test.R.dimen.home_surface_background_color_elevation),
                 ((ColorDrawable) startSurfaceToolbar.getBackground()).getColor());
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"StartSurface"})
+    @CommandLineFlags.Add({START_SURFACE_TEST_SINGLE_ENABLED_PARAMS})
+    @DisableFeatures({ChromeFeatureList.SURFACE_POLISH, ChromeFeatureList.START_SURFACE_REFACTOR})
+    public void testStatusBarColor_RefactorDisabled_SurfacePolishDisabled() {
+        ChromeTabbedActivity cta = mActivityTestRule.getActivity();
+        final int expectedDefaultStandardColor = ChromeColors.getDefaultThemeColor(cta, false);
+        testStatusBarColorImpl(expectedDefaultStandardColor, expectedDefaultStandardColor);
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"StartSurface"})
+    @CommandLineFlags.Add({START_SURFACE_TEST_SINGLE_ENABLED_PARAMS})
+    @DisableFeatures(ChromeFeatureList.START_SURFACE_REFACTOR)
+    @EnableFeatures({ChromeFeatureList.SURFACE_POLISH})
+    public void testStatusBarColor_RefactorDisabled_SurfacePolishEnabled() {
+        ChromeTabbedActivity cta = mActivityTestRule.getActivity();
+        final int expectedPolishedStandardColor =
+                ChromeColors.getSurfaceColor(cta, R.dimen.home_surface_background_color_elevation);
+        final int expectedDefaultStandardColor = ChromeColors.getDefaultThemeColor(cta, false);
+        testStatusBarColorImpl(expectedPolishedStandardColor, expectedDefaultStandardColor);
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"StartSurface"})
+    @CommandLineFlags.Add({START_SURFACE_TEST_SINGLE_ENABLED_PARAMS})
+    @EnableFeatures({ChromeFeatureList.SURFACE_POLISH})
+    public void testFakeOmniboxPolish() {
+        if (!mImmediateReturn) {
+            StartSurfaceTestUtils.pressHomePageButton(mActivityTestRule.getActivity());
+        }
+        ChromeTabbedActivity cta = mActivityTestRule.getActivity();
+        StartSurfaceTestUtils.waitForStartSurfaceVisible(
+                mLayoutChangedCallbackHelper, mCurrentlyActiveLayout, cta);
+        onViewWaiting(withId(R.id.primary_tasks_surface_view));
+        assertEquals(cta.getResources().getDimensionPixelSize(
+                             org.chromium.chrome.R.dimen.ntp_search_box_height_polish),
+                cta.findViewById(org.chromium.chrome.R.id.search_box).getLayoutParams().height);
+    }
+
+    private void testStatusBarColorImpl(
+            int expectedStartSurfaceColor, int expectedTabSwitcherColor) {
+        ChromeTabbedActivity cta = mActivityTestRule.getActivity();
+        if (!mImmediateReturn) {
+            StartSurfaceTestUtils.pressHomePageButton(mActivityTestRule.getActivity());
+        }
+
+        StartSurfaceTestUtils.waitForStartSurfaceVisible(
+                mLayoutChangedCallbackHelper, mCurrentlyActiveLayout, cta);
+
+        onViewWaiting(withId(R.id.primary_tasks_surface_view));
+        StartSurfaceTestUtils.waitForStatusBarColor(cta, expectedStartSurfaceColor);
+
+        StartSurfaceTestUtils.clickTabSwitcherButton(cta);
+        StartSurfaceTestUtils.waitForTabSwitcherVisible(cta);
+        StartSurfaceTestUtils.waitForStatusBarColor(cta, expectedTabSwitcherColor);
+
+        StartSurfaceTestUtils.pressBack(mActivityTestRule);
+        onViewWaiting(withId(R.id.primary_tasks_surface_view));
+        StartSurfaceTestUtils.waitForStatusBarColor(cta, expectedStartSurfaceColor);
     }
 }

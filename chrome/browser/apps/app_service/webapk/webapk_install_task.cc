@@ -17,6 +17,7 @@
 #include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/thread_restrictions.h"
@@ -57,6 +58,9 @@ constexpr char kRequesterPackageName[] = "org.chromium.arc.webapk";
 
 // Android property containing the list of supported ABIs.
 constexpr char kAbiListPropertyName[] = "ro.product.cpu.abilist";
+// Alternative property containing the list of supported ABIs, used on Android
+// T+.
+constexpr char kSystemAbiListPropertyName[] = "ro.system.product.cpu.abilist";
 
 const char kMinimumIconSize = 64;
 
@@ -241,14 +245,17 @@ absl::optional<std::string> AddIconDataAndSerializeProto(
 }
 
 std::string GetArcAbi(const arc::ArcFeatures& arc_features) {
-  const std::string& property =
-      arc_features.build_props.at(kAbiListPropertyName);
-  size_t separator_pos = property.find(',');
-  if (separator_pos != std::string::npos) {
-    return property.substr(0, separator_pos);
+  auto property = arc_features.build_props.find(kAbiListPropertyName);
+  if (property == arc_features.build_props.end()) {
+    property = arc_features.build_props.find(kSystemAbiListPropertyName);
   }
 
-  return property;
+  CHECK(property != arc_features.build_props.end()) << "ARC must have an ABI";
+
+  // The property value will be a comma separated list, e.g. "x86_64,x86". The
+  // highest priority will be listed first.
+  return base::SplitString(property->second, ",", base::KEEP_WHITESPACE,
+                           base::SPLIT_WANT_NONEMPTY)[0];
 }
 
 }  // namespace
@@ -359,7 +366,8 @@ void WebApkInstallTask::OnArcFeaturesLoaded(
   webapk->set_android_abi(GetArcAbi(arc_features.value()));
 
   if (web_app::IsWebAppsCrosapiEnabled()) {
-    WebApkInstallTask::OnLoadedIcon(std::move(webapk), IconPurpose::ANY,
+    WebApkInstallTask::OnLoadedIcon(std::move(webapk),
+                                    web_app::IconPurpose::ANY,
                                     /*data=*/{});
     return;
   }
@@ -367,7 +375,8 @@ void WebApkInstallTask::OnArcFeaturesLoaded(
   auto& icon_manager = web_app_provider_->icon_manager();
   absl::optional<web_app::WebAppIconManager::IconSizeAndPurpose>
       icon_size_and_purpose = icon_manager.FindIconMatchBigger(
-          app_id_, {IconPurpose::MASKABLE, IconPurpose::ANY}, kMinimumIconSize);
+          app_id_, {web_app::IconPurpose::MASKABLE, web_app::IconPurpose::ANY},
+          kMinimumIconSize);
 
   if (!icon_size_and_purpose) {
     LOG(ERROR) << "Could not find suitable icon";
@@ -383,8 +392,8 @@ void WebApkInstallTask::OnArcFeaturesLoaded(
   const auto& manifest_icons = registrar.GetAppIconInfos(app_id_);
   auto it = base::ranges::find_if(
       manifest_icons, [&icon_size_and_purpose](const apps::IconInfo& info) {
-        return info.purpose ==
-               ManifestPurposeToIconInfoPurpose(icon_size_and_purpose->purpose);
+        return info.purpose == web_app::ManifestPurposeToIconInfoPurpose(
+                                   icon_size_and_purpose->purpose);
       });
 
   if (it == manifest_icons.end()) {
@@ -399,7 +408,8 @@ void WebApkInstallTask::OnArcFeaturesLoaded(
 
   webapk::Image* image = web_app_manifest->add_icons();
   image->set_src(std::move(icon_url));
-  image->add_purposes(icon_size_and_purpose->purpose == IconPurpose::MASKABLE
+  image->add_purposes(icon_size_and_purpose->purpose ==
+                              web_app::IconPurpose::MASKABLE
                           ? webapk::Image::MASKABLE
                           : webapk::Image::ANY);
   image->add_usages(webapk::Image::PRIMARY_ICON);
@@ -411,7 +421,7 @@ void WebApkInstallTask::OnArcFeaturesLoaded(
 }
 
 void WebApkInstallTask::OnLoadedIcon(std::unique_ptr<webapk::WebApk> webapk,
-                                     IconPurpose purpose,
+                                     web_app::IconPurpose purpose,
                                      std::vector<uint8_t> data) {
   app_short_name_ = webapk->manifest().short_name();
   base::ThreadPool::PostTaskAndReplyWithResult(

@@ -454,11 +454,11 @@ void LayerTreeImpl::GenerateCompositorFrame(
   for (auto& resource_request :
        ui_resource_manager_.TakeUIResourcesRequests()) {
     switch (resource_request.GetType()) {
-      case cc::UIResourceRequest::UI_RESOURCE_CREATE:
+      case cc::UIResourceRequest::Type::kCreate:
         frame_sink_->UploadUIResource(resource_request.GetId(),
                                       resource_request.GetBitmap());
         break;
-      case cc::UIResourceRequest::UI_RESOURCE_DELETE:
+      case cc::UIResourceRequest::Type::kDelete:
         frame_sink_->MarkUIResourceForDeletion(resource_request.GetId());
         break;
     }
@@ -517,7 +517,9 @@ void LayerTreeImpl::GenerateCompositorFrame(
       quad_state->SetAll(gfx::Transform(), gutter_bounding_rect,
                          gutter_bounding_rect, gfx::MaskFilterInfo(),
                          /*clip=*/absl::nullopt, contents_opaque,
-                         /*opacity_f=*/1.0f, SkBlendMode::kSrcOver, 0);
+                         /*opacity_f=*/1.0f, SkBlendMode::kSrcOver,
+                         /*sorting_context=*/0, /*layer_id=*/0u,
+                         /*fast_rounded_corner=*/false);
       for (gfx::Rect unoccluded_rect : unoccluded_region) {
         viz::SolidColorDrawQuad* quad =
             render_pass->CreateAndAppendDrawQuad<viz::SolidColorDrawQuad>();
@@ -582,7 +584,7 @@ void LayerTreeImpl::Draw(Layer& layer,
 
   // Compute new clip in layer space.
   const bool mask_to_bounds =
-      layer.masks_to_bounds() || layer.HasRoundedCorner();
+      layer.masks_to_bounds() || layer.HasNonTrivialMaskFilterInfo();
   gfx::RectF clip_in_layer = transform_from_parent->MapRect(clip_in_parent);
   if (mask_to_bounds) {
     clip_in_layer.Intersect(
@@ -609,16 +611,17 @@ void LayerTreeImpl::Draw(Layer& layer,
     // There is no way to merge 2 rounded corners, so create a render pass so
     // existing rounded corners can go into RenderPassDrawQuad, and the layer's
     // rounded corners can go into quad its own pass.
-    const bool rounded_corners_needs_pass =
-        layer.HasRoundedCorner() &&
-        data.mask_filter_info_in_target.HasRoundedCorners();
+    const bool mask_filter_needs_pass =
+        layer.HasNonTrivialMaskFilterInfo() &&
+        (data.mask_filter_info_in_target.HasRoundedCorners() ||
+         data.mask_filter_info_in_target.HasGradientMask());
     const bool clip_needs_pass =
         !is_root && mask_to_bounds &&
         !transform_to_target.Preserves2dAxisAlignment();
     const bool opacity_needs_pass =
         layer.opacity() != 1.0f && num_drawing_layers_in_subtree > 1;
-    if (!filters_needs_pass && !clip_needs_pass &&
-        !rounded_corners_needs_pass && !opacity_needs_pass) {
+    if (!filters_needs_pass && !clip_needs_pass && !mask_filter_needs_pass &&
+        !opacity_needs_pass) {
       // Does not need new render pass.
       // Compute new clip in target space.
       gfx::RectF new_clip_in_target(gfx::SizeF(layer.bounds()));
@@ -750,11 +753,12 @@ void LayerTreeImpl::Draw(Layer& layer,
   }
   const bool new_pass_contents_opaque =
       occlusion_in_new_pass.Contains(content_rect);
-  shared_quad_state->SetAll(
-      transform_new_pass_to_parent_target, content_rect, content_rect,
-      data.mask_filter_info_in_target, clip_opt, new_pass_contents_opaque,
-      parent_opacity * layer.opacity(), SkBlendMode::kSrcOver, 0);
-  shared_quad_state->is_fast_rounded_corner = true;
+  shared_quad_state->SetAll(transform_new_pass_to_parent_target, content_rect,
+                            content_rect, data.mask_filter_info_in_target,
+                            clip_opt, new_pass_contents_opaque,
+                            parent_opacity * layer.opacity(),
+                            SkBlendMode::kSrcOver, /*sorting_context=*/0,
+                            /*layer_id=*/0u, /*fast_rounded_corner=*/true);
   auto* quad =
       parent_pass.CreateAndAppendDrawQuad<viz::CompositorRenderPassDrawQuad>();
 
@@ -797,9 +801,10 @@ void LayerTreeImpl::DrawChildrenAndAppendQuads(
       data.subtree_property_changed_from_parent;
   absl::optional<base::AutoReset<gfx::MaskFilterInfo>>
       auto_reset_mask_filter_info;
-  if (layer.HasRoundedCorner()) {
+  if (layer.HasNonTrivialMaskFilterInfo()) {
     gfx::MaskFilterInfo info(gfx::RRectF(gfx::RectF(gfx::Rect(layer.bounds())),
-                                         layer.corner_radii()));
+                                         layer.corner_radii()),
+                             layer.gradient_mask());
     info.ApplyTransform(transform_to_target);
     auto_reset_mask_filter_info.emplace(&data.mask_filter_info_in_target, info);
   }
@@ -871,7 +876,8 @@ bool LayerTreeImpl::UpdateOcclusionRect(
     }
   }
 
-  if (opacity < 1.0f || !layer.contents_opaque() || layer.HasRoundedCorner()) {
+  if (opacity < 1.0f || !layer.contents_opaque() ||
+      layer.HasNonTrivialMaskFilterInfo()) {
     return true;
   }
 

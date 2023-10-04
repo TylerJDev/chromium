@@ -147,4 +147,10 @@ public class EmptyTabObserver implements TabObserver {
 
     @Override
     public void onNavigationStateChanged() {}
+
+    @Override
+    public void onDidChangeCloseSignalInterceptStatus() {}
+
+    @Override
+    public void onRootIdChanged(Tab tab, int newRootId) {}
 }

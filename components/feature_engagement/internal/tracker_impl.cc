@@ -106,7 +106,7 @@ Tracker* Tracker::Create(
     const scoped_refptr<base::SequencedTaskRunner>& background_task_runner,
     leveldb_proto::ProtoDatabaseProvider* db_provider,
     base::WeakPtr<TrackerEventExporter> event_exporter,
-    ConfigurationProviderList configuration_providers) {
+    const ConfigurationProviderList& configuration_providers) {
   DVLOG(2) << "Creating Tracker";
   if (base::FeatureList::IsEnabled(kIPHDemoMode))
     return CreateDemoModeTracker().release();
@@ -120,13 +120,14 @@ Tracker* Tracker::Create(
   auto event_store =
       std::make_unique<PersistentEventStore>(std::move(event_db));
 
-  auto configuration = std::make_unique<ChromeVariationsConfiguration>(
-      std::move(configuration_providers));
-  configuration->LoadConfigs(GetAllFeatures(), GetAllGroups());
+  auto configuration = std::make_unique<ChromeVariationsConfiguration>();
+  configuration->LoadConfigs(configuration_providers, GetAllFeatures(),
+                             GetAllGroups());
 
   auto event_storage_validator =
       std::make_unique<FeatureConfigEventStorageValidator>();
-  event_storage_validator->InitializeFeatures(GetAllFeatures(), *configuration);
+  event_storage_validator->InitializeFeatures(GetAllFeatures(), GetAllGroups(),
+                                              *configuration);
 
   auto raw_event_model = std::make_unique<EventModelImpl>(
       std::move(event_store), std::move(event_storage_validator));
@@ -191,6 +192,15 @@ void TrackerImpl::NotifyEvent(const std::string& event) {
                            event_model_->IsReady());
 }
 
+#if !BUILDFLAG(IS_ANDROID)
+void TrackerImpl::NotifyUsedEvent(const base::Feature& feature) {
+  const auto& feature_config = configuration_->GetFeatureConfig(feature);
+  if (!feature_config.used.name.empty()) {
+    NotifyEvent(feature_config.used.name);
+  }
+}
+#endif
+
 bool TrackerImpl::ShouldTriggerHelpUI(const base::Feature& feature) {
   return ShouldTriggerHelpUIWithSnooze(feature).ShouldShowIph();
 }
@@ -202,9 +212,13 @@ TrackerImpl::TriggerDetails TrackerImpl::ShouldTriggerHelpUIWithSnooze(
   }
 
   FeatureConfig feature_config = configuration_->GetFeatureConfig(feature);
+  std::vector<GroupConfig> group_configs;
+  for (auto group : feature_config.groups) {
+    group_configs.push_back(configuration_->GetGroupConfigByName(group));
+  }
   ConditionValidator::Result result = condition_validator_->MeetsConditions(
-      feature, feature_config, {}, *event_model_, *availability_model_,
-      *display_lock_controller_, configuration_.get(),
+      feature, feature_config, group_configs, *event_model_,
+      *availability_model_, *display_lock_controller_, configuration_.get(),
       time_provider_->GetCurrentDay());
   if (result.NoErrors()) {
     condition_validator_->NotifyIsShowing(
@@ -256,9 +270,13 @@ bool TrackerImpl::WouldTriggerHelpUI(const base::Feature& feature) const {
   }
 
   FeatureConfig feature_config = configuration_->GetFeatureConfig(feature);
+  std::vector<GroupConfig> group_configs;
+  for (auto group : feature_config.groups) {
+    group_configs.push_back(configuration_->GetGroupConfigByName(group));
+  }
   ConditionValidator::Result result = condition_validator_->MeetsConditions(
-      feature, feature_config, {}, *event_model_, *availability_model_,
-      *display_lock_controller_, configuration_.get(),
+      feature, feature_config, group_configs, *event_model_,
+      *availability_model_, *display_lock_controller_, configuration_.get(),
       time_provider_->GetCurrentDay());
   DVLOG(2) << "Would trigger result for " << feature.name
            << ": trigger=" << result.NoErrors()
@@ -290,10 +308,15 @@ Tracker::TriggerState TrackerImpl::GetTriggerState(
     return Tracker::TriggerState::NOT_READY;
   }
 
+  FeatureConfig feature_config = configuration_->GetFeatureConfig(feature);
+  std::vector<GroupConfig> group_configs;
+  for (auto group : feature_config.groups) {
+    group_configs.push_back(configuration_->GetGroupConfigByName(group));
+  }
   ConditionValidator::Result result = condition_validator_->MeetsConditions(
-      feature, configuration_->GetFeatureConfig(feature), {}, *event_model_,
-      *availability_model_, *display_lock_controller_, configuration_.get(),
-      time_provider_->GetCurrentDay());
+      feature, configuration_->GetFeatureConfig(feature), group_configs,
+      *event_model_, *availability_model_, *display_lock_controller_,
+      configuration_.get(), time_provider_->GetCurrentDay());
 
   if (result.trigger_ok) {
     DVLOG(2) << "TriggerState for " << feature.name << ": "

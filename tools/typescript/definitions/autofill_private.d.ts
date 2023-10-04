@@ -88,9 +88,6 @@ declare global {
         NAME_LAST_CONJUNCTION,
         NAME_LAST_SECOND,
         NAME_HONORIFIC_PREFIX,
-        ADDRESS_HOME_PREMISE_NAME,
-        ADDRESS_HOME_DEPENDENT_STREET_NAME,
-        ADDRESS_HOME_STREET_AND_DEPENDENT_STREET_NAME,
         ADDRESS_HOME_ADDRESS,
         ADDRESS_HOME_ADDRESS_WITH_NAME,
         ADDRESS_HOME_FLOOR,
@@ -173,6 +170,7 @@ declare global {
 
       export interface CreditCardEntry {
         guid?: string;
+        instrumentId?: string;
         name?: string;
         cardNumber?: string;
         expirationMonth?: string;
@@ -214,7 +212,6 @@ declare global {
       export function migrateCreditCards(): void;
       export function logServerCardLinkClicked(): void;
       export function setCreditCardFIDOAuthEnabledState(enabled: boolean): void;
-      export function getUpiIdList(): Promise<string[]>;
       export function addVirtualCard(cardId: string): void;
       export function removeVirtualCard(cardId: string): void;
       export function authenticateUserAndFlipMandatoryAuthToggle(): void;

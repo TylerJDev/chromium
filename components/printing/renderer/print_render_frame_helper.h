@@ -10,6 +10,7 @@
 
 #include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
@@ -78,8 +79,8 @@ class FrameReference {
   blink::WebView* view();
 
  private:
-  blink::WebView* view_;
-  blink::WebLocalFrame* frame_;
+  raw_ptr<blink::WebView, ExperimentalRenderer> view_;
+  raw_ptr<blink::WebLocalFrame, ExperimentalRenderer> frame_;
 };
 
 // Helper to ensure that quit closures for Mojo response are called.
@@ -285,9 +286,9 @@ class PrintRenderFrameHelper
   // Initialize the print preview document.
   CreatePreviewDocumentResult CreatePreviewDocument();
 
-  // Renders a print preview page. |page_number| is 0-based.
+  // Renders a print preview page. `page_index` is 0-based.
   // Returns true if print preview should continue, false on failure.
-  bool RenderPreviewPage(uint32_t page_number);
+  bool RenderPreviewPage(uint32_t page_index);
 
   // Finalize the print ready preview document.
   bool FinalizePrintReadyDocument();
@@ -326,12 +327,12 @@ class PrintRenderFrameHelper
 
   // Initialize print page settings with default settings.
   // Used only for native printing workflow.
-  bool InitPrintSettings(bool fit_to_paper_size);
+  bool InitPrintSettings(blink::WebLocalFrame* frame,
+                         const blink::WebNode& node);
 
   // Calculate number of pages in source document.
-  bool CalculateNumberOfPages(blink::WebLocalFrame* frame,
-                              const blink::WebNode& node,
-                              uint32_t* number_of_pages);
+  uint32_t CalculateNumberOfPages(blink::WebLocalFrame* frame,
+                                  const blink::WebNode& node);
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   // Set options for print preset from source PDF document.
@@ -367,9 +368,8 @@ class PrintRenderFrameHelper
 
   // Platform-specific helper function for rendering page(s) to |metafile|.
   void PrintPageInternal(const mojom::PrintParams& params,
-                         uint32_t page_number,
+                         uint32_t page_index,
                          uint32_t page_count,
-                         double scale_factor,
                          blink::WebLocalFrame* frame,
                          MetafileSkia* metafile);
 
@@ -404,10 +404,10 @@ class PrintRenderFrameHelper
 
   // Notifies the browser a print preview page has been rendered for modifiable
   // content.
-  // |page_number| is 0-based.
-  // |metafile| is the rendered page and should be valid.
+  // `page_index` is 0-based.
+  // `metafile` is the rendered page and should be valid.
   // Returns true if print preview should continue, false on failure.
-  bool PreviewPageRendered(uint32_t page_number,
+  bool PreviewPageRendered(uint32_t page_index,
                            std::unique_ptr<MetafileSkia> metafile);
 
   // Called when the connection with the |preview_ui_| goes away.
@@ -514,7 +514,7 @@ class PrintRenderFrameHelper
     void Failed(bool report_error);
 
     // Helper functions
-    uint32_t GetNextPageNumber();
+    uint32_t GetNextPageIndex();
     bool IsRendering() const;
 #if BUILDFLAG(IS_CHROMEOS_ASH)
     bool IsForArc() const;

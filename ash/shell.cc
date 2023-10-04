@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "ash/accelerators/accelerator_controller_impl.h"
+#include "ash/accelerators/accelerator_prefs.h"
 #include "ash/accelerators/accelerator_tracker.h"
 #include "ash/accelerators/ash_accelerator_configuration.h"
 #include "ash/accelerators/ash_focus_manager_factory.h"
@@ -35,6 +36,7 @@
 #include "ash/calendar/calendar_controller.h"
 #include "ash/capture_mode/capture_mode_controller.h"
 #include "ash/child_accounts/parent_access_controller_impl.h"
+#include "ash/clipboard/clipboard_history_controller_delegate.h"
 #include "ash/clipboard/clipboard_history_controller_impl.h"
 #include "ash/clipboard/clipboard_history_util.h"
 #include "ash/clipboard/control_v_histogram_recorder.h"
@@ -75,8 +77,6 @@
 #include "ash/frame_throttler/frame_throttling_controller.h"
 #include "ash/game_dashboard/game_dashboard_controller.h"
 #include "ash/glanceables/glanceables_controller.h"
-#include "ash/glanceables/glanceables_delegate.h"
-#include "ash/glanceables/glanceables_v2_controller.h"
 #include "ash/host/ash_window_tree_host_init_params.h"
 #include "ash/hud_display/hud_display.h"
 #include "ash/ime/ime_controller_impl.h"
@@ -792,11 +792,6 @@ Shell::~Shell() {
   // Accelerometer file reader stops listening to tablet mode controller.
   AccelerometerReader::GetInstance()->StopListenToTabletModeController();
 
-  if (features::AreGlanceablesEnabled()) {
-    // Close all glanceables so that all widgets are destroyed.
-    glanceables_controller_->DestroyUi();
-  }
-
   // Destroy |ambient_controller_| before |assistant_controller_|.
   ambient_controller_.reset();
 
@@ -858,7 +853,6 @@ Shell::~Shell() {
 
   // Has to happen before ~MruWindowTracker.
   window_cycle_controller_.reset();
-  overview_controller_.reset();
 
   // As clients of `capture_mode_controller_`, `projector_controller_` and
   // `game_dashboard_controller_` need to be destroyed before
@@ -872,6 +866,10 @@ Shell::~Shell() {
   // https://crbug.com/1350711.
   capture_mode_controller_.reset();
 
+  // Has to happen before `~MruWindowTracker` and after
+  // `~GameDashboardController`.
+  overview_controller_.reset();
+
   // This must be called before deleting all the windows below in
   // `CloseAllRootWindowChildWindows()` since host_windows(which gets destroyed)
   // are needed for proper deletion of RoundedDisplayProviders.
@@ -880,22 +878,23 @@ Shell::~Shell() {
   // Close all widgets (including the shelf) and destroy all window containers.
   CloseAllRootWindowChildWindows();
 
-  // Glanceables has a dependency on `tablet_mode_controller_`. Should be
-  // destroyed first to remove the tablet mode observer.
   glanceables_controller_.reset();
-  glanceables_v2_controller_.reset();
 
   multitask_menu_nudge_delegate_.reset();
   tablet_mode_controller_.reset();
   login_screen_controller_.reset();
+
+  // This must be destroyed before `message_center_controller_` in order to
+  // restore the original settings if a focus session was active. Also, this
+  // should be destroyed before `system_notification_controller_`, which could
+  // be indirectly called by `focus_mode_controller_` to update the DND
+  // notification.
+  focus_mode_controller_.reset();
+
   system_notification_controller_.reset();
   // Should be destroyed after Shelf and |system_notification_controller_|.
   system_tray_model_.reset();
   system_sounds_delegate_.reset();
-
-  // This must be destroyed before `message_center_controller_` in order to
-  // restore the original settings if a focus session was active.
-  focus_mode_controller_.reset();
 
   // MultiDisplayMetricsController has a dependency on `mru_window_tracker_`.
   multi_display_metrics_controller_.reset();
@@ -1133,9 +1132,19 @@ void Shell::Init(
 
   local_state_ = local_state;
 
-  if (features::IsBatterySaverAvailable()) {
-    battery_saver_controller_ =
-        std::make_unique<BatterySaverController>(local_state_);
+  if (local_state_ != nullptr) {
+    // Only construct BatterySaverController if prefs exists. It uses prefs to
+    // store the battery saver state, so testing its functionality without
+    // prefs doesn't make sense.
+    if (features::IsBatterySaverAvailable()) {
+      battery_saver_controller_ =
+          std::make_unique<BatterySaverController>(local_state_);
+    } else {
+      // It's possible that we have a new Chrome without battery saver mode
+      // available, but still have battery saver running because the previous
+      // chrome did. So unconditionally reset battery saver state.
+      BatterySaverController::ResetState(local_state_);
+    }
   }
 
   // This creates the MessageCenter object which is used by some other objects
@@ -1217,15 +1226,6 @@ void Shell::Init(
 
   capture_mode_controller_ = std::make_unique<CaptureModeController>(
       shell_delegate_->CreateCaptureModeDelegate());
-
-  if (features::IsFocusModeEnabled()) {
-    focus_mode_controller_ = std::make_unique<FocusModeController>();
-  }
-
-  if (features::IsGameDashboardEnabled()) {
-    game_dashboard_controller_ = std::make_unique<GameDashboardController>(
-        shell_delegate_->CreateGameDashboardDelegate());
-  }
 
   // Accelerometer file reader starts listening to tablet mode controller.
   AccelerometerReader::GetInstance()->StartListenToTabletModeController();
@@ -1332,6 +1332,13 @@ void Shell::Init(
 
   overview_controller_ = std::make_unique<OverviewController>();
 
+  // `GameDashboardController` has dependencies on `OverviewController` and
+  // `CaptureModeController`.
+  if (features::IsGameDashboardEnabled()) {
+    game_dashboard_controller_ = std::make_unique<GameDashboardController>(
+        shell_delegate_->CreateGameDashboardDelegate());
+  }
+
   // `SnapGroupController` has dependencies on `OverviweController` and
   // `TabletModeController`.
   if (features::IsSnapGroupEnabled()) {
@@ -1372,6 +1379,10 @@ void Shell::Init(
   cursor_manager_->SetDisplay(
       display::Screen::GetScreen()->GetPrimaryDisplay());
 
+  // Initialize before AcceleratorController and AshAcceleratorConfiguration.
+  accelerator_prefs_ = std::make_unique<AcceleratorPrefs>(
+      shell_delegate_->CreateAcceleratorPrefsDelegate());
+
   // Must be initialized after InputMethodManager.
   accelerator_keycode_lookup_cache_ =
       std::make_unique<AcceleratorKeycodeLookupCache>();
@@ -1382,7 +1393,8 @@ void Shell::Init(
       ash_accelerator_configuration_.get());
 
   clipboard_history_controller_ =
-      std::make_unique<ClipboardHistoryControllerImpl>();
+      std::make_unique<ClipboardHistoryControllerImpl>(
+          shell_delegate_->CreateClipboardHistoryControllerDelegate());
 
   // `HoldingSpaceController` must be instantiated before the shelf.
   holding_space_controller_ = std::make_unique<HoldingSpaceController>();
@@ -1577,6 +1589,10 @@ void Shell::Init(
   system_notification_controller_ =
       std::make_unique<SystemNotificationController>();
 
+  if (features::IsFocusModeEnabled()) {
+    focus_mode_controller_ = std::make_unique<FocusModeController>();
+  }
+
   // WmModeController should be created before initializing the window tree
   // hosts, since the latter will initialize the shelf on each display, which
   // hosts the WM mode tray button.
@@ -1646,14 +1662,9 @@ void Shell::Init(
         std::make_unique<DisplayAlignmentController>();
   }
 
-  if (features::AreGlanceablesEnabled()) {
+  if (features::AreGlanceablesV2Enabled() ||
+      features::AreGlanceablesV2EnabledForTrustedTesters()) {
     glanceables_controller_ = std::make_unique<GlanceablesController>();
-    glanceables_controller_->Init(shell_delegate_->CreateGlanceablesDelegate(
-        glanceables_controller_.get()));
-  }
-
-  if (features::AreGlanceablesV2Enabled()) {
-    glanceables_v2_controller_ = std::make_unique<GlanceablesV2Controller>();
   }
 
   projector_controller_ = std::make_unique<ProjectorControllerImpl>();

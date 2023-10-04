@@ -159,6 +159,9 @@ class TailoredSecurityService : public KeyedService {
   // callback.
   virtual void MaybeNotifySyncUser(bool is_enabled, base::Time previous_update);
 
+  // Returns whether the user has history sync enabled in preferences.
+  bool HistorySyncEnabledForUser();
+
   PrefService* prefs() { return prefs_; }
 
   signin::IdentityManager* identity_manager() { return identity_manager_; }
@@ -167,6 +170,9 @@ class TailoredSecurityService : public KeyedService {
   GetURLLoaderFactory() = 0;
 
  private:
+  FRIEND_TEST_ALL_PREFIXES(
+      TailoredSecurityServiceTest,
+      HistorySyncEnabledForUserReturnsFalseWhenSyncServiceIsNull);
   FRIEND_TEST_ALL_PREFIXES(
       TailoredSecurityServiceTest,
       RetryEnabledTimestampUpdateCallbackSetsStateToRetryNeeded);

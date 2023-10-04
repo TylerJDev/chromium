@@ -174,9 +174,11 @@ base::FilePath BuildHttpCachePath(const base::FilePath& relative_path) {
 
 }  // namespace
 
-AwBrowserContext::AwBrowserContext(base::FilePath relative_path,
+AwBrowserContext::AwBrowserContext(std::string name,
+                                   base::FilePath relative_path,
                                    const bool is_default)
-    : relative_path_(std::move(relative_path)),
+    : name_(std::move(name)),
+      relative_path_(std::move(relative_path)),
       is_default_(is_default),
       context_storage_path_(BuildStoragePath(relative_path_)),
       http_cache_path_(BuildHttpCachePath(relative_path_)),
@@ -612,6 +614,18 @@ base::android::ScopedJavaLocalRef<jobject> JNI_AwBrowserContext_GetDefaultJava(
   return default_context->GetJavaBrowserContext();
 }
 
+base::android::ScopedJavaLocalRef<jstring>
+JNI_AwBrowserContext_GetDefaultContextName(JNIEnv* env) {
+  return base::android::ConvertUTF8ToJavaString(
+      env, AwBrowserContextStore::kDefaultContextName);
+}
+
+base::android::ScopedJavaLocalRef<jstring>
+JNI_AwBrowserContext_GetDefaultContextRelativePath(JNIEnv* env) {
+  return base::android::ConvertUTF8ToJavaString(
+      env, AwBrowserContextStore::kDefaultContextPath);
+}
+
 void AwBrowserContext::ClearPersistentOriginTrialStorageForTesting(
     JNIEnv* env) {
   content::OriginTrialsControllerDelegate* delegate =
@@ -632,8 +646,11 @@ base::android::ScopedJavaLocalRef<jobject>
 AwBrowserContext::GetJavaBrowserContext() {
   if (!obj_) {
     JNIEnv* env = base::android::AttachCurrentThread();
-    obj_ = Java_AwBrowserContext_create(env, reinterpret_cast<intptr_t>(this),
-                                        IsDefaultBrowserContext());
+    obj_ = Java_AwBrowserContext_create(
+        env, reinterpret_cast<intptr_t>(this),
+        base::android::ConvertUTF8ToJavaString(env, name_),
+        base::android::ConvertUTF8ToJavaString(env, relative_path_.value()),
+        GetCookieManager()->GetJavaCookieManager(), IsDefaultBrowserContext());
   }
   return base::android::ScopedJavaLocalRef<jobject>(obj_);
 }
@@ -668,6 +685,23 @@ std::string AwBrowserContext::GetExtraHeaders(const GURL& url) {
   std::map<std::string, std::string>::iterator iter =
       extra_headers_.find(url.spec());
   return iter != extra_headers_.end() ? iter->second : std::string();
+}
+
+void AwBrowserContext::SetServiceWorkerIoThreadClient(
+    JNIEnv* const env,
+    const base::android::JavaParamRef<jobject>& io_thread_client) {
+  sw_io_thread_client_ =
+      base::android::ScopedJavaGlobalRef<jobject>(io_thread_client);
+}
+
+std::unique_ptr<AwContentsIoThreadClient>
+AwBrowserContext::GetServiceWorkerIoThreadClientThreadSafe() {
+  base::android::ScopedJavaLocalRef<jobject> java_delegate =
+      base::android::ScopedJavaLocalRef<jobject>(sw_io_thread_client_);
+  if (java_delegate) {
+    return std::make_unique<AwContentsIoThreadClient>(java_delegate);
+  }
+  return nullptr;
 }
 
 jboolean JNI_AwBrowserContext_CheckNamedContextExists(
@@ -770,6 +804,10 @@ void AwBrowserContext::DeleteContext(const base::FilePath& relative_path) {
   CHECK(storage_deleted);
   bool cache_deleted = base::DeletePathRecursively(cache_path);
   CHECK(cache_deleted);
+
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_AwBrowserContext_deleteSharedPreferences(
+      env, base::android::ConvertUTF8ToJavaString(env, relative_path.value()));
 }
 
 }  // namespace android_webview

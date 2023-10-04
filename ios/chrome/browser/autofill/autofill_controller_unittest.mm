@@ -46,7 +46,7 @@
 #import "ios/chrome/browser/ui/autofill/form_input_accessory/form_input_accessory_mediator.h"
 #import "ios/chrome/browser/ui/settings/personal_data_manager_finished_profile_tasks_waiter.h"
 #import "ios/chrome/browser/web/chrome_web_client.h"
-#import "ios/chrome/browser/webdata_services/web_data_service_factory.h"
+#import "ios/chrome/browser/webdata_services/model/web_data_service_factory.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/web/public/js_messaging/web_frame.h"
 #import "ios/web/public/js_messaging/web_frames_manager.h"
@@ -332,16 +332,12 @@ void AutofillControllerTest::SetUp() {
   infobars::InfoBarManager* infobar_manager =
       InfoBarManagerImpl::FromWebState(web_state());
   autofill_client_ = std::make_unique<TestAutofillClient>(
-      browser_state_.get(), web_state(), infobar_manager, autofill_agent_,
-      /*password_generation_manager=*/nullptr);
+      browser_state_.get(), web_state(), infobar_manager, autofill_agent_);
 
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillUseAlternativeStateNameMap)) {
-    autofill_client_->GetPersonalDataManager()
-        ->personal_data_manager_cleaner_for_testing()
-        ->alternative_state_name_map_updater_for_testing()
-        ->set_local_state_for_testing(local_state_.Get());
-  }
+  autofill_client_->GetPersonalDataManager()
+      ->personal_data_manager_cleaner_for_testing()
+      ->alternative_state_name_map_updater_for_testing()
+      ->set_local_state_for_testing(local_state_.Get());
 
   std::string locale("en");
   autofill::AutofillDriverIOSFactory::CreateForWebState(
@@ -427,10 +423,10 @@ TEST_F(AutofillControllerTest, ReadForm) {
       AutofillJavaScriptFeature::GetInstance()->GetWebFramesManager(
           web_state());
   web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
-  BrowserAutofillManager* autofill_manager =
+  BrowserAutofillManager& autofill_manager =
       AutofillDriverIOS::FromWebStateAndWebFrame(web_state(), main_frame)
-          ->autofill_manager();
-  const auto& forms = autofill_manager->form_structures();
+          ->GetAutofillManager();
+  const auto& forms = autofill_manager.form_structures();
   const auto& form = *(forms.begin()->second);
   CheckField(form, NAME_FULL, "name");
   CheckField(form, ADDRESS_HOME_LINE1, "address");
@@ -450,10 +446,10 @@ TEST_F(AutofillControllerTest, ReadFormName) {
       AutofillJavaScriptFeature::GetInstance()->GetWebFramesManager(
           web_state());
   web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
-  BrowserAutofillManager* autofill_manager =
+  BrowserAutofillManager& autofill_manager =
       AutofillDriverIOS::FromWebStateAndWebFrame(web_state(), main_frame)
-          ->autofill_manager();
-  const auto& forms = autofill_manager->form_structures();
+          ->GetAutofillManager();
+  const auto& forms = autofill_manager.form_structures();
   const auto& form = *(forms.begin()->second);
   EXPECT_EQ(u"form1", form.ToFormData().name);
 }

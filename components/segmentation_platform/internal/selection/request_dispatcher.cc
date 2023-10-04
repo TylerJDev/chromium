@@ -10,6 +10,7 @@
 #include "base/containers/circular_deque.h"
 #include "base/functional/callback_forward.h"
 #include "base/location.h"
+#include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
@@ -168,10 +169,10 @@ void RequestDispatcher::GetModelResult(
     WrappedCallback callback) {
   if (storage_service_->config_holder()->IsLegacySegmentationKey(
           segmentation_key)) {
-    VLOG(1) << "Segmentation key: " << segmentation_key
-            << " is using a legacy config with the new API which is not "
-               "supported. Legacy segments should use "
-               "GetSelectedSegmentOnDemand or migrate to the new config.";
+    LOG(ERROR)
+        << "Segmentation key: " << segmentation_key
+        << " is using a legacy config with the new API which is not "
+           "supported. Legacy segments should migrate to the new config.";
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(std::move(callback), /*is_cached_result=*/false,

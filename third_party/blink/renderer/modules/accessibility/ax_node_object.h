@@ -117,8 +117,6 @@ class MODULES_EXPORT AXNodeObject : public AXObject {
   // Check object state.
   bool IsClickable() const final;
   bool IsFocused() const override;
-  // aria-grabbed is deprecated in WAI-ARIA 1.1.
-  AccessibilityGrabbedState IsGrabbed() const override;
   AccessibilityExpanded IsExpanded() const override;
   AccessibilitySelectedState IsSelected() const override;
   bool IsSelectedFromFocusSupported() const override;
@@ -147,6 +145,9 @@ class MODULES_EXPORT AXNodeObject : public AXObject {
 
   AXObject* GetChildFigcaption() const override;
   bool IsDescendantOfLandmarkDisallowedElement() const override;
+
+  // Is a redundant label of a radio button or checkbox.
+  static bool IsRedundantLabel(HTMLLabelElement* label);
 
   // Used to compute kRadioGroupIds, which is only used on Mac.
   // TODO(accessibility) Consider computing on browser side and removing here.
@@ -189,7 +190,6 @@ class MODULES_EXPORT AXNodeObject : public AXObject {
   ax::mojom::blink::Role AriaRoleAttribute() const final;
   void AriaDescribedbyElements(AXObjectVector&) const override;
   void AriaOwnsElements(AXObjectVector&) const override;
-  bool SupportsARIADragging() const override;
   void Dropeffects(
       Vector<ax::mojom::blink::Dropeffect>& dropeffects) const override;
 
@@ -358,7 +358,6 @@ class MODULES_EXPORT AXNodeObject : public AXObject {
   ax::mojom::blink::Dropeffect ParseDropeffect(String& dropeffect) const;
 
   static bool IsNameFromLabelElement(HTMLElement* control);
-  static bool IsRedundantLabel(HTMLLabelElement* label);
 
 #if BUILDFLAG(IS_ANDROID)
   bool always_load_inline_text_boxes_ = false;

@@ -6,7 +6,6 @@
 #define COMPONENTS_EXO_WAYLAND_WAYLAND_DISPLAY_OBSERVER_H_
 
 #include <stdint.h>
-#include <wayland-server-protocol-core.h>
 
 #include "ash/shell_observer.h"
 #include "base/memory/raw_ptr.h"
@@ -71,30 +70,16 @@ class WaylandDisplayHandler : public display::DisplayObserver,
   void UnsetXdgOutputResource();
 
   size_t CountObserversForTesting() const;
-  bool IsClientDestroyedForTesting() const;
-  AuraOutputManager* GetAuraOutputManagerForTesting();
+
+  const wl_resource* output_resource() const { return output_resource_; }
 
  protected:
-  wl_resource* output_resource() const { return output_resource_; }
-
   // Overridable for testing.
   virtual void XdgOutputSendLogicalPosition(const gfx::Point& position);
   virtual void XdgOutputSendLogicalSize(const gfx::Size& size);
   virtual void XdgOutputSendDescription(const std::string& desc);
 
  private:
-  // Tracks whether destruction of the associated server-side client object has
-  // begun. Note that the wl_resource associated with this output will remain
-  // valid until its cleanup routine is run during a later phase of the client's
-  // multi-part teardown.
-  struct ClientDestroyListener {
-    wl_listener listener;
-    bool notified = false;
-  };
-
-  // Called when the client associated with the handler begins destruction.
-  static void OnClientDestroyed(struct wl_listener* listener, void* data);
-
   // Overridden from WaylandDisplayObserver:
   bool SendDisplayMetrics(const display::Display& display,
                           uint32_t changed_metrics) override;
@@ -123,9 +108,6 @@ class WaylandDisplayHandler : public display::DisplayObserver,
   // Resource associated with a zxdg_output_v1 object.
   raw_ptr<wl_resource, DanglingUntriaged | ExperimentalAsh>
       xdg_output_resource_ = nullptr;
-
-  // The listener is notified when the server-side client destruction begins.
-  ClientDestroyListener client_destroy_listener_;
 
   base::ObserverList<WaylandDisplayObserver> observers_;
 

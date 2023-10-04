@@ -49,6 +49,11 @@ class ASH_EXPORT SnapGroupController : public OverviewObserver,
   // created and owned by Shell.
   static SnapGroupController* Get();
 
+  // Called after a window snap event. This will decide whether to start
+  // overview or add `window` to a snap group.
+  // This may also be called by async window state observers.
+  void OnWindowSnapped(aura::Window* window);
+
   // Returns true if `window1` and `window2` are in the same snap group.
   bool AreWindowsInSnapGroup(aura::Window* window1,
                              aura::Window* window2) const;
@@ -56,6 +61,8 @@ class ASH_EXPORT SnapGroupController : public OverviewObserver,
   // Returns true if the corresponding SnapGroup for the given `window1` and
   // `window2` gets created, added to the `snap_groups_` and updated
   // `window_to_snap_group_map_` successfully. False otherwise.
+  // Currently, we make the assumption that the two windows need to be on the
+  // same parent container.
   bool AddSnapGroup(aura::Window* window1, aura::Window* window2);
 
   // Returns true if the corresponding `snap_group` has
@@ -69,10 +76,10 @@ class ASH_EXPORT SnapGroupController : public OverviewObserver,
 
   // Returns the corresponding `SnapGroup` if the given `window` belongs to a
   // snap group or nullptr otherwise.
-  SnapGroup* GetSnapGroupForGivenWindow(aura::Window* window);
+  SnapGroup* GetSnapGroupForGivenWindow(const aura::Window* window);
 
   // Used to decide whether showing overview on window snapped is allowed in
-  // clamshell with `kSnapGroup` arm1 enabled.
+  // clamshell.
   bool CanEnterOverview() const;
 
   void AddObserver(Observer* observer);

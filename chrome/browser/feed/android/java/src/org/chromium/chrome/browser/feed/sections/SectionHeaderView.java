@@ -56,10 +56,6 @@ public class SectionHeaderView extends LinearLayout {
 
         @Override
         public void onTabSelected(TabLayout.Tab tab) {
-            if (!mIsSurfacePolishEnabled) {
-                tab.view.setBackground(ResourcesCompat.getDrawable(getResources(),
-                        R.drawable.header_title_tab_selected_background, getContext().getTheme()));
-            }
             if (mListener != null) {
                 mListener.onSectionHeaderSelected(tab.getPosition());
             }
@@ -67,10 +63,6 @@ public class SectionHeaderView extends LinearLayout {
 
         @Override
         public void onTabUnselected(TabLayout.Tab tab) {
-            if (!mIsSurfacePolishEnabled) {
-                tab.view.setBackground(null);
-            }
-
             if (mListener != null) {
                 mListener.onSectionHeaderUnselected(tab.getPosition());
             }
@@ -201,8 +193,6 @@ public class SectionHeaderView extends LinearLayout {
             mTabLayout.addOnTabSelectedListener(mTabListener);
             if (mIsSurfacePolishEnabled) {
                 ViewGroup.LayoutParams layoutParams = mTabLayout.getLayoutParams();
-                layoutParams.height = getResources().getDimensionPixelSize(
-                        R.dimen.feed_header_tab_layout_height_polished);
                 if (!mIsTablet) {
                     layoutParams.width = LayoutParams.MATCH_PARENT;
                 } else {
@@ -211,7 +201,8 @@ public class SectionHeaderView extends LinearLayout {
                             * 2;
                 }
                 mTabLayout.setTabGravity(TabLayout.GRAVITY_FILL);
-                mTabLayout.setBackground(null);
+                mTabLayout.setBackgroundResource(
+                        R.drawable.header_title_section_tab_background_polished);
             }
         }
 
@@ -220,15 +211,31 @@ public class SectionHeaderView extends LinearLayout {
             int lateralPadding =
                     getResources().getDimensionPixelSize(R.dimen.feed_header_menu_end_margin);
             mContent.setPadding(lateralPadding, 0, lateralPadding, 0);
+            MarginLayoutParams contentMarginLayoutParams =
+                    (MarginLayoutParams) mContent.getLayoutParams();
+            contentMarginLayoutParams.topMargin =
+                    getResources().getDimensionPixelSize(R.dimen.feed_header_top_margin);
 
+            mMenuView.setImageResource(R.drawable.gs_settings_gear_24dp);
             MarginLayoutParams marginLayoutParams =
                     (MarginLayoutParams) mMenuView.getLayoutParams();
             marginLayoutParams.width =
                     getResources().getDimensionPixelSize(R.dimen.feed_header_menu_width_polished);
+            int tabLayoutLateralMargin = getResources().getDimensionPixelSize(
+                    R.dimen.feed_header_tab_layout_lateral_margin);
             marginLayoutParams.setMarginStart(
-                    getResources().getDimensionPixelSize(R.dimen.feed_header_tab_end_margin));
-            if (!mIsTablet && mTitleView != null) {
-                marginLayoutParams.setMarginEnd(lateralPadding);
+                    marginLayoutParams.getMarginStart() + tabLayoutLateralMargin);
+
+            MarginLayoutParams titleViewMarginLayoutParams =
+                    (MarginLayoutParams) mTitleView.getLayoutParams();
+            titleViewMarginLayoutParams.setMarginStart(getResources().getDimensionPixelSize(
+                    R.dimen.feed_header_title_view_margin_start));
+
+            if (mLeadingStatusIndicator != null) {
+                MarginLayoutParams indicatorViewMarginLayoutParams =
+                        (MarginLayoutParams) mLeadingStatusIndicator.getLayoutParams();
+                indicatorViewMarginLayoutParams.setMarginEnd(
+                        indicatorViewMarginLayoutParams.getMarginEnd() + tabLayoutLateralMargin);
             }
         }
 
@@ -259,15 +266,15 @@ public class SectionHeaderView extends LinearLayout {
             tab.view.setClipToPadding(false);
             tab.view.setClipChildren(false);
             if (mIsSurfacePolishEnabled) {
-                ViewGroup.MarginLayoutParams marginLayoutParams =
-                        (ViewGroup.MarginLayoutParams) tab.view.getLayoutParams();
-                marginLayoutParams.setMargins(0, 0,
-                        getResources().getDimensionPixelSize(R.dimen.feed_header_tab_end_margin),
-                        0);
+                tab.view.setForeground(ResourcesCompat.getDrawable(getResources(),
+                        R.drawable.header_title_tab_selected_ripple, getContext().getTheme()));
 
                 tab.view.setBackground(ResourcesCompat.getDrawable(getResources(),
                         R.drawable.header_title_tab_selected_background_polished,
                         getContext().getTheme()));
+            } else {
+                tab.view.setBackground(ResourcesCompat.getDrawable(getResources(),
+                        R.drawable.header_title_tab_selected_background, getContext().getTheme()));
             }
         }
     }
@@ -598,6 +605,11 @@ public class SectionHeaderView extends LinearLayout {
         tab.view.setClickable(mTextsEnabled);
         tab.view.setEnabled(mTextsEnabled);
         adjustTouchDelegate(tab.view);
+
+        // Unread indicator is removed in the updated UI.
+        if (ChromeFeatureList.isEnabled(ChromeFeatureList.FEED_FOLLOW_UI_UPDATE)) {
+            return;
+        }
 
         String contentDescription = state.text;
         if (state.hasUnreadContent && mTextsEnabled) {

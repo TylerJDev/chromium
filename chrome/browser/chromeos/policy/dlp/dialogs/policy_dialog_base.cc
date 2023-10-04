@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "base/functional/callback_forward.h"
 #include "build/chromeos_buildflags.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/vector_icons/vector_icons.h"
@@ -65,6 +66,8 @@ PolicyDialogBase::PolicyDialogBase() {
   SetLayoutManager(std::make_unique<views::BoxLayout>(
       views::BoxLayout::Orientation::kVertical));
 }
+
+PolicyDialogBase::~PolicyDialogBase() = default;
 
 void PolicyDialogBase::SetOnDlpRestrictionCheckedCallback(
     OnDlpRestrictionCheckedCallback callback) {
@@ -133,6 +136,7 @@ void PolicyDialogBase::SetupScrollView() {
   scroll_view->ClipHeightTo(0, kConfidentialContentListMaxHeight);
   scroll_view_container_ =
       scroll_view->SetContents(std::make_unique<views::View>());
+  scroll_view_container_->SetID(kScrollViewId);
   views::BoxLayout* layout = scroll_view_container_->SetLayoutManager(
       std::make_unique<views::BoxLayout>(
           views::BoxLayout::Orientation::kVertical, kConfidentialListInsets,

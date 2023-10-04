@@ -18,8 +18,10 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "cc/base/features.h"
+#include "components/attribution_reporting/features.h"
 #include "content/common/content_navigation_policy.h"
 #include "content/common/content_switches_internal.h"
+#include "content/common/features.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "device/base/features.h"
@@ -221,9 +223,9 @@ void SetRuntimeFeaturesFromChromiumFeatures() {
     {wf::EnableDocumentPolicyNegotiation,
      raw_ref(features::kDocumentPolicyNegotiation)},
     {wf::EnableFedCm, raw_ref(features::kFedCm), kSetOnlyIfOverridden},
+    {wf::EnableFedCmAccountAutoSelectedFlag,
+     raw_ref(features::kFedCmAccountAutoSelectedFlag), kSetOnlyIfOverridden},
     {wf::EnableFedCmAuthz, raw_ref(features::kFedCmAuthz), kDefault},
-    {wf::EnableFedCmAutoReauthnFlag, raw_ref(features::kFedCmAutoReauthnFlag),
-     kSetOnlyIfOverridden},
     {wf::EnableFedCmError, raw_ref(features::kFedCmError), kDefault},
     {wf::EnableFedCmHostedDomain, raw_ref(features::kFedCmHostedDomain),
      kSetOnlyIfOverridden},
@@ -361,17 +363,14 @@ void SetRuntimeFeaturesFromChromiumFeatures() {
      raw_ref(network::features::kCompressionDictionaryTransport)},
     {"CompressionDictionaryTransportBackend",
      raw_ref(network::features::kCompressionDictionaryTransportBackend)},
+    {"CookieDeprecationFacilitatedTesting",
+     raw_ref(features::kCookieDeprecationFacilitatedTesting)},
     {"Database", raw_ref(blink::features::kWebSQLAccess), kSetOnlyIfOverridden},
     {"Fledge", raw_ref(blink::features::kFledge), kSetOnlyIfOverridden},
     {"Fledge", raw_ref(features::kPrivacySandboxAdsAPIsOverride),
      kSetOnlyIfOverridden},
     {"Fledge", raw_ref(features::kPrivacySandboxAdsAPIsM1Override),
      kSetOnlyIfOverridden},
-    {"FledgeBiddingAndAuctionServer",
-     raw_ref(blink::features::kFledgeBiddingAndAuctionServer),
-     kSetOnlyIfOverridden},
-    {"FledgeBiddingAndAuctionServer",
-     raw_ref(features::kPrivacySandboxAdsAPIsOverride), kSetOnlyIfOverridden},
 #if BUILDFLAG(USE_FONTATIONS_BACKEND)
     {"FontationsFontBackend", raw_ref(blink::features::kFontationsFontBackend)},
 #endif
@@ -394,9 +393,6 @@ void SetRuntimeFeaturesFromChromiumFeatures() {
      kSetOnlyIfOverridden},
     {"TouchTextEditingRedesign", raw_ref(features::kTouchTextEditingRedesign)},
     {"TrustedTypesFromLiteral", raw_ref(features::kTrustedTypesFromLiteral)},
-    {"WebAppTabStrip", raw_ref(features::kDesktopPWAsTabStrip)},
-    {"WebAppTabStripCustomizations",
-     raw_ref(blink::features::kDesktopPWAsTabStripCustomizations)},
     {"WebSerialBluetooth",
      raw_ref(features::kEnableBluetoothSerialPortProfileInSerialApi)},
     {"MediaStreamTrackTransfer", raw_ref(features::kMediaStreamTrackTransfer)},
@@ -555,17 +551,6 @@ void SetCustomizedRuntimeFeaturesFromCombinedArgs(
   // CAUTION: Only add custom enabling logic here if it cannot
   // be covered by the other functions.
 
-  if (!command_line.HasSwitch(switches::kDisableYUVImageDecoding) &&
-      base::FeatureList::IsEnabled(
-          blink::features::kDecodeJpeg420ImagesToYUV)) {
-    WebRuntimeFeatures::EnableDecodeJpeg420ImagesToYUV(true);
-  }
-  if (!command_line.HasSwitch(switches::kDisableYUVImageDecoding) &&
-      base::FeatureList::IsEnabled(
-          blink::features::kDecodeLossyWebPImagesToYUV)) {
-    WebRuntimeFeatures::EnableDecodeLossyWebPImagesToYUV(true);
-  }
-
   // These checks are custom wrappers around base::FeatureList::IsEnabled
   // They're moved here to distinguish them from actual base checks
   WebRuntimeFeatures::EnableOverlayScrollbars(ui::IsOverlayScrollbarEnabled());
@@ -714,12 +699,14 @@ void ResolveInvalidConfigurations() {
     WebRuntimeFeatures::EnableSharedStorageAPIM118(false);
   }
 
-  if (!base::FeatureList::IsEnabled(blink::features::kConversionMeasurement)) {
+  if (!base::FeatureList::IsEnabled(
+          attribution_reporting::features::kConversionMeasurement)) {
     LOG_IF(WARNING, WebRuntimeFeatures::IsAttributionReportingEnabled())
         << "AttributionReporting cannot be enabled in this "
            "configuration. Use --"
         << switches::kEnableFeatures << "="
-        << blink::features::kConversionMeasurement.name << " in addition.";
+        << attribution_reporting::features::kConversionMeasurement.name
+        << " in addition.";
     WebRuntimeFeatures::EnableAttributionReporting(false);
   }
 
@@ -731,16 +718,6 @@ void ResolveInvalidConfigurations() {
         << blink::features::kInterestGroupStorage.name << " in addition.";
     WebRuntimeFeatures::EnableAdInterestGroupAPI(false);
     WebRuntimeFeatures::EnableFledge(false);
-  } else if (!base::FeatureList::IsEnabled(
-                 blink::features::kFledgeBiddingAndAuctionServer)) {
-    LOG_IF(WARNING,
-           WebRuntimeFeatures::IsFledgeBiddingAndAuctionServerEnabled())
-        << "FledgeBiddingAndAuctionServer cannot be enabled in this "
-           "configuration. Use --"
-        << switches::kEnableFeatures << "="
-        << blink::features::kFledgeBiddingAndAuctionServer.name
-        << " in addition.";
-    WebRuntimeFeatures::EnableFledgeBiddingAndAuctionServer(false);
   }
 }
 

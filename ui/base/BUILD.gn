@@ -17,6 +17,7 @@ import("//build/util/branding.gni")
 import("//skia/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//testing/test.gni")
+import("//third_party/jni_zero/jni_zero.gni")
 import("//tools/grit/grit_rule.gni")
 import("//ui/base/ui_features.gni")
 import("//ui/qt/qt.gni")
@@ -591,8 +592,9 @@ component("base") {
     sources += [
       "glib/glib_cast.h",
       "glib/glib_integers.h",
-      "glib/glib_signal.h",
       "glib/scoped_gobject.h",
+      "glib/scoped_gsignal.cc",
+      "glib/scoped_gsignal.h",
     ]
   }
 
@@ -930,7 +932,10 @@ if (is_android) {
 
 bundle_data("ui_base_unittests_bundle_data") {
   testonly = true
-  sources = [ "test/data/data_pack_unittest/truncated-header.pak" ]
+  sources = [
+    "//testing/buildbot/filters/ios.ui_base_unittests.filter",
+    "test/data/data_pack_unittest/truncated-header.pak",
+  ]
   outputs = [ "{{bundle_resources_dir}}/" +
               "{{source_root_relative_dir}}/{{source_file_part}}" ]
 }
@@ -1294,6 +1299,10 @@ test("ui_base_unittests") {
   # If the platform supports wayland, run wayland library unittests, too.
   if (is_chromeos_ash || ozone_platform_wayland) {
     deps += [ "//ui/base/wayland:unittests" ]
+  }
+
+  if (use_glib) {
+    sources += [ "glib/scoped_gsignal_unittest.cc" ]
   }
 }
 

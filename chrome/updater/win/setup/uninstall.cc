@@ -19,7 +19,7 @@
 #include "base/path_service.h"
 #include "base/process/launch.h"
 #include "base/process/process.h"
-#include "base/strings/stringprintf.h"
+#include "base/strings/strcat_win.h"
 #include "base/win/registry.h"
 #include "base/win/scoped_com_initializer.h"
 #include "chrome/installer/util/install_service_work_item.h"
@@ -81,6 +81,8 @@ void DeleteComInterfaces(UpdaterScope scope, bool uninstall_all) {
            uninstall_all ? GetActiveInterfaces(scope) : std::vector<IID>())) {
     for (const auto& reg_path :
          {GetComIidRegistryPath(iid), GetComTypeLibRegistryPath(iid)}) {
+      VLOG(1) << "Deleting reg_path: " << reg_path
+              << ": from scope: " << UpdaterScopeToString(scope);
       installer::DeleteRegistryKey(UpdaterScopeToHKeyRoot(scope), reg_path,
                                    WorkItem::kWow64Default);
     }
@@ -118,7 +120,12 @@ void DeleteUpdaterKey(UpdaterScope scope) {
   }
 
   // Finally, delete `UPDATER_KEY` if it is empty.
-  base::win::RegKey(root, L"", Wow6432(KEY_WRITE)).DeleteEmptyKey(UPDATER_KEY);
+  base::win::RegKey updater_key;
+  if (updater_key.Open(root, UPDATER_KEY, Wow6432(KEY_QUERY_VALUE)) ==
+          ERROR_SUCCESS &&
+      updater_key.GetValueCount().value_or(1) == 0) {
+    updater_key.DeleteKey(L"", base::win::RegKey::RecursiveDelete(false));
+  }
 }
 
 void DeleteGoogleUpdateFilesAndKeys(UpdaterScope scope) {
@@ -153,10 +160,10 @@ int RunUninstallScript(UpdaterScope scope, bool uninstall_all) {
   const base::FilePath script_path =
       versioned_dir->AppendASCII(kUninstallScript);
 
-  const std::wstring cmdline = base::StringPrintf(
-      L"\"%ls\" /Q /C \"\"%ls\" --dir=\"%ls\"\"", cmd_exe_path.value().c_str(),
-      script_path.value().c_str(),
-      (uninstall_all ? base_dir : versioned_dir)->value().c_str());
+  const std::wstring cmdline = base::StrCat(
+      {L"\"", cmd_exe_path.value(), L"\" /Q /C \"\"", script_path.value(),
+       L"\" --dir=\"", (uninstall_all ? base_dir : versioned_dir)->value(),
+       L"\"\""});
   base::LaunchOptions options;
   options.start_hidden = true;
 

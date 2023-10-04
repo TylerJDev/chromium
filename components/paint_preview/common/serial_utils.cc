@@ -8,7 +8,9 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "components/paint_preview/common/subset_font.h"
+#include "third_party/skia/include/codec/SkBmpDecoder.h"
 #include "third_party/skia/include/codec/SkCodec.h"
+#include "third_party/skia/include/codec/SkGifDecoder.h"
 #include "third_party/skia/include/codec/SkJpegDecoder.h"
 #include "third_party/skia/include/codec/SkPngDecoder.h"
 #include "third_party/skia/include/codec/SkWebpDecoder.h"
@@ -49,8 +51,9 @@ sk_sp<SkData> SerializePictureAsRectData(SkPicture* picture, void* ctx) {
 
   auto it = context->content_id_to_transformed_clip.find(picture->uniqueID());
   // Defers picture serialization behavior to Skia.
-  if (it == context->content_id_to_transformed_clip.end())
+  if (it == context->content_id_to_transformed_clip.end()) {
     return nullptr;
+  }
 
   // This data originates from |PaintPreviewTracker|.
   const SkRect& transformed_cull_rect = it->second;
@@ -103,6 +106,15 @@ sk_sp<SkData> SerializeTypeface(SkTypeface* typeface, void* ctx) {
   return subset_data;
 }
 
+static bool is_supported_codec(sk_sp<SkData> data) {
+  CHECK(data);
+  return SkBmpDecoder::IsBmp(data->data(), data->size()) ||
+         SkGifDecoder::IsGif(data->data(), data->size()) ||
+         SkPngDecoder::IsPng(data->data(), data->size()) ||
+         SkJpegDecoder::IsJpeg(data->data(), data->size()) ||
+         SkWebpDecoder::IsWebp(data->data(), data->size());
+}
+
 sk_sp<SkData> SerializeImage(SkImage* image, void* ctx) {
   ImageSerializationContext* context =
       reinterpret_cast<ImageSerializationContext*>(ctx);
@@ -124,7 +136,7 @@ sk_sp<SkData> SerializeImage(SkImage* image, void* ctx) {
 
   // If there already exists encoded data use it directly.
   sk_sp<SkData> encoded_data = image->refEncodedData();
-  if (!encoded_data) {
+  if (!encoded_data || !is_supported_codec(encoded_data)) {
     // Use the default PNG at quality 100 as it is safe.
     // TODO(crbug/1198304): Investigate supporting JPEG at quality 100 for
     // opaque images.
@@ -134,10 +146,6 @@ sk_sp<SkData> SerializeImage(SkImage* image, void* ctx) {
   if (!encoded_data) {
     return SkData::MakeEmpty();
   }
-
-  CHECK(SkPngDecoder::IsPng(encoded_data->data(), encoded_data->size()) ||
-        SkJpegDecoder::IsJpeg(encoded_data->data(), encoded_data->size()) ||
-        SkWebpDecoder::IsWebp(encoded_data->data(), encoded_data->size()));
 
   // Ensure the encoded data fits in the size restriction if present.
   // OOM Prevention: This avoids creating/keeping large serialized images
@@ -171,6 +179,12 @@ sk_sp<SkImage> DeserializeImage(const void* bytes, size_t length, void*) {
   if (SkPngDecoder::IsPng(bytes, length)) {
     return get_image(SkPngDecoder::Decode(data, nullptr));
   }
+  if (SkBmpDecoder::IsBmp(bytes, length)) {
+    return get_image(SkBmpDecoder::Decode(data, nullptr));
+  }
+  if (SkGifDecoder::IsGif(bytes, length)) {
+    return get_image(SkGifDecoder::Decode(data, nullptr));
+  }
   if (SkJpegDecoder::IsJpeg(bytes, length)) {
     return get_image(SkJpegDecoder::Decode(data, nullptr));
   }
@@ -186,8 +200,9 @@ sk_sp<SkPicture> DeserializePictureAsRectData(const void* data,
                                               size_t length,
                                               void* ctx) {
   SerializedRectData rect_data;
-  if (length < sizeof(rect_data))
+  if (length < sizeof(rect_data)) {
     return MakeEmptyPicture();
+  }
   memcpy(&rect_data, data, sizeof(rect_data));
   auto* context = reinterpret_cast<DeserializationContext*>(ctx);
   context->insert(
@@ -207,14 +222,16 @@ sk_sp<SkPicture> GetPictureFromDeserialContext(const void* data,
                                                size_t length,
                                                void* ctx) {
   SerializedRectData rect_data;
-  if (length < sizeof(rect_data))
+  if (length < sizeof(rect_data)) {
     return MakeEmptyPicture();
+  }
   memcpy(&rect_data, data, sizeof(rect_data));
   auto* context = reinterpret_cast<LoadedFramesDeserialContext*>(ctx);
 
   auto it = context->find(rect_data.content_id);
-  if (it == context->end())
+  if (it == context->end()) {
     return MakeEmptyPicture();
+  }
 
   // Scroll and clip the subframe manually since the picture in |ctx| does not
   // encode this information.
@@ -267,21 +284,9 @@ SkSerialProcs MakeSerialProcs(PictureSerializationContext* picture_ctx,
   procs.fTypefaceProc = SerializeTypeface;
   procs.fTypefaceCtx = typeface_ctx;
 
-  // TODO(crbug/1008875): find a consistently smaller and low-memory overhead
-  // image downsampling method to use as fImageProc.
-  //
-  // At present this uses the native representation, but skips serializing if
-  // loading to a bitmap for encoding might cause an OOM.
-  if (image_ctx) {
-    image_ctx->memory_budget_exceeded = false;
-    if (image_ctx->max_decoded_image_size_bytes !=
-            std::numeric_limits<uint64_t>::max() ||
-        image_ctx->remaining_image_size !=
-            std::numeric_limits<uint64_t>::max()) {
-      procs.fImageProc = SerializeImage;
-      procs.fImageCtx = image_ctx;
-    }
-  }
+  image_ctx->memory_budget_exceeded = false;
+  procs.fImageProc = SerializeImage;
+  procs.fImageCtx = image_ctx;
   return procs;
 }
 

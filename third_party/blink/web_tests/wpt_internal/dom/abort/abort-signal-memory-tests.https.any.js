@@ -61,7 +61,7 @@ promise_test(async t => {
   // doesn't hold onto it.
   // Note: use high priority GC tasks to ensure they're scheduled before the
   // locks request promise is resolved.
-  await runAsyncGC(/*highPriority*/true);
+  await runAsyncGC({priority: 'user-blocking'});
 
   controller.abort();
   return promise_rejects_dom(t, 'AbortError', promise);

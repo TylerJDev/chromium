@@ -30,7 +30,7 @@ import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.homepage.settings.HomepageMetricsEnums.HomepageLocationType;
 import org.chromium.chrome.browser.homepage.settings.HomepageSettings;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.settings.SettingsActivityTestRule;
 import org.chromium.chrome.browser.toolbar.HomeButton;
 import org.chromium.chrome.browser.toolbar.ToolbarManager;
@@ -43,6 +43,8 @@ import org.chromium.content_public.browser.test.util.TestThreadUtils;
 import org.chromium.content_public.browser.test.util.TouchCommon;
 import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.url.GURL;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Integration test for {@link HomepagePolicyManager}.
@@ -102,7 +104,7 @@ public class HomepagePolicyIntegrationTest {
         // The first time when the page starts, the homepage is fetched from shared preference
         // So the homepage policy is not enforced yet at this point.
         // Instead, we verify the shared preference to see if right policy URL were stored.
-        String homepageGurlSerialized = SharedPreferencesManager.getInstance().readString(
+        String homepageGurlSerialized = ChromeSharedPreferences.getInstance().readString(
                 ChromePreferenceKeys.HOMEPAGE_LOCATION_POLICY_GURL, "");
         GURL homepageGurl = GURL.deserialize(homepageGurlSerialized);
         Assert.assertEquals("URL stored in shared preference should be the same as policy setting",
@@ -178,8 +180,15 @@ public class HomepagePolicyIntegrationTest {
 
         // Start a new ChromeActivity.
         mActivityTestRule.startActivityCompletely(intent);
-        Assert.assertEquals("Start up page is not homepage", HomepageManager.getHomepageUri(),
+        Assert.assertEquals("Start up page is not homepage", getHomepageUrlOnUiThread(),
                 ChromeTabUtils.getUrlStringOnUiThread(
                         mActivityTestRule.getActivity().getActivityTab()));
+    }
+
+    private String getHomepageUrlOnUiThread() {
+        AtomicReference<String> res = new AtomicReference<>();
+        TestThreadUtils.runOnUiThreadBlocking(
+                () -> { res.set(HomepageManager.getHomepageGurl().getSpec()); });
+        return res.get();
     }
 }

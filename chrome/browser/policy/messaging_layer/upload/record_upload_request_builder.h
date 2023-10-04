@@ -7,6 +7,7 @@
 
 #include <string_view>
 
+#include "base/feature_list.h"
 #include "base/values.h"
 
 #include "components/reporting/proto/synced/record.pb.h"
@@ -62,7 +63,16 @@ namespace reporting {
 //   // optional field, corresponding to |need_encryption_keys| in
 //   // components/reporting/proto/interface.proto
 //   "attachEncryptionSettings": true,
-//   "requestId": "SomeString"
+//   "requestId": "SomeString",
+//   // optional field, corresponding to the configuration file version
+//   // that the client is holding at the moment.
+//   "configurationFileVersion": 1234
+//   // optional field, only used by the client tast tests to signal to the
+//   // server that this is an automated test from the lab. In production, this
+//   // should always be absent. Even if it is erroneously present in production
+//   // code, server ignores it. Marked as string to make it reusable in the
+//   // future. Value should be "tast" in the tast tests.
+//    "source": "SomeString"
 // }
 //
 // This payload is added to the common payload of all reporting jobs, which
@@ -82,6 +92,9 @@ namespace reporting {
 // dictionary that represents a record. The details of each record is documented
 // in record.proto.
 
+BASE_DECLARE_FEATURE(kShouldRequestConfigurationFile);
+BASE_DECLARE_FEATURE(kClientAutomatedTest);
+
 class UploadEncryptedReportingRequestBuilder {
  public:
   // SequenceInformationDictionaryBuilder strings
@@ -93,8 +106,12 @@ class UploadEncryptedReportingRequestBuilder {
   // RequestId key used to build UploadEncryptedReportingRequest
   static constexpr char kRequestId[] = "requestId";
 
+  // The default values signal the server that it shouldn't attach the
+  // encryption settings and that the config_file_version hasn't been set by
+  // `RecordHandlerImpl`.
   explicit UploadEncryptedReportingRequestBuilder(
-      bool attach_encryption_settings = false);
+      bool attach_encryption_settings = false,
+      int config_file_version = -1);
   ~UploadEncryptedReportingRequestBuilder();
 
   // Adds record, converts it into base::Value::Dict, updates reservation to
@@ -113,6 +130,8 @@ class UploadEncryptedReportingRequestBuilder {
 
   static std::string_view GetEncryptedRecordListPath();
   static std::string_view GetAttachEncryptionSettingsPath();
+  static std::string_view GetConfigurationFileVersionPath();
+  static std::string_view GetSourcePath();
 
   absl::optional<base::Value::Dict> result_;
 };

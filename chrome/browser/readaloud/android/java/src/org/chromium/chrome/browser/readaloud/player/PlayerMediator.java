@@ -1,0 +1,101 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.readaloud.player;
+
+import android.widget.SeekBar.OnSeekBarChangeListener;
+
+import androidx.annotation.Nullable;
+
+import org.chromium.chrome.modules.readaloud.Playback;
+import org.chromium.chrome.modules.readaloud.PlaybackArgs.PlaybackVoice;
+import org.chromium.chrome.modules.readaloud.PlaybackListener;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** Mediator class in charge of updating player UI property model. */
+class PlayerMediator implements InteractionHandler {
+    private final PlayerCoordinator mCoordinator;
+    private final PropertyModel mModel;
+    private final PlaybackListener mPlaybackListener = new PlaybackListener() {
+        @Override
+        public void onPlaybackDataChanged(PlaybackData data) {
+            mModel.set(PlayerProperties.PLAYBACK_STATE, data.state());
+            float percent =
+                    (float) data.absolutePositionNanos() / (float) data.totalDurationNanos();
+            mModel.set(PlayerProperties.PROGRESS, percent);
+        }
+    };
+
+    private Playback mPlayback;
+
+    PlayerMediator(PlayerCoordinator coordinator, PropertyModel model) {
+        mCoordinator = coordinator;
+        mModel = model;
+        mModel.set(PlayerProperties.INTERACTION_HANDLER, this);
+    }
+
+    void destroy() {
+        if (mPlayback != null) {
+            mPlayback.removeListener(mPlaybackListener);
+        }
+    }
+
+    void setPlayback(@Nullable Playback playback) {
+        if (mPlayback != null) {
+            mPlayback.removeListener(mPlaybackListener);
+        }
+        mPlayback = playback;
+        if (mPlayback != null) {
+            mPlayback.addListener(mPlaybackListener);
+            mModel.set(PlayerProperties.TITLE, mPlayback.getMetadata().title());
+            mModel.set(PlayerProperties.PUBLISHER, mPlayback.getMetadata().publisher());
+        }
+    }
+
+    void setPlaybackState(@PlaybackListener.State int currentPlaybackState) {
+        mModel.set(PlayerProperties.PLAYBACK_STATE, currentPlaybackState);
+    }
+
+    // InteractionHandler implementation
+    @Override
+    public void onPlayPauseClick() {}
+
+    @Override
+    public void onCloseClick() {
+        mCoordinator.closeClicked();
+    }
+
+    @Override
+    public void onPublisherClick() {}
+
+    @Override
+    public void onSeekBackClick() {}
+
+    @Override
+    public void onSeekForwardClick() {}
+
+    @Override
+    public void onVoiceSelected(PlaybackVoice voice) {}
+
+    @Override
+    public void onPreviewVoiceClick(PlaybackVoice voice) {}
+
+    @Override
+    public void onHighlightingChange(boolean enabled) {}
+
+    @Override
+    public OnSeekBarChangeListener getSeekBarChangeListener() {
+        // TODO implement
+        return null;
+    }
+
+    @Override
+    public void onSpeedChange(float newSpeed) {}
+
+    @Override
+    public void onTranslateLanguageChange(String targetLanguage) {}
+
+    @Override
+    public void onMiniPlayerExpandClick() {}
+}

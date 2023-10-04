@@ -52,14 +52,14 @@ class RenderFrameHostImpl;
 //      | POST /idp_url with OIDC request |
 //      |-------------------------------->|
 //      |                                 |
-//      |       token or signin_url       |
+//      |       token or login_url       |
 //      |<--------------------------------|
 //  .-------.                           .---.
 //  |Browser|                           |IDP|
 //  '-------'                           '---'
 //
 // If the IDP returns an token, the sequence finishes. If it returns a
-// signin_url, that URL is loaded as a rendered Document into a new window for
+// login_url, that URL is loaded as a rendered Document into a new window for
 // the user to interact with the IDP.
 class CONTENT_EXPORT IdpNetworkRequestManager {
  public:
@@ -74,6 +74,7 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
     kEmptyListError,
     kInvalidContentTypeError,
   };
+
   struct FetchStatus {
     ParseStatus parse_status;
     // The HTTP response code, if one was received, otherwise the net error. It
@@ -116,6 +117,20 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
     GURL terms_of_service_url;
   };
 
+  struct IdentityCredentialTokenError {
+    std::string code;
+    GURL url;
+  };
+
+  struct CONTENT_EXPORT TokenResult {
+    TokenResult();
+    ~TokenResult();
+    TokenResult(const TokenResult&);
+
+    std::string token;
+    absl::optional<IdentityCredentialTokenError> error;
+  };
+
   // Error codes sent to the metrics endpoint.
   // Enum is part of public FedCM API. Do not renumber error codes.
   // The error codes are not consecutive to make adding error codes easier in
@@ -154,7 +169,7 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
       base::OnceCallback<void(FetchStatus,
                               data_decoder::DataDecoder::ValueOrError)>;
   using TokenRequestCallback =
-      base::OnceCallback<void(FetchStatus, const std::string&)>;
+      base::OnceCallback<void(FetchStatus, TokenResult)>;
   using ContinueOnCallback = base::OnceCallback<void(FetchStatus, const GURL&)>;
 
   static std::unique_ptr<IdpNetworkRequestManager> Create(

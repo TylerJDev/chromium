@@ -55,7 +55,6 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/webui/chrome_web_ui_controller_factory.h"
 #include "chromeos/ash/components/scalable_iph/scalable_iph.h"
-#include "chromeos/crosapi/cpp/gurl_os_handler_utils.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/feature_engagement/public/tracker.h"
 #include "components/session_manager/core/session_manager.h"
@@ -72,8 +71,6 @@ AppListClientImpl* g_app_list_client_instance = nullptr;
 constexpr base::TimeDelta kTimeMetricsMin = base::Seconds(1);
 constexpr base::TimeDelta kTimeMetricsMax = base::Days(7);
 constexpr int kTimeMetricsBucketCount = 100;
-
-constexpr char kSearchBoxIphUrlPlaceholder[] = "https://www.google.com/";
 
 bool IsTabletMode() {
   return ash::TabletMode::IsInTabletMode();
@@ -212,6 +209,11 @@ void AppListClientImpl::OnAppListControllerDestroyed() {
   if (current_model_updater_) {
     current_model_updater_->SetActive(false);
   }
+}
+
+std::vector<ash::AppListSearchControlCategory>
+AppListClientImpl::GetToggleableCategories() const {
+  return search_controller_->GetToggleableCategories();
 }
 
 void AppListClientImpl::StartSearch(const std::u16string& trimmed_query) {
@@ -685,16 +687,10 @@ void AppListClientImpl::OpenURL(Profile* profile,
                                 ui::PageTransition transition,
                                 WindowOpenDisposition disposition) {
   if (crosapi::browser_util::IsLacrosEnabled()) {
-    const GURL sanitized_url =
-        crosapi::gurl_os_handler_utils::SanitizeAshURL(url);
-    if (CanBeHandledAsSystemUrl(sanitized_url, transition)) {
-      crosapi::UrlHandlerAsh().OpenUrl(sanitized_url);
-    } else {
-      // Send the url to the current primary browser.
-      ash::NewWindowDelegate::GetPrimary()->OpenUrl(
-          url, ash::NewWindowDelegate::OpenUrlFrom::kUserInteraction,
-          ConvertDisposition(disposition));
-    }
+    // Send the url to the current primary browser.
+    ash::NewWindowDelegate::GetPrimary()->OpenUrl(
+        url, ash::NewWindowDelegate::OpenUrlFrom::kUserInteraction,
+        ConvertDisposition(disposition));
   } else {
     NavigateParams params(profile, url, transition);
     params.disposition = disposition;
@@ -736,12 +732,6 @@ AppListClientImpl::CreateLauncherSearchIphSession() {
       tracker, feature_engagement::kIPHLauncherSearchHelpUiFeature);
 }
 
-void AppListClientImpl::OpenSearchBoxIphUrl() {
-  OpenURL(profile_, GURL(kSearchBoxIphUrlPlaceholder),
-          ui::PageTransition::PAGE_TRANSITION_LINK,
-          WindowOpenDisposition::NEW_FOREGROUND_TAB);
-}
-
 void AppListClientImpl::LoadIcon(int profile_id, const std::string& app_id) {
   auto* requested_model_updater = profile_model_mappings_[profile_id];
   if (requested_model_updater != current_model_updater_ ||
@@ -760,11 +750,6 @@ ash::AppListSortOrder AppListClientImpl::GetPermanentSortingOrder() const {
 
   return app_list::AppListSyncableServiceFactory::GetForProfile(profile_)
       ->GetPermanentSortingOrder();
-}
-
-void AppListClientImpl::CommitTemporarySortOrder() {
-  DCHECK(current_model_updater_);
-  current_model_updater_->CommitTemporarySortOrder();
 }
 
 void AppListClientImpl::RecordViewShown() {

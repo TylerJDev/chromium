@@ -5,17 +5,17 @@
 import {TestRunner} from 'test_runner';
 import {ElementsTestRunner} from 'elements_test_runner';
 import {AccessibilityTestRunner} from 'accessibility_test_runner';
+import * as UI from 'devtools/ui/legacy/legacy.js';
 
 (async function() {
   TestRunner.addResult(`Tests that writing an ARIA attribute causes the accessibility node to be updated.\n`);
-  await TestRunner.loadLegacyModule('elements');
   await TestRunner.loadLegacyModule('panels/accessibility');
   await TestRunner.showPanel('elements');
   await TestRunner.loadHTML(`
       <button id="inspected" role="checkbox" aria-checked="true">ARIA checkbox</button>
     `);
 
-  await UI.viewManager.showView('accessibility.view')
+  await UI.ViewManager.ViewManager.instance().showView('accessibility.view')
       .then(() => AccessibilityTestRunner.selectNodeAndWaitForAccessibility('inspected'))
       .then(editAriaChecked);
 

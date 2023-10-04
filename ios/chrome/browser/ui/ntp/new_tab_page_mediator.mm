@@ -56,7 +56,7 @@ const char kFeedManageActivityURL[] =
     "https://myactivity.google.com/myactivity?product=50";
 // URL for 'Manage Interests' item in the Discover feed menu.
 const char kFeedManageInterestsURL[] =
-    "https://google.com/preferences/interests";
+    "https://google.com/preferences/interests/yourinterests";
 // URL for 'Manage Hidden' item in the Discover feed menu.
 const char kFeedManageHiddenURL[] =
     "https://google.com/preferences/interests/hidden";
@@ -167,7 +167,14 @@ const char kFeedLearnMoreURL[] = "https://support.google.com/chrome/"
     [self.NTPContentDelegate updateForSelectedFeed:ntpState.selectedFeed];
   }
 
-  [self.consumer restoreScrollPosition:ntpState.scrollPosition];
+  if (ntpState.shouldScrollToTopOfFeed) {
+    [self.consumer restoreScrollPositionToTopOfFeed];
+    // Prevent next NTP from being scrolled to the top of feed.
+    ntpState.shouldScrollToTopOfFeed = NO;
+    NewTabPageTabHelper::FromWebState(webState)->SetNTPState(ntpState);
+  } else {
+    [self.consumer restoreScrollPosition:ntpState.scrollPosition];
+  }
 }
 
 #pragma mark - FeedManagementNavigationDelegate

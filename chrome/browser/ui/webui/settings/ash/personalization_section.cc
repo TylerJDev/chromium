@@ -6,8 +6,8 @@
 
 #include "ash/constants/ash_features.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
 #include "chrome/browser/ui/webui/settings/ash/personalization_hub_handler.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_tag_registry.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/web_ui.h"
@@ -36,6 +36,8 @@ void PersonalizationSection::AddLoadTimeData(
       {"personalizationPageTitle", isRevampEnabled_
                                        ? IDS_OS_SETTINGS_REVAMP_PERSONALIZATION
                                        : IDS_OS_SETTINGS_PERSONALIZATION},
+      {"personalizationMenuItemDescription",
+       IDS_OS_SETTINGS_PERSONALIZATION_MENU_ITEM_DESCRIPTION},
       {"personalizationHubTitle",
        isRevampEnabled_ ? IDS_OS_SETTINGS_REVAMP_OPEN_PERSONALIZATION_HUB
                         : IDS_OS_SETTINGS_OPEN_PERSONALIZATION_HUB},

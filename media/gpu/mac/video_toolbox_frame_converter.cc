@@ -16,6 +16,7 @@
 #include "gpu/ipc/common/gpu_memory_buffer_impl_io_surface.h"
 #include "gpu/ipc/service/gpu_channel.h"
 #include "gpu/ipc/service/shared_image_stub.h"
+#include "media/base/mac/video_frame_mac.h"
 #include "media/base/media_log.h"
 #include "media/base/media_switches.h"
 #include "media/gpu/mac/video_toolbox_decode_metadata.h"
@@ -24,12 +25,6 @@
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/gpu_memory_buffer.h"
-
-#define MEDIA_DLOG_ERROR(msg)                  \
-  do {                                         \
-    DLOG(ERROR) << msg;                        \
-    MEDIA_LOG(ERROR, media_log_.get()) << msg; \
-  } while (0)
 
 namespace media {
 
@@ -47,13 +42,26 @@ absl::optional<viz::SharedImageFormat> PixelFormatToImageFormat(
   switch (pixel_format) {
     case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
       return viz::MultiPlaneFormat::kNV12;
+    case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+      return viz::MultiPlaneFormat::kP010;
+    case kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar:
+      return viz::MultiPlaneFormat::kNV12A;
     default:
       return absl::nullopt;
   }
 }
 
-bool IsWebGPUCompatible(OSType pixel_format) {
-  return pixel_format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+VideoPixelFormat PixelFormatToVideoPixelFormat(OSType pixel_format) {
+  switch (pixel_format) {
+    case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+      return PIXEL_FORMAT_NV12;
+    case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+      return PIXEL_FORMAT_P016LE;
+    case kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar:
+      return PIXEL_FORMAT_NV12A;
+    default:
+      return PIXEL_FORMAT_UNKNOWN;
+  }
 }
 
 }  // namespace
@@ -93,7 +101,7 @@ void VideoToolboxFrameConverter::Initialize() {
 
   stub_ = std::move(get_stub_cb_).Run();
   if (!stub_) {
-    MEDIA_DLOG_ERROR("Failed to get command buffer stub");
+    MEDIA_LOG(ERROR, media_log_.get()) << "Failed to get command buffer stub";
     return;
   }
 
@@ -107,7 +115,7 @@ void VideoToolboxFrameConverter::Initialize() {
 
   sis_ = stub_->channel()->shared_image_stub();
   if (!sis_) {
-    MEDIA_DLOG_ERROR("Failed to get shared image stub");
+    MEDIA_LOG(ERROR, media_log_.get()) << "Failed to get shared image stub";
     DestroyStub();
     return;
   }
@@ -132,7 +140,7 @@ void VideoToolboxFrameConverter::DestroyStub() {
 }
 
 void VideoToolboxFrameConverter::Convert(
-    base::ScopedCFTypeRef<CVImageBufferRef> image,
+    base::apple::ScopedCFTypeRef<CVImageBufferRef> image,
     std::unique_ptr<VideoToolboxDecodeMetadata> metadata,
     OutputCB output_cb) {
   DVLOG(3) << __func__;
@@ -143,7 +151,7 @@ void VideoToolboxFrameConverter::Convert(
   }
 
   if (!stub_) {
-    MEDIA_DLOG_ERROR("Command buffer stub is missing");
+    MEDIA_LOG(ERROR, media_log_.get()) << "Command buffer stub is missing";
     std::move(output_cb).Run(nullptr, std::move(metadata));
     return;
   }
@@ -164,10 +172,14 @@ void VideoToolboxFrameConverter::Convert(
   absl::optional<viz::SharedImageFormat> format =
       PixelFormatToImageFormat(pixel_format);
   if (!format) {
-    MEDIA_DLOG_ERROR("Unknown pixel format " << pixel_format);
+    MEDIA_LOG(ERROR, media_log_.get())
+        << "Unknown pixel format " << pixel_format;
     std::move(output_cb).Run(nullptr, std::move(metadata));
     return;
   }
+
+  VideoPixelFormat video_pixel_format =
+      PixelFormatToVideoPixelFormat(pixel_format);
 
   gpu::Mailbox mailbox = gpu::Mailbox::GenerateForSharedImage();
   bool result = sis_->CreateSharedImage(
@@ -175,10 +187,14 @@ void VideoToolboxFrameConverter::Convert(
       kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType, kSharedImageUsage,
       kSharedImageDebugLabel);
   if (!result) {
-    MEDIA_DLOG_ERROR("Failed to create shared image");
+    MEDIA_LOG(ERROR, media_log_.get()) << "Failed to create shared image";
     std::move(output_cb).Run(nullptr, std::move(metadata));
     return;
   }
+
+  // Extract IOSurface webgpu compatible attribute before image is moved.
+  const bool is_webgpu_compatible =
+      IOSurfaceIsWebGPUCompatible(CVPixelBufferGetIOSurface(image));
 
   GLenum target = texture_rectangle_ ? GL_TEXTURE_RECTANGLE_ARB : GL_TEXTURE_2D;
 
@@ -196,11 +212,11 @@ void VideoToolboxFrameConverter::Convert(
   // which would allow the renderer to map the IOSurface, but this is more
   // expensive whenever the renderer is not doing readback.
   scoped_refptr<VideoFrame> frame = VideoFrame::WrapNativeTextures(
-      PIXEL_FORMAT_NV12, mailbox_holders, std::move(release_cb), coded_size,
+      video_pixel_format, mailbox_holders, std::move(release_cb), coded_size,
       visible_rect, natural_size, metadata->timestamp);
 
   if (!frame) {
-    MEDIA_DLOG_ERROR("Failed to create VideoFrame");
+    MEDIA_LOG(ERROR, media_log_.get()) << "Failed to create VideoFrame";
 
     // |image| was dropped along with |release_cb|, but the SharedImage is still
     // alive.
@@ -223,7 +239,7 @@ void VideoToolboxFrameConverter::Convert(
   // Releasing |image| must happen after command buffer commands are complete
   // (not just submitted).
   frame->metadata().read_lock_fences_enabled = true;
-  frame->metadata().is_webgpu_compatible = IsWebGPUCompatible(pixel_format);
+  frame->metadata().is_webgpu_compatible = is_webgpu_compatible;
   // TODO(crbug.com/1331597): VideoToolbox can report software usage, should
   // we plumb that through?
   frame->metadata().power_efficient = true;
@@ -233,7 +249,7 @@ void VideoToolboxFrameConverter::Convert(
 
 void VideoToolboxFrameConverter::OnVideoFrameReleased(
     base::OnceCallback<void(const gpu::SyncToken&)> destroy_shared_image_cb,
-    base::ScopedCFTypeRef<CVImageBufferRef> image,
+    base::apple::ScopedCFTypeRef<CVImageBufferRef> image,
     const gpu::SyncToken& sync_token) {
   DVLOG(4) << __func__;
   DCHECK(gpu_task_runner_->RunsTasksInCurrentSequence());

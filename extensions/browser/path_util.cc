@@ -28,14 +28,15 @@ namespace {
 // Retrieves the localized display name for the base name of the given path.
 // If the path is not localized, this will just return the base name.
 std::string GetDisplayBaseName(const base::FilePath& path) {
-  base::ScopedCFTypeRef<CFURLRef> url(CFURLCreateFromFileSystemRepresentation(
-      nullptr, (const UInt8*)path.value().c_str(), path.value().length(),
-      /*isDirectory=*/true));
+  base::apple::ScopedCFTypeRef<CFURLRef> url(
+      CFURLCreateFromFileSystemRepresentation(
+          nullptr, (const UInt8*)path.value().c_str(), path.value().length(),
+          /*isDirectory=*/true));
   if (!url) {
     return path.BaseName().value();
   }
 
-  base::ScopedCFTypeRef<CFStringRef> str;
+  base::apple::ScopedCFTypeRef<CFStringRef> str;
   if (!CFURLCopyResourcePropertyForKey(url, kCFURLLocalizedNameKey,
                                        str.InitializeInto(),
                                        /*error=*/nullptr)) {
@@ -108,14 +109,21 @@ base::FilePath PrettifyPath(const base::FilePath& source_path) {
 #endif  // BUILDFLAG(IS_MAC)
 }
 
+void CalculateExtensionDirectorySize(
+    const base::FilePath& extension_path,
+    base::OnceCallback<void(const int64_t)> callback) {
+  GetExtensionFileTaskRunner()->PostTaskAndReplyWithResult(
+      FROM_HERE, base::BindOnce(&base::ComputeDirectorySize, extension_path),
+      std::move(callback));
+}
+
 void CalculateAndFormatExtensionDirectorySize(
     const base::FilePath& extension_path,
     int message_id,
     base::OnceCallback<void(const std::u16string&)> callback) {
-  GetExtensionFileTaskRunner()->PostTaskAndReplyWithResult(
-      FROM_HERE, base::BindOnce(&base::ComputeDirectorySize, extension_path),
-      base::BindOnce(&OnDirectorySizeCalculated, message_id,
-                     std::move(callback)));
+  CalculateExtensionDirectorySize(
+      extension_path, base::BindOnce(&OnDirectorySizeCalculated, message_id,
+                                     std::move(callback)));
 }
 
 base::FilePath ResolveHomeDirectory(const base::FilePath& path) {

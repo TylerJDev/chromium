@@ -10,6 +10,7 @@
 #include <ostream>
 #include <string>
 
+#include "base/functional/callback_forward.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -18,6 +19,7 @@
 #include "ui/base/dragdrop/os_exchange_data_provider.h"
 #include "ui/events/platform/platform_event_dispatcher.h"
 #include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/image/image_skia.h"
 #include "ui/ozone/platform/wayland/common/wayland_object.h"
 #include "ui/ozone/platform/wayland/host/wayland_data_device.h"
 #include "ui/ozone/platform/wayland/host/wayland_data_source.h"
@@ -116,6 +118,14 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
 
   void DumpState(std::ostream& out) const;
 
+  // Sets a callback which is posted when data transfer steps are finished, ie:
+  // once per mime type and one more when the whole process ends, regardless it
+  // succeeded or not.
+  void set_data_transferred_callback_for_testing(
+      base::RepeatingCallback<void(const std::string&)> cb) {
+    data_transferred_callback_for_testing_ = cb;
+  }
+
  private:
   FRIEND_TEST_ALL_PREFIXES(WaylandDataDragControllerTest, ReceiveDrag);
   FRIEND_TEST_ALL_PREFIXES(WaylandDataDragControllerTest, StartDrag);
@@ -182,10 +192,13 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   bool CanDispatchEvent(const PlatformEvent& event) override;
   uint32_t DispatchEvent(const PlatformEvent& event) override;
 
+  SkBitmap GetIconBitmap();
   void DrawIconInternal();
   static void OnDragSurfaceFrame(void* data,
                                  struct wl_callback* callback,
                                  uint32_t time);
+
+  void RunDataTransferredCallbackForTesting(const std::string& mime_type = {});
 
   const raw_ptr<WaylandConnection> connection_;
   const raw_ptr<WaylandDataDeviceManager> data_device_manager_;
@@ -235,7 +248,7 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   std::unique_ptr<WaylandSurface> icon_surface_;
   float icon_surface_buffer_scale_ = 1.0f;
   std::unique_ptr<WaylandShmBuffer> icon_buffer_;
-  raw_ptr<const SkBitmap> icon_bitmap_ = nullptr;
+  gfx::ImageSkia icon_image_;
   // pending_icon_offset_ is the offset from the image to the cursor to be
   // applied on the next DrawIconInternal().
   // current_icon_offset_ holds the actual current offset from the drag image
@@ -251,6 +264,9 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   raw_ptr<WaylandWindow> pointer_grabber_for_window_drag_ = nullptr;
 
   std::unique_ptr<ScopedEventDispatcher> nested_dispatcher_;
+
+  base::RepeatingCallback<void(const std::string&)>
+      data_transferred_callback_for_testing_;
 
   base::WeakPtrFactory<WaylandDataDragController> weak_factory_{this};
 };

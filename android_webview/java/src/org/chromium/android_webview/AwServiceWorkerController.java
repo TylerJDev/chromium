@@ -18,7 +18,7 @@ import org.chromium.components.embedder_support.util.WebResourceResponseInfo;
 /**
  * Manages clients and settings for Service Workers.
  */
-@Lifetime.Singleton
+@Lifetime.Profile
 public class AwServiceWorkerController {
     @GuardedBy("mAwServiceWorkerClientLock")
     private AwServiceWorkerClient mServiceWorkerClient;
@@ -42,8 +42,7 @@ public class AwServiceWorkerController {
         mServiceWorkerSettings = new AwServiceWorkerSettings(applicationContext, mBrowserContext);
         mServiceWorkerBackgroundThreadClient = new ServiceWorkerBackgroundThreadClientImpl();
         mServiceWorkerIoThreadClient = new ServiceWorkerIoThreadClientImpl();
-        AwContentsStatics.setServiceWorkerIoThreadClient(
-                mServiceWorkerIoThreadClient, mBrowserContext);
+        mBrowserContext.setServiceWorkerIoThreadClient(mServiceWorkerIoThreadClient);
     }
 
     /**

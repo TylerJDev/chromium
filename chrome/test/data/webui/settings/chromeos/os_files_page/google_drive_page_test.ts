@@ -51,6 +51,7 @@ suite('<settings-google-drive-subpage>', function() {
   let bulkPinningToggle: SettingsToggleButtonElement;
   let offlineStorageSubtitle: HTMLDivElement;
   let clearOfflineStorageButton: CrButtonElement;
+  let driveDisabledOverCellularToggle: SettingsToggleButtonElement;
 
   /**
    * Helper to ensure a confirmation dialog is showing, retrieve a button in the
@@ -106,6 +107,10 @@ suite('<settings-google-drive-subpage>', function() {
 
     clearOfflineStorageButton = page.shadowRoot!.querySelector<CrButtonElement>(
         '#drive-offline-storage-row cr-button')!;
+
+    driveDisabledOverCellularToggle =
+        page.shadowRoot!.querySelector<SettingsToggleButtonElement>(
+            '#driveEnableDriveOnMeteredNetworkToggle')!;
   });
 
   teardown(function() {
@@ -141,7 +146,7 @@ suite('<settings-google-drive-subpage>', function() {
           'Remove Drive access', connectDisconnectButton!.textContent!.trim());
     });
 
-    test('confirming drive disconnect updates pref', async function() {
+    test('confirming drive disconnect updates pref', async () => {
       page.setPrefValue('gdata.disabled', false);
       flush();
 
@@ -158,7 +163,7 @@ suite('<settings-google-drive-subpage>', function() {
 
     test(
         'cancelling drive disconnect confirmation dialog doesnt update pref',
-        async function() {
+        async () => {
           page.setPrefValue('gdata.disabled', false);
           flush();
 
@@ -173,7 +178,7 @@ suite('<settings-google-drive-subpage>', function() {
         });
 
 
-    test('free space shows the offline value returned', async function() {
+    test('free space shows the offline value returned', async () => {
       // Send back a normal pinned size result.
       testBrowserProxy.handler.setResultFor(
           'getContentCacheSize', {size: '100 MB'});
@@ -188,7 +193,7 @@ suite('<settings-google-drive-subpage>', function() {
     });
 
 
-    test('when clear offline files clicked show dialog', async function() {
+    test('when clear offline files clicked show dialog', async () => {
       page.setPrefValue('drivefs.bulk_pinning_enabled', false);
       testBrowserProxy.handler.setResultFor(
           'getContentCacheSize', {size: '100 MB'});
@@ -214,6 +219,37 @@ suite('<settings-google-drive-subpage>', function() {
           () =>
               testBrowserProxy.handler.getCallCount('clearPinnedFiles') === 1);
     });
+
+    test('clean up storage button is disabled at 0 B', async () => {
+      testBrowserProxy.handler.setResultFor(
+          'getContentCacheSize', {size: '0 B'});
+      page.onNavigated();
+      await assertAsync(() => clearOfflineStorageButton.disabled);
+
+      testBrowserProxy.handler.setResultFor(
+          'getContentCacheSize', {size: '100 MB'});
+      page.onNavigated();
+      await assertAsync(() => !clearOfflineStorageButton.disabled);
+
+      testBrowserProxy.handler.setResultFor(
+          'getContentCacheSize', {size: '0 B'});
+      page.onNavigated();
+      await assertAsync(() => clearOfflineStorageButton.disabled);
+    });
+
+    test('disabling drive over cellular toggles pref', async () => {
+      page.setPrefValue('gdata.cellular.disabled', false);
+      flush();
+
+      // Click the connect disconnect button.
+      driveDisabledOverCellularToggle.click();
+      await assertAsync(
+          () => page.getPref('gdata.cellular.disabled').value, 5000);
+
+      driveDisabledOverCellularToggle.click();
+      await assertAsync(
+          () => !page.getPref('gdata.cellular.disabled').value, 5000);
+    });
   });
 
   suite('with bulk pinning enabled', () => {
@@ -224,7 +260,7 @@ suite('<settings-google-drive-subpage>', function() {
       });
     });
 
-    test('removing drive access also disables bulk pinning', async function() {
+    test('removing drive access also disables bulk pinning', async () => {
       page.setPrefValue('gdata.disabled', false);
       page.setPrefValue('drivefs.bulk_pinning_enabled', true);
       flush();
@@ -242,8 +278,7 @@ suite('<settings-google-drive-subpage>', function() {
     });
 
     test(
-        'clicking the toggle updates the bulk pinning preference',
-        async function() {
+        'clicking the toggle updates the bulk pinning preference', async () => {
           page.setPrefValue('drivefs.bulk_pinning_enabled', false);
           flush();
 
@@ -256,8 +291,45 @@ suite('<settings-google-drive-subpage>', function() {
         });
 
     test(
+        'clicking the toggle whilst listing files shows a dialog', async () => {
+          page.setPrefValue('drivefs.bulk_pinning_enabled', false);
+          flush();
+
+          testBrowserProxy.observerRemote.onProgress({
+            freeSpace: '1,024 KB',
+            requiredSpace: '512 MB',
+            stage: Stage.kListingFiles,
+            listedFiles: BigInt(100),
+            isError: false,
+          });
+          testBrowserProxy.observerRemote.$.flushForTesting();
+          flush();
+
+          // Wait until the `onProgress` changes have been received.
+          await assertAsync(() => page.listedFiles === 100n);
+
+          // Toggle the bulk pinning toggle.
+          bulkPinningToggle.click();
+
+          // Wait for the clisting files dialog to appear and then close it.
+          await assertAsync(
+              () => page.dialogType ===
+                  ConfirmationDialogType.BULK_PINNING_LISTING_FILES,
+              5000);
+          await clickConfirmationDialogButton('.cancel-button');
+
+          // Assert the bulk pinning pref was not enabled and the toggle was not
+          // checked.
+          assertFalse(
+              page.getPref('drivefs.bulk_pinning_enabled').value,
+              'Pinning pref should be false');
+          assertFalse(
+              bulkPinningToggle.checked, 'Pinning toggle should be false');
+        });
+
+    test(
         'progress sent via the browser proxy updates the sub title text',
-        async function() {
+        async () => {
           page.setPrefValue('drivefs.bulk_pinning_enabled', false);
 
           /**
@@ -287,6 +359,7 @@ suite('<settings-google-drive-subpage>', function() {
             freeSpace: '1,024 KB',
             requiredSpace: '512 MB',
             stage: Stage.kSuccess,
+            listedFiles: BigInt(100),
             isError: false,
           });
           testBrowserProxy.observerRemote.$.flushForTesting();
@@ -301,6 +374,7 @@ suite('<settings-google-drive-subpage>', function() {
             freeSpace: '1,024 KB',
             requiredSpace: '512 MB',
             stage: Stage.kCannotGetFreeSpace,
+            listedFiles: BigInt(0),
             isError: true,
           });
           testBrowserProxy.observerRemote.$.flushForTesting();
@@ -311,7 +385,7 @@ suite('<settings-google-drive-subpage>', function() {
               subTitle => !subTitle.includes(requiredSpaceText));
         });
 
-    test('disabling bulk pinning shows confirmation dialog', async function() {
+    test('disabling bulk pinning shows confirmation dialog', async () => {
       page.setPrefValue('drivefs.bulk_pinning_enabled', true);
       flush();
 
@@ -345,7 +419,7 @@ suite('<settings-google-drive-subpage>', function() {
 
     test(
         'atempting to enable bulk pinning when no free space shows dialog',
-        async function() {
+        async () => {
           page.setPrefValue('drivefs.bulk_pinning_enabled', false);
 
           // Mock space values and the `kNotEnoughSpace` stage via the browser
@@ -354,6 +428,7 @@ suite('<settings-google-drive-subpage>', function() {
             freeSpace: '512 MB',
             requiredSpace: '1,024 MB',
             stage: Stage.kNotEnoughSpace,
+            listedFiles: BigInt(100),
             isError: true,
           });
           testBrowserProxy.observerRemote.$.flushForTesting();
@@ -388,8 +463,9 @@ suite('<settings-google-drive-subpage>', function() {
         });
 
     test(
-        'attempting to enable bulk pinning when no free space shows dialog',
-        async function() {
+        'attempting to enable bulk pinning when' +
+            'unknown error occurs show dialog',
+        async () => {
           page.setPrefValue('drivefs.bulk_pinning_enabled', false);
 
           // Mock space values and the `kNotEnoughSpace` stage via the browser
@@ -398,6 +474,7 @@ suite('<settings-google-drive-subpage>', function() {
             freeSpace: 'x',
             requiredSpace: 'y',
             stage: Stage.kCannotGetFreeSpace,
+            listedFiles: BigInt(0),
             isError: true,
           });
           testBrowserProxy.observerRemote.$.flushForTesting();
@@ -431,34 +508,73 @@ suite('<settings-google-drive-subpage>', function() {
               'Pinning toggle should not be toggled');
         });
 
-    test(
-        'clear offline files disabled when bulk pinning enabled',
-        async function() {
-          page.setPrefValue('drivefs.bulk_pinning_enabled', false);
-          testBrowserProxy.handler.setResultFor(
-              'getContentCacheSize', {size: '100 MB'});
-          page.onNavigated();
-          testBrowserProxy.observerRemote.onProgress({
-            freeSpace: 'x',
-            requiredSpace: 'y',
-            stage: Stage.kStopped,
-            isError: false,
-          });
-          testBrowserProxy.observerRemote.$.flushForTesting();
-          await assertAsync(() => !clearOfflineStorageButton.disabled);
+    test('clear offline files disabled when bulk pinning enabled', async () => {
+      page.setPrefValue('drivefs.bulk_pinning_enabled', false);
+      testBrowserProxy.handler.setResultFor(
+          'getContentCacheSize', {size: '100 MB'});
+      page.onNavigated();
+      testBrowserProxy.observerRemote.onProgress({
+        freeSpace: 'x',
+        requiredSpace: 'y',
+        stage: Stage.kStopped,
+        listedFiles: BigInt(100),
+        isError: false,
+      });
+      testBrowserProxy.observerRemote.$.flushForTesting();
+      await assertAsync(() => !clearOfflineStorageButton.disabled);
 
+      page.setPrefValue('drivefs.bulk_pinning_enabled', true);
+      testBrowserProxy.handler.setResultFor(
+          'getContentCacheSize', {size: '100 MB'});
+      page.onNavigated();
+      testBrowserProxy.observerRemote.onProgress({
+        freeSpace: 'x',
+        requiredSpace: 'y',
+        stage: Stage.kSyncing,
+        listedFiles: BigInt(100),
+        isError: false,
+      });
+      testBrowserProxy.observerRemote.$.flushForTesting();
+      await assertAsync(() => clearOfflineStorageButton.disabled);
+    });
+
+    test(
+        'disabling bulk pinning whilst offline shows confirmation dialog',
+        async () => {
           page.setPrefValue('drivefs.bulk_pinning_enabled', true);
-          testBrowserProxy.handler.setResultFor(
-              'getContentCacheSize', {size: '100 MB'});
-          page.onNavigated();
+          flush();
+
+          // Mock space values and the `kPausedOffline` stage via the browser
+          // proxy.
           testBrowserProxy.observerRemote.onProgress({
-            freeSpace: 'x',
-            requiredSpace: 'y',
-            stage: Stage.kSyncing,
+            freeSpace: '512 MB',
+            requiredSpace: '1,024 MB',
+            stage: Stage.kPausedOffline,
+            listedFiles: BigInt(100),
             isError: false,
           });
           testBrowserProxy.observerRemote.$.flushForTesting();
-          await assertAsync(() => clearOfflineStorageButton.disabled);
+          flush();
+
+          // Wait for the stage to propagate to the page.
+          await assertAsync(() => page.stage === Stage.kPausedOffline, 1000);
+
+          // Click the bulk pinning toggle.
+          bulkPinningToggle.click();
+
+          // Wait for the confirmation dialog to appear and click the "Turn off"
+          // button.
+          await assertAsync(
+              () => page.dialogType ===
+                  ConfirmationDialogType.BULK_PINNING_DISABLE,
+              5000);
+          await clickConfirmationDialogButton('.action-button');
+
+          assertFalse(
+              page.getPref('drivefs.bulk_pinning_enabled').value,
+              'Pinning pref should be false');
+          assertFalse(
+              bulkPinningToggle.checked, 'Pinning toggle should be false');
         });
   });
 });

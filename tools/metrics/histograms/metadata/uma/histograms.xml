@@ -57,7 +57,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Histogram.MismatchedConstructionArguments"
-    enum="HistogramNameHash" expires_after="2023-12-31">
+    enum="HistogramNameHash" expires_after="2024-03-03">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -69,7 +69,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Histogram.TooManyBuckets.1000" enum="HistogramNameHash"
-    expires_after="2023-11-01">
+    expires_after="2024-11-01">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -80,7 +80,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.ActualLogUploadInterval" units="minutes"
-    expires_after="2023-12-24">
+    expires_after="2024-02-25">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -117,7 +117,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.ChildProcess.Ping.{Source}" enum="UmaChildPingStatus"
-    expires_after="2023-11-01">
+    expires_after="2024-02-20">
   <owner>lucnguyen@google.com</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -175,7 +175,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.ClientIdBackupRecoveredWithAge" units="hours"
-    expires_after="2023-12-24">
+    expires_after="2024-02-25">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -186,7 +186,7 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="UMA.ClientIdCleared" enum="Boolean" expires_after="2023-12-24">
+<histogram name="UMA.ClientIdCleared" enum="Boolean" expires_after="2024-03-10">
   <owner>pdyson@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -196,7 +196,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.ClientIdSource" enum="ClientIdSource"
-    expires_after="2023-12-24">
+    expires_after="2024-02-25">
   <owner>pdyson@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>The source of the client id when its creation is forced.</summary>
@@ -266,7 +266,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.EntropySourceType" enum="UmaEntropySourceType"
-    expires_after="2023-12-31">
+    expires_after="2024-03-03">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -276,7 +276,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.ExternalExperiment.GroupCount" units="groups"
-    expires_after="2023-12-31">
+    expires_after="2024-03-03">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -288,7 +288,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.FileMetricsProvider.AccessResult"
-    enum="FileMetricsProviderAccessResult" expires_after="2023-12-31">
+    enum="FileMetricsProviderAccessResult" expires_after="2024-03-03">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -322,7 +322,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.IndependentLog.{Provider}.FinalizeTime" units="ms"
-    expires_after="2023-12-01">
+    expires_after="2024-02-20">
   <owner>lucnguyen@google.com</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -331,15 +331,26 @@ chromium-metrics-reviews@google.com.
     are successfully closed.
   </summary>
   <token key="Provider">
-    <variant name="AwBackgroundTracingMetricsProvider"/>
     <variant name="BackgroundTracingMetricsProvider"/>
     <variant name="FileMetricsProvider"/>
     <variant name="StructuredMetricsProvider"/>
   </token>
 </histogram>
 
+<histogram name="UMA.InitialStabilityRecordBeacon" enum="Boolean"
+    expires_after="2024-08-22">
+  <owner>mpearson@chromium.org</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    Emitted (with value &quot;true&quot;) in each UMA record that's an initial
+    stability log. Missing from other types of logs such as logs from ongoing
+    Chrome use and &quot;independent&quot; logs that contain data from the
+    previous session via the persistent histograms code.
+  </summary>
+</histogram>
+
 <histogram name="UMA.InitSequence" enum="UmaInitSequence"
-    expires_after="2023-12-17">
+    expires_after="2024-02-20">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -352,7 +363,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.IsClonedInstall" enum="BooleanCloned"
-    expires_after="2024-01-14">
+    expires_after="2024-03-17">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -422,7 +433,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.MachineIdState" enum="UmaMachineIdState"
-    expires_after="2023-12-17">
+    expires_after="2024-02-20">
   <owner>jwd@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -434,7 +445,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.MetricsIDsReset" enum="BooleanHit"
-    expires_after="2023-12-17">
+    expires_after="2024-02-20">
   <owner>jwd@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -450,7 +461,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.MetricsReporting.Toggle" enum="MetricsReportingChange"
-    expires_after="2024-01-14">
+    expires_after="2024-03-17">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -594,7 +605,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.NegativeSamples.Histogram" enum="HistogramNameHash"
-    expires_after="2023-12-31">
+    expires_after="2024-11-01">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -603,7 +614,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.NegativeSamples.Increment" units="increment"
-    expires_after="2023-11-01">
+    expires_after="2024-11-01">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -612,7 +623,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.NegativeSamples.Reason" enum="NegativeSampleReason"
-    expires_after="2023-11-01">
+    expires_after="2024-11-01">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -644,7 +655,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.PersistentHistograms.InitResult"
-    enum="PersistentHistogramsInitResult" expires_after="2023-12-17">
+    enum="PersistentHistogramsInitResult" expires_after="2024-02-20">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -654,7 +665,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.PrimaryUserType" enum="UserType"
-    expires_after="2023-12-17">
+    expires_after="2024-02-20">
   <owner>michaelpg@chromium.org</owner>
   <owner>yilkal@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
@@ -731,7 +742,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.ProtoCompressionRatio" units="%"
-    expires_after="2023-12-31">
+    expires_after="2024-03-03">
   <owner>asvitkine@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
@@ -766,15 +777,16 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.SamplingRatePerMille" units="samples per mille"
-    expires_after="2023-12-24">
+    expires_after="2024-02-25">
   <owner>jwd@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
     Sample rate applied to this client, expressed as number of clients per 1000
     that are in the sample. Recorded on every log upload but only if the client
-    is eligible for sampling. (As of September 2019, the only clients eligible
-    for sampling are Windows and Android installs on which the UMA checkbox was
-    enabled by default.)
+    is eligible for sampling. (As of February 2021, all clients on Android and
+    Windows are eligible for sampling. Prior to Jan 26 2021, only Windows and
+    Android installs on which the UMA checkbox was enabled by default were
+    eligible, see b/161848997).
 
     Clients not eligible for sampling will not have this histogram recorded.
 
@@ -793,6 +805,98 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="UMA.StackProfiler.CopyStack.Event" enum="CopyStackEvent"
+    expires_after="2024-09-12">
+  <owner>iby@google.com</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    Records events during StackCopierSignal::CopyStack(). For each run of
+    StackCopierSignal::CopyStack(), &quot;Started&quot; will be recorded once
+    and one of the other events (Succeeded or one of the Failed) will be
+    recorded. Only recorded on platforms that use StackCopierSignal for stack
+    profiling.
+  </summary>
+</histogram>
+
+<histogram name="UMA.StackProfiler.CopyStack.EventSignalToWaitEndTime"
+    units="microseconds" expires_after="2024-09-12">
+  <owner>iby@google.com</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    The delay between when the sampled thread signals that it has finished
+    copying the stack and when StackCopierSignal::CopyStack() receives that
+    signal. Recorded at most once per successful StackCopierSignal::CopyStack()
+    call; will not be recorded if the signal handler was unable to get a clock
+    reading for its end time. Only recorded on platforms that use
+    StackCopierSignal for stack profiling. Reported for all clients regardless
+    of TimeTicks::IsHighResolution, since all platforms that use
+    StackCopierSignal always have high-resolution timers.
+  </summary>
+</histogram>
+
+<histogram name="UMA.StackProfiler.CopyStack.HandlerRunTime"
+    units="microseconds" expires_after="2024-09-12">
+  <owner>iby@google.com</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    The total amount of time that StackCopierSignal::CopyStack()'s signal
+    handler spends running (on the sampled thread). Thus, the amount of time the
+    stack profiler is stealing from the sampled thread. Recorded at most once
+    per successful StackCopierSignal::CopyStack() call; will not be recorded if
+    the signal handler was unable to get a clock reading for its start or end
+    time. Only recorded on platforms that use StackCopierSignal for stack
+    profiling. Reported for all clients regardless of
+    TimeTicks::IsHighResolution, since all platforms that use StackCopierSignal
+    always have high-resolution timers.
+  </summary>
+</histogram>
+
+<histogram name="UMA.StackProfiler.CopyStack.ProfileThreadTotalWaitTime"
+    units="microseconds" expires_after="2024-09-12">
+  <owner>iby@google.com</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    The total amount of time that StackCopierSignal::CopyStack() spends waiting
+    for the futex to becoming signaled. Recorded once per successful
+    StackCopierSignal::CopyStack() call. Only recorded on platforms that use
+    StackCopierSignal for stack profiling. Reported for all clients regardless
+    of TimeTicks::IsHighResolution, since all platforms that use
+    StackCopierSignal always have high-resolution timers.
+  </summary>
+</histogram>
+
+<histogram name="UMA.StackProfiler.CopyStack.SignalToHandlerTime"
+    units="microseconds" expires_after="2024-09-12">
+  <owner>iby@google.com</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    The amount of time between when StackCopierSignal::CopyStack() sends a
+    signal to the sampled thread and the time the signal handler gets control of
+    the sampled thread. Recorded at most once per successful
+    StackCopierSignal::CopyStack() call; will not be recorded if the signal
+    handler was unable to get a clock reading for its start time. Only recorded
+    on platforms that use StackCopierSignal for stack profiling. Reported for
+    all clients regardless of TimeTicks::IsHighResolution, since all platforms
+    that use StackCopierSignal always have high-resolution timers.
+  </summary>
+</histogram>
+
+<histogram name="UMA.StackProfiler.CopyStack.TotalCrossThreadTime"
+    units="microseconds" expires_after="2024-09-12">
+  <owner>iby@google.com</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    The total amount of time consumed by StackCopierSignal::CopyStack() doing
+    work between itself and the sampled thread; that is, the time between when
+    it sends a signal to the other thread and the time the other thread responds
+    by signaling completion. Recorded once per successful
+    StackCopierSignal::CopyStack() call. Only recorded on platforms that use
+    StackCopierSignal for stack profiling. Reported for all clients regardless
+    of TimeTicks::IsHighResolution, since all platforms that use
+    StackCopierSignal always have high-resolution timers.
+  </summary>
+</histogram>
+
 <histogram name="UMA.Startup.LocalStateFileExistence" enum="BooleanExists"
     expires_after="2023-12-24">
   <owner>caitlinfischer@google.com</owner>
@@ -804,12 +908,23 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.StartupVisibility" enum="StartupVisibility"
-    expires_after="2023-12-24">
+    expires_after="2024-02-25">
   <owner>caitlinfischer@google.com</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
     Whether the session is a background or foreground session. Recorded just
     before the MetricsStateManager is created. Android Chrome only.
+  </summary>
+</histogram>
+
+<histogram name="UMA.StatisticsRecorder.LockWaitTime" units="ms"
+    expires_after="2024-03-01">
+  <owner>asvitkine@chromium.org</owner>
+  <owner>src/base/metrics/OWNERS</owner>
+  <summary>
+    Records the sum of the accumulating wait times for acquiring the lock in
+    StatisticsRecorder. This is logged with every UMA log and reset to 0 at that
+    time.
   </summary>
 </histogram>
 
@@ -944,7 +1059,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="UMA.TruncatedEvents.UserAction" units="events"
-    expires_after="2024-02-11">
+    expires_after="2024-03-31">
   <owner>rkaplow@chromium.org</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>

@@ -26,7 +26,6 @@
 #include "components/autofill/core/browser/form_types.h"
 #include "components/autofill/core/browser/metrics/form_events/form_events.h"
 #include "components/autofill/core/browser/metrics/log_event.h"
-#include "components/autofill/core/browser/sync_utils.h"
 #include "components/autofill/core/browser/ui/popup_types.h"
 #include "components/autofill/core/common/dense_set.h"
 #include "components/autofill/core/common/mojom/autofill_types.mojom-forward.h"
@@ -50,7 +49,6 @@ class CreditCard;
 
 namespace autofill_metrics {
 class FormEventLoggerBase;
-struct FormGroupFillingStats;
 }  // namespace autofill_metrics
 
 // A given maximum is enforced to minimize the number of buckets generated.
@@ -714,13 +712,13 @@ class AutofillMetrics {
   // Utility to log URL keyed form interaction events.
   class FormInteractionsUkmLogger {
    public:
-    FormInteractionsUkmLogger(ukm::UkmRecorder* ukm_recorder,
-                              const ukm::SourceId source_id);
+    FormInteractionsUkmLogger(AutofillClient* autofill_client,
+                              ukm::UkmRecorder* ukm_recorder);
 
     bool has_pinned_timestamp() const { return !pinned_timestamp_.is_null(); }
     void set_pinned_timestamp(base::TimeTicks t) { pinned_timestamp_ = t; }
 
-    ukm::builders::Autofill_CreditCardFill CreateCreditCardFillBuilder() const;
+    ukm::builders::Autofill_CreditCardFill CreateCreditCardFillBuilder();
     void Record(ukm::builders::Autofill_CreditCardFill&& builder);
 
     // Initializes this logger with a source_id. Unless forms is parsed no
@@ -813,8 +811,13 @@ class AutofillMetrics {
     int64_t MillisecondsSinceFormParsed(
         const base::TimeTicks& form_parsed_timestamp) const;
 
-    raw_ptr<ukm::UkmRecorder> ukm_recorder_;  // Weak reference.
-    ukm::SourceId source_id_;
+    ukm::SourceId GetSourceId();
+
+    // These objects outlive.
+    raw_ptr<AutofillClient> autofill_client_;
+    raw_ptr<ukm::UkmRecorder> ukm_recorder_;
+
+    absl::optional<ukm::SourceId> source_id_;
     base::TimeTicks pinned_timestamp_;
   };
 
@@ -842,6 +845,26 @@ class AutofillMetrics {
     kHeuristics = 2,
     kBoth = 3,
     kMaxValue = kBoth
+  };
+
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class PaymentsSigninState {
+    // The user is not signed in to Chromium.
+    kSignedOut = 0,
+    // The user is signed in to Chromium.
+    kSignedIn = 1,
+    // The user is signed in to Chromium and sync transport is active for Wallet
+    // data.
+    kSignedInAndWalletSyncTransportEnabled = 2,
+    // The user is signed in, has enabled the sync feature and has not disabled
+    // Wallet sync.
+    kSignedInAndSyncFeatureEnabled = 3,
+    // The user has enabled the sync feature, but has then signed out, so sync
+    // is paused.
+    kSyncPaused = 4,
+    kUnknown = 5,
+    kMaxValue = kUnknown
   };
 
   AutofillMetrics() = delete;
@@ -891,6 +914,11 @@ class AutofillMetrics {
       bool is_canceled_by_user,
       AutofillProgressDialogType autofill_progress_dialog_type);
   static void LogProgressDialogShown(
+      AutofillProgressDialogType autofill_progress_dialog_type);
+
+  // Returns a string representation of the given AutofillProgressDialogType for
+  // constructing subhistogram paths.
+  static std::string_view GetDialogTypeStringForLogging(
       AutofillProgressDialogType autofill_progress_dialog_type);
 
   // Should be called when credit card scan is finished. |duration| should be
@@ -1021,19 +1049,18 @@ class AutofillMetrics {
                                   const base::TimeDelta& duration);
 
   // This should be called each time a page containing forms is loaded.
-  static void LogIsAutofillEnabledAtPageLoad(
-      bool enabled,
-      AutofillSyncSigninState sync_state);
+  static void LogIsAutofillEnabledAtPageLoad(bool enabled,
+                                             PaymentsSigninState sync_state);
 
   // This should be called each time a page containing forms is loaded.
   static void LogIsAutofillProfileEnabledAtPageLoad(
       bool enabled,
-      AutofillSyncSigninState sync_state);
+      PaymentsSigninState sync_state);
 
   // This should be called each time a page containing forms is loaded.
   static void LogIsAutofillCreditCardEnabledAtPageLoad(
       bool enabled,
-      AutofillSyncSigninState sync_state);
+      PaymentsSigninState sync_state);
 
   // This should be called each time a new chrome profile is launched.
   static void LogIsAutofillEnabledAtStartup(bool enabled);
@@ -1092,6 +1119,9 @@ class AutofillMetrics {
   // Logs that the user cleared the form.
   static void LogAutofillFormCleared();
 
+  // Logs that the user used Undo to revert some autofill operation.
+  static void LogAutofillUndo();
+
   // Log the number of days since an Autocomplete suggestion was last used.
   static void LogAutocompleteDaysSinceLastUse(size_t days);
 
@@ -1112,13 +1142,6 @@ class AutofillMetrics {
   static void LogNumberOfEditedAutofilledFields(
       size_t num_edited_autofilled_fields,
       bool observed_submission);
-
-  // Logs the `filling_stats` of the fields within a `form_type`. The filling
-  // status consistent of the number of accepted, corrected or and unfilled
-  // fields.
-  static void LogFieldFillingStats(
-      FormType form_type,
-      const autofill_metrics::FormGroupFillingStats& filling_stats);
 
   // Logs the number of sections and the number of fields/section.
   static void LogSectioningMetrics(
@@ -1229,7 +1252,7 @@ class AutofillMetrics {
 
   // Records the fact that the server card link was clicked with information
   // about the current sync state.
-  static void LogServerCardLinkClicked(AutofillSyncSigninState sync_state);
+  static void LogServerCardLinkClicked(PaymentsSigninState sync_state);
 
   // Records if an autofilled field of a specific type was edited by the user.
   // TODO(crbug.com/1368096): This metric is the successor of
@@ -1254,8 +1277,7 @@ class AutofillMetrics {
   // Records the visible page language upon form submission.
   static void LogFieldParsingTranslatedFormLanguageMetric(base::StringPiece);
 
-  static const char* GetMetricsSyncStateSuffix(
-      AutofillSyncSigninState sync_state);
+  static const char* GetMetricsSyncStateSuffix(PaymentsSigninState sync_state);
 
   // Records whether a document collected phone number, and/or used WebOTP,
   // and/or used OneTimeCode (OTC) during its lifecycle.
@@ -1356,6 +1378,14 @@ class AutofillMetrics {
   // |frame_token| and |renderer_id|.
   static uint64_t FieldGlobalIdToHash64Bit(
       const FieldGlobalId& field_global_id);
+
+  // Log the Autofill2_FieldInfoAfterSubmission UKM event after the form is
+  // submitted and uploaded for votes to the crowdsourcing server.
+  static void LogAutofillFieldInfoAfterSubmission(
+      ukm::UkmRecorder* ukm_recorder,
+      ukm::SourceId source_id,
+      const FormStructure& form,
+      const base::TimeTicks& form_submitted_timestamp);
 
  private:
   static void Log(AutocompleteEvent event);

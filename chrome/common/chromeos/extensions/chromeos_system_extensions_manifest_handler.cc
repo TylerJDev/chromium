@@ -75,6 +75,12 @@ ChromeOSSystemExtensionHandler::~ChromeOSSystemExtensionHandler() = default;
 
 bool ChromeOSSystemExtensionHandler::Parse(extensions::Extension* extension,
                                            std::u16string* error) {
+  if (extension->id() == kChromeOSSystemExtensionDevExtensionId &&
+      !IsChromeOSSystemExtensionDevExtensionEnabled()) {
+    *error = base::ASCIIToUTF16(kInvalidChromeOSSystemExtensionId);
+    return false;
+  }
+
   if (!extension->manifest()->FindDictPath(
           extensions::manifest_keys::kChromeOSSystemExtension)) {
     *error = base::ASCIIToUTF16(kInvalidChromeOSSystemExtensionDeclaration);

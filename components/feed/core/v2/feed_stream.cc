@@ -23,6 +23,7 @@
 #include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "build/buildflag.h"
 #include "components/feed/core/common/pref_names.h"
 #include "components/feed/core/proto/v2/store.pb.h"
 #include "components/feed/core/proto/v2/ui.pb.h"
@@ -174,6 +175,8 @@ FeedStream::FeedStream(RefreshTaskScheduler* refresh_task_scheduler,
                                    preference_change_callback);
   articles_list_visible_.Init(prefs::kArticlesListVisible, profile_prefs,
                               preference_change_callback);
+  snippets_enabled_by_dse_.Init(prefs::kEnableSnippetsByDse, profile_prefs,
+                                preference_change_callback);
   has_stored_data_.Init(feed::prefs::kHasStoredData, profile_prefs);
   signin_allowed_.Init(
       ::prefs::kSigninAllowed, profile_prefs,
@@ -615,7 +618,16 @@ bool FeedStream::IsFeedEnabled() {
 }
 
 bool FeedStream::IsEnabledAndVisible() {
-  return IsArticlesListVisible() && IsFeedEnabled();
+  return IsArticlesListVisible() && IsFeedEnabled() && IsFeedEnabledByDse();
+}
+
+bool FeedStream::IsFeedEnabledByDse() {
+#if BUILDFLAG(IS_ANDROID)
+  if (chrome_info_.is_new_tab_search_engine_url_android_enabled) {
+    return snippets_enabled_by_dse_.GetValue();
+  }
+#endif  // BUILDFLAG(IS_ANDROID)
+  return true;
 }
 
 void FeedStream::EnabledPreferencesChanged() {
@@ -719,6 +731,35 @@ void FeedStream::ManualRefresh(SurfaceId surface_id,
 
   metrics_reporter_->OnManualRefresh(surface->GetStreamType(), metadata_,
                                      stream.content_ids);
+}
+
+void FeedStream::FetchResource(
+    const GURL& url,
+    const std::string& method,
+    const std::vector<std::string>& header_names_and_values,
+    const std::string& post_data,
+    base::OnceCallback<void(NetworkResponse)> callback) {
+  net::HttpRequestHeaders headers;
+  for (size_t i = 0; i + 1 < header_names_and_values.size(); i += 2) {
+    headers.SetHeader(header_names_and_values[i],
+                      header_names_and_values[i + 1]);
+  }
+  feed_network_->SendAsyncDataRequest(
+      url, method, headers, post_data, GetAccountInfo(),
+      base::BindOnce(&FeedStream::FetchResourceComplete, base::Unretained(this),
+                     std::move(callback)));
+}
+
+void FeedStream::FetchResourceComplete(
+    base::OnceCallback<void(NetworkResponse)> callback,
+    FeedNetwork::RawResponse response) {
+  MetricsReporter::OnResourceFetched(response.response_info.status_code);
+  NetworkResponse network_response;
+  network_response.status_code = response.response_info.status_code;
+  network_response.response_bytes = std::move(response.response_bytes);
+  network_response.response_header_names_and_values =
+      std::move(response.response_info.response_header_names_and_values);
+  std::move(callback).Run(std::move(network_response));
 }
 
 void FeedStream::ExecuteOperations(
@@ -990,6 +1031,12 @@ LaunchResult FeedStream::ShouldAttemptLoad(const StreamType& stream_type,
             feedwire::DiscoverLaunchResult::INELIGIBLE_DISCOVER_DISABLED};
   }
 
+  if (!IsFeedEnabledByDse()) {
+    return {
+        LoadStreamStatus::kLoadNotAllowedDisabledByDse,
+        feedwire::DiscoverLaunchResult::INELIGIBLE_DISCOVER_DISABLED_BY_DSE};
+  }
+
   if (!delegate_->IsEulaAccepted()) {
     return {LoadStreamStatus::kLoadNotAllowedEulaNotAccepted,
             feedwire::DiscoverLaunchResult::INELIGIBLE_EULA_NOT_ACCEPTED};
@@ -1053,6 +1100,8 @@ LaunchResult FeedStream::ShouldMakeFeedQueryRequest(
     case StreamKind::kUnknown:
       DLOG(ERROR) << "Unknown stream kind";
       [[fallthrough]];
+    // TODO(b/300455747): Add network request type for kids content.
+    case StreamKind::kSupervisedUser:
     case StreamKind::kForYou:
       request_type = (load_type != LoadType::kLoadMore)
                          ? NetworkRequestType::kFeedQuery
@@ -1076,11 +1125,8 @@ LaunchResult FeedStream::ShouldMakeFeedQueryRequest(
 }
 
 feedwire::ChromeSignInStatus::SignInStatus FeedStream::GetSignInStatus() const {
-  if (IsSyncOn()) {
-    return feedwire::ChromeSignInStatus::SYNCED;
-  }
   if (IsSignedIn()) {
-    return feedwire::ChromeSignInStatus::SIGNED_IN_WITHOUT_SYNC;
+    return feedwire::ChromeSignInStatus::SIGNED_IN;
   }
   if (!IsSigninAllowed()) {
     return feedwire::ChromeSignInStatus::SIGNIN_DISALLOWED_BY_CONFIG;
@@ -1169,6 +1215,8 @@ RequestMetadata FeedStream::GetRequestMetadata(const StreamType& stream_type,
   result.sign_in_status = GetSignInStatus();
 
   result.default_search_engine = GetDefaultSearchEngine();
+
+  result.country = delegate_->GetCountry();
 
   return result;
 }
@@ -1737,13 +1785,9 @@ void FeedStream::CheckDuplicatedContentsOnRefresh() {
   base::flat_set<uint32_t> viewed_content_hashes(
       stream_metadata.viewed_content_hashes().begin(),
       stream_metadata.viewed_content_hashes().end());
-  most_recent_viewed_content_hashes.erase(
-      std::remove_if(most_recent_viewed_content_hashes.begin(),
-                     most_recent_viewed_content_hashes.end(),
-                     [&viewed_content_hashes](uint32_t x) {
-                       return viewed_content_hashes.contains(x);
-                     }),
-      most_recent_viewed_content_hashes.end());
+  base::EraseIf(most_recent_viewed_content_hashes,
+      [&viewed_content_hashes](
+      uint32_t x) { return viewed_content_hashes.contains(x); });
   most_recent_viewed_content_hashes.insert(
       most_recent_viewed_content_hashes.end(),
       stream_metadata.viewed_content_hashes().begin(),

@@ -202,6 +202,7 @@ struct ChildWindowOrderingCommand {
   BOOL _preventKeyWindow;
   BOOL _isTooltip;
   BOOL _isHeadless;
+  BOOL _isShufflingForOrdering;
   BOOL _miniaturizationInProgress;
   BOOL _isOrderingOut;
 }
@@ -209,6 +210,7 @@ struct ChildWindowOrderingCommand {
 @synthesize bridge = _bridge;
 @synthesize isTooltip = _isTooltip;
 @synthesize isHeadless = _isHeadless;
+@synthesize isShufflingForOrdering = _isShufflingForOrdering;
 @synthesize childWindowAddedHandler = _childWindowAddedHandler;
 @synthesize childWindowRemovedHandler = _childWindowRemovedHandler;
 @synthesize commandDispatchParentOverride = _commandDispatchParentOverride;
@@ -267,6 +269,10 @@ struct ChildWindowOrderingCommand {
 // Overridden to ensure that removing a child window does not trigger a Space
 // change, and to perform post-removal operations.
 - (void)removeChildWindow:(NSWindow*)childWindow {
+  if (self != childWindow.parentWindow) {
+    return;
+  }
+
   // For any non-Chrome windows (i.e. those created by the frameworks),
   // remove as usual. Also continue as usual if we're on the active space,
   // or we happen to be a child of another window.
@@ -506,8 +512,8 @@ struct ChildWindowOrderingCommand {
   [super sendEvent:event];
 }
 
-- (void)reallyOrderWindow:(NSWindowOrderingMode)orderingMode
-               relativeTo:(NSInteger)otherWindowNumber {
+- (void)orderWindowByShuffling:(NSWindowOrderingMode)orderingMode
+                    relativeTo:(NSInteger)otherWindowNumber {
   NativeWidgetMacNSWindow* parent =
       static_cast<NativeWidgetMacNSWindow*>([self parentWindow]);
 
@@ -532,6 +538,8 @@ struct ChildWindowOrderingCommand {
     return;
   }
 
+  base::AutoReset<BOOL> shuffling(&_isShufflingForOrdering, YES);
+
   // `otherWindow` is nil if `otherWindowNumber` is 0. In this case, place
   // `self` at the top / bottom, depending on `orderingMode`.
   NSWindow* otherWindow = [NSApp windowWithWindowNumber:otherWindowNumber];
@@ -548,7 +556,7 @@ struct ChildWindowOrderingCommand {
 // hardly ever calls display, and reports -[NSWindow isVisible] incorrectly
 // when ordering in a window for the first time.
 // Note that this methods has no effect for children windows. Use
-// -reallyOrderWindow:relativeTo: instead.
+// -orderWindowByShuffling:relativeTo: instead.
 - (void)orderWindow:(NSWindowOrderingMode)orderingMode
          relativeTo:(NSInteger)otherWindowNumber {
   [super orderWindow:orderingMode relativeTo:otherWindowNumber];
@@ -556,7 +564,7 @@ struct ChildWindowOrderingCommand {
 }
 
 - (void)miniaturize:(id)sender {
-  static const BOOL isMacOS13OrHigher = base::mac::IsAtLeastOS13();
+  static const BOOL isMacOS13OrHigher = base::mac::MacOSMajorVersion() >= 13;
   // On macOS 13, the miniaturize operation appears to no longer be "atomic"
   // because of non-blocking roundtrip IPC with the Dock. We want to note here
   // that miniaturization is in progress. The process completes when we
@@ -583,7 +591,7 @@ struct ChildWindowOrderingCommand {
   // _miniaturizationInProgress is NO, the miniaturization process was
   // cancelled by a call to -makeKeyAndOrderFront:. In that case, we don't want
   // to proceed with miniaturization.
-  static const BOOL isMacOS13OrHigher = base::mac::IsAtLeastOS13();
+  static const BOOL isMacOS13OrHigher = base::mac::MacOSMajorVersion() >= 13;
   if (isMacOS13OrHigher && !_miniaturizationInProgress) {
     return;
   }
@@ -677,7 +685,7 @@ struct ChildWindowOrderingCommand {
   // https://sector7.computest.nl/post/2022-08-process-injection-breaking-all-macos-security-layers-with-a-single-vulnerability/
   // for more details.
   NSKeyedArchiver* encoder = [[NSKeyedArchiver alloc]
-      initRequiringSecureCoding:base::mac::IsAtLeastOS12()];
+      initRequiringSecureCoding:base::mac::MacOSMajorVersion() >= 12];
   encoder.delegate = self;
   [self encodeRestorableStateWithCoder:encoder];
   [encoder finishEncoding];
@@ -867,8 +875,8 @@ struct ChildWindowOrderingCommand {
 
 - (void)processChildWindowOrderingCommands {
   for (const auto& command : _windowOrderingCommands) {
-    [self reallyOrderWindow:command.windowOrderingMode
-                 relativeTo:command.otherWindowNumber];
+    [self orderWindowByShuffling:command.windowOrderingMode
+                      relativeTo:command.otherWindowNumber];
   }
   _windowOrderingCommands.clear();
 }

@@ -41,6 +41,20 @@ BASE_FEATURE(kCompanionEnabledByObservingExpsNavigations,
 BASE_FEATURE(kCompanionEnableSearchWebInNewTabContextMenuItem,
              "CompanionEnableSearchWebInNewTabContextMenuItem",
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+// When search companion is enabled, show new badges on the context menu items
+// that open the companion.
+BASE_FEATURE(kCompanionEnableNewBadgesInContextMenu,
+             "CompanionEnableNewBadgesInContextMenu",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+// Allow sharing page content with CSC. Enabling this flag alone isn't enough to
+// share page content - the user still needs to opt in either through a promo or
+// chrome://settings. When disabled, page content will not be shared even if the
+// user had previously opted in. The user won't be able to opt in (or out) when
+// this is disabled.
+BASE_FEATURE(kCompanionEnablePageContent,
+             "CompanionEnablePageContent",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 }  // namespace features
 
 namespace switches {

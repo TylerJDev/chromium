@@ -9,6 +9,7 @@
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
+#include "chrome/browser/ui/views/permissions/embedded_permission_prompt.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_bubble.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_chip.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_quiet_icon.h"
@@ -36,7 +37,7 @@ bool IsFullScreenMode(Browser* browser) {
   LocationBarView* location_bar = browser_view->GetLocationBarView();
 
   return !location_bar || !location_bar->IsDrawn() ||
-         location_bar->GetWidget()->IsFullscreen();
+         location_bar->GetWidget()->GetTopLevelWidget()->IsFullscreen();
 }
 
 LocationBarView* GetLocationBarView(Browser* browser) {
@@ -90,7 +91,8 @@ bool ShouldUseChip(permissions::PermissionPrompt::Delegate* delegate) {
 
 bool IsLocationBarDisplayed(Browser* browser) {
   LocationBarView* lbv = GetLocationBarView(browser);
-  return lbv && lbv->IsDrawn() && !lbv->GetWidget()->IsFullscreen();
+  return lbv && lbv->IsDrawn() &&
+         !lbv->GetWidget()->GetTopLevelWidget()->IsFullscreen();
 }
 
 bool ShouldCurrentRequestUseQuietChip(
@@ -107,6 +109,24 @@ bool ShouldCurrentRequestUseQuietChip(
                    permissions::RequestType::kNotifications ||
                request->request_type() ==
                    permissions::RequestType::kGeolocation;
+      });
+}
+
+bool ShouldCurrentRequestUsePermissionElementSecondaryUI(
+    permissions::PermissionPrompt::Delegate* delegate) {
+  if (!base::FeatureList::IsEnabled(
+          permissions::features::kPermissionElement)) {
+    return false;
+  }
+
+  std::vector<permissions::PermissionRequest*> requests = delegate->Requests();
+  return base::ranges::all_of(
+      requests, [](permissions::PermissionRequest* request) {
+        return (request->request_type() ==
+                    permissions::RequestType::kCameraStream ||
+                request->request_type() ==
+                    permissions::RequestType::kMicStream) &&
+               request->IsEmbeddedPermissionElementInitiated();
       });
 }
 
@@ -128,7 +148,11 @@ std::unique_ptr<permissions::PermissionPrompt> CreateNormalPrompt(
     content::WebContents* web_contents,
     permissions::PermissionPrompt::Delegate* delegate) {
   DCHECK(!delegate->ShouldCurrentRequestUseQuietUI());
-  if (ShouldUseChip(delegate) && IsLocationBarDisplayed(browser)) {
+
+  if (ShouldCurrentRequestUsePermissionElementSecondaryUI(delegate)) {
+    return std::make_unique<EmbeddedPermissionPrompt>(browser, web_contents,
+                                                      delegate);
+  } else if (ShouldUseChip(delegate) && IsLocationBarDisplayed(browser)) {
     return std::make_unique<PermissionPromptChip>(browser, web_contents,
                                                   delegate);
   } else {

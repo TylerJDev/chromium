@@ -244,6 +244,10 @@ bool BrowserParamsProxy::IsFlossAvailable() const {
   return BrowserInitParams::Get()->is_floss_available;
 }
 
+bool BrowserParamsProxy::IsFlossAvailabilityCheckNeeded() const {
+  return BrowserInitParams::Get()->is_floss_availability_check_needed;
+}
+
 bool BrowserParamsProxy::IsCurrentUserDeviceOwner() const {
   if (IsLaunchedWithPostLoginParams()) {
     return BrowserPostLoginParams::Get()->is_current_user_device_owner;
@@ -323,8 +327,8 @@ bool BrowserParamsProxy::IsPdfOcrEnabled() const {
   return BrowserInitParams::Get()->is_pdf_ocr_enabled;
 }
 
-bool BrowserParamsProxy::IsDriveFsBulkPinningEnabled() const {
-  return BrowserInitParams::Get()->is_drivefs_bulk_pinning_enabled;
+bool BrowserParamsProxy::IsDriveFsBulkPinningAvailable() const {
+  return BrowserInitParams::Get()->is_drivefs_bulk_pinning_available;
 }
 
 bool BrowserParamsProxy::IsSysUiDownloadsIntegrationV2Enabled() const {

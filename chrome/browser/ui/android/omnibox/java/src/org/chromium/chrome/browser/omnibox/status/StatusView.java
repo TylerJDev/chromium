@@ -5,9 +5,12 @@
 package org.chromium.chrome.browser.omnibox.status;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.RotateDrawable;
+import android.os.Build;
+import android.os.Build.VERSION;
 import android.util.AttributeSet;
 import android.view.TouchDelegate;
 import android.view.View;
@@ -20,12 +23,16 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.ColorInt;
+import androidx.annotation.DrawableRes;
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.appcompat.widget.TooltipCompat;
 
 import org.chromium.chrome.browser.browser_controls.BrowserStateBrowserControlsVisibilityDelegate;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.omnibox.OmniboxFeatures;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.components.browser_ui.widget.ChromeTransitionDrawable;
@@ -100,6 +107,39 @@ public class StatusView extends LinearLayout {
         mStatusExtraSpace = findViewById(R.id.location_bar_verbose_status_extra_space);
 
         configureAccessibilityDescriptions();
+
+        if (ChromeFeatureList.sSurfacePolish.isEnabled()) {
+            // Set Icon background size
+            ViewGroup.LayoutParams params = mIconBackground.getLayoutParams();
+            int iconBackgroundSize = getResources().getDimensionPixelSize(
+                    R.dimen.location_bar_status_icon_bg_size_polish);
+            params.width = iconBackgroundSize;
+            params.height = iconBackgroundSize;
+        }
+    }
+
+    /**
+     * Set tooltip text resource id.
+     * @param tooltipTextResId tooltip text resource id.
+     */
+    public void setTooltipText(@StringRes int tooltipTextResId) {
+        if (tooltipTextResId != Resources.ID_NULL) {
+            setTooltipText(mStatusIconView.getContext().getString(tooltipTextResId));
+        } else {
+            setTooltipText(null);
+        }
+    }
+
+    /**
+     * Set hover highlight resource id.
+     * @param hoverHighlightResId background hover highlight resource id.
+     */
+    public void setHoverHighlight(@DrawableRes int hoverHighlightResId) {
+        if (hoverHighlightResId != Resources.ID_NULL && isSearchEngineStatusIconVisible()) {
+            setBackground(AppCompatResources.getDrawable(getContext(), hoverHighlightResId));
+        } else {
+            setBackground(null);
+        }
     }
 
     /**
@@ -158,7 +198,10 @@ public class StatusView extends LinearLayout {
             mAnimatingStatusIconHide = false;
             mAnimatingStatusIconShow = true;
             keepControlsShownForAnimation();
-            mStatusIconView.setVisibility(View.VISIBLE);
+
+            // Set StatusIcon visibility and check whether we should set hover action on StatusView.
+            setStatusIconVisibility(View.VISIBLE);
+
             mIconView.animate()
                     .alpha(1.0f)
                     .setDuration(getIconAnimationDuration())
@@ -184,7 +227,10 @@ public class StatusView extends LinearLayout {
                     .setDuration(mAnimationsEnabled ? getIconAnimationDuration() : 0)
                     .alpha(0.0f)
                     .withEndAction(() -> {
-                        mStatusIconView.setVisibility(View.GONE);
+                        // Set StatusIcon visibility and check whether we should set hover action on
+                        // StatusView.
+                        setStatusIconVisibility(View.GONE);
+
                         mIconView.setAlpha(1f);
                         mAnimatingStatusIconHide = false;
                         allowBrowserControlsHide();
@@ -257,6 +303,10 @@ public class StatusView extends LinearLayout {
                 mIconView.setImageDrawable(targetIcon);
             }
         }
+    }
+
+    private void setStatusIconVisibility(int visibility) {
+        mStatusIconView.setVisibility(visibility);
     }
 
     /** Returns a rotated version of the icon passed in. */
@@ -332,15 +382,21 @@ public class StatusView extends LinearLayout {
     void setStatusIconAlpha(float alpha) {
         if (mIconView == null) return;
         mIconView.setAlpha(alpha);
+
+        if (mIconBackground != null && mIconBackground.getVisibility() == VISIBLE) {
+            mIconBackground.setAlpha(alpha);
+        }
     }
 
     /** Specify the status icon visibility. */
-    void setStatusIconShown(boolean showIcon) {
+    public void setStatusIconShown(boolean showIcon) {
         if (mStatusIconView == null) return;
         // Check if layout was requested before changing our child view.
         boolean wasLayoutPreviouslyRequested = isLayoutRequested();
 
-        mStatusIconView.setVisibility(showIcon ? VISIBLE : GONE);
+        // Set StatusIcon visibility and check whether we should set hover action on StatusView.
+        setStatusIconVisibility(showIcon ? VISIBLE : GONE);
+
         updateTouchDelegate();
         if (mIsAnimatingStatusIconChange && !showIcon) {
             // If the icon view is hidden before it gets a chance to draw, our animation status will
@@ -416,11 +472,18 @@ public class StatusView extends LinearLayout {
     /**
      * Specify visibility of the verbose status text.
      */
-    void setVerboseStatusTextVisible(boolean visible) {
+    public void setVerboseStatusTextVisible(boolean visible) {
         int visibility = visible ? View.VISIBLE : View.GONE;
         mVerboseStatusTextView.setVisibility(visibility);
         mSeparatorView.setVisibility(visibility);
         mStatusExtraSpace.setVisibility(visibility);
+
+        if (visibility != View.VISIBLE) {
+            setBackground(
+                    AppCompatResources.getDrawable(getContext(), R.drawable.status_view_ripple));
+        } else {
+            setBackground(null);
+        }
     }
 
     /**
@@ -541,6 +604,15 @@ public class StatusView extends LinearLayout {
     private boolean isIconVisible() {
         return mStatusIconDrawable != null && mStatusIconView.getIconVisibility() != GONE
                 && mIconView.getAlpha() != 0;
+    }
+
+    /**
+     * Set tooltip text on StatusView for API >= 26.
+     */
+    private void setTooltipText(String tooltip) {
+        if (VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            TooltipCompat.setTooltipText((View) this, tooltip);
+        }
     }
 
     private void keepControlsShownForAnimation() {

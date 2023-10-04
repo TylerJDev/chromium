@@ -32,9 +32,10 @@ class FormFieldTest
  protected:
   // Parses all added fields using `ParseFormFields`.
   // Returns the number of fields parsed.
-  int ParseFormFields() {
-    FormField::ParseFormFields(list_, LanguageCode(""),
-                               /*is_form_tag=*/true, GetActivePatternSource(),
+  int ParseFormFields(GeoIpCountryCode client_country = GeoIpCountryCode("")) {
+    FormField::ParseFormFields(list_, client_country, LanguageCode(""),
+                               /*is_form_tag=*/true,
+                               GetActivePatternSource().value(),
                                field_candidates_map_,
                                /*log_manager=*/nullptr);
     return field_candidates_map_.size();
@@ -43,15 +44,16 @@ class FormFieldTest
   // Like `ParseFormFields()`, but using `ParseSingleFieldForms()` instead.
   int ParseSingleFieldForms() {
     FormField::ParseSingleFieldForms(
-        list_, LanguageCode(""),
-        /*is_form_tag=*/true, GetActivePatternSource(), field_candidates_map_);
+        list_, GeoIpCountryCode(""), LanguageCode(""),
+        /*is_form_tag=*/true, GetActivePatternSource().value(),
+        field_candidates_map_);
     return field_candidates_map_.size();
   }
 
   int ParseStandaloneCVCFields() {
-    FormField::ParseStandaloneCVCFields(list_, LanguageCode(""),
-                                        GetActivePatternSource(),
-                                        field_candidates_map_);
+    FormField::ParseStandaloneCVCFields(
+        list_, GeoIpCountryCode(""), LanguageCode(""),
+        GetActivePatternSource().value(), field_candidates_map_);
     return field_candidates_map_.size();
   }
 
@@ -59,6 +61,7 @@ class FormFieldTest
   // This function is unused in these unit tests, because FormField is not a
   // parser itself, but the infrastructure combining them.
   std::unique_ptr<FormField> Parse(AutofillScanner* scanner,
+                                   const GeoIpCountryCode& client_country,
                                    const LanguageCode& page_language) override {
     return nullptr;
   }
@@ -338,6 +341,21 @@ TEST_P(FormFieldTest, ParseFormRequires3DistinctFieldTypes) {
   AddTextFormFieldData("", "Address line 1", ADDRESS_HOME_LINE1);
   AddTextFormFieldData("", "Address line 2", ADDRESS_HOME_LINE2);
   EXPECT_EQ(6, ParseFormFields());
+  TestClassificationExpectations();
+}
+
+TEST_P(FormFieldTest, ParseStandaloneZipDisabledForUS) {
+  base::test::ScopedFeatureList enabled{
+      features::kAutofillEnableZipOnlyAddressForms};
+  AddTextFormFieldData("zip", "ZIP", ADDRESS_HOME_ZIP);
+  EXPECT_EQ(0, ParseFormFields(GeoIpCountryCode("US")));
+}
+
+TEST_P(FormFieldTest, ParseStandaloneZipEnabledForBR) {
+  base::test::ScopedFeatureList enabled{
+      features::kAutofillEnableZipOnlyAddressForms};
+  AddTextFormFieldData("cep", "CEP", ADDRESS_HOME_ZIP);
+  EXPECT_EQ(1, ParseFormFields(GeoIpCountryCode("BR")));
   TestClassificationExpectations();
 }
 

@@ -81,12 +81,16 @@ class ChromePageInfoDelegate : public PageInfoDelegate {
   StatefulSSLHostStateDelegate* GetStatefulSSLHostStateDelegate() override;
   HostContentSettingsMap* GetContentSettings() override;
   bool IsSubresourceFilterActivated(const GURL& site_url) override;
+  bool HasAutoPictureInPictureBeenRegistered() override;
   bool IsContentDisplayedInVrHeadset() override;
   security_state::SecurityLevel GetSecurityLevel() override;
   security_state::VisibleSecurityState GetVisibleSecurityState() override;
   void OnCookiesPageOpened() override;
   std::unique_ptr<content_settings::PageSpecificContentSettings::Delegate>
   GetPageSpecificContentSettingsDelegate() override;
+
+  bool IsTrackingProtection3pcdEnabled() override;
+  bool AreAllThirdPartyCookiesBlocked() override;
 
 #if BUILDFLAG(IS_ANDROID)
   const std::u16string GetClientApplicationName() override;

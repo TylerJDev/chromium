@@ -4,6 +4,7 @@
 
 #include "components/signin/public/base/signin_switches.h"
 #include "base/feature_list.h"
+#include "base/metrics/field_trial_params.h"
 
 namespace switches {
 
@@ -20,9 +21,6 @@ BASE_FEATURE(kIdentityStatusConsistency,
 // expiration of credentials during testing.
 const char kClearTokenService[] = "clear-token-service";
 
-// Disables sending signin scoped device id to LSO with refresh token request.
-const char kDisableSigninScopedDeviceId[] = "disable-signin-scoped-device-id";
-
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 // Enable experimental binding session credentials to the device.
 BASE_FEATURE(kEnableBoundSessionCredentials,
@@ -32,6 +30,16 @@ BASE_FEATURE(kEnableBoundSessionCredentials,
 bool IsBoundSessionCredentialsEnabled() {
   return base::FeatureList::IsEnabled(switches::kEnableBoundSessionCredentials);
 }
+
+const base::FeatureParam<EnableBoundSessionCredentialsDiceSupport>::Option
+    enable_bound_session_credentials_dice_support[] = {
+        {EnableBoundSessionCredentialsDiceSupport::kDisabled, "disabled"},
+        {EnableBoundSessionCredentialsDiceSupport::kEnabled, "enabled"}};
+const base::FeatureParam<EnableBoundSessionCredentialsDiceSupport>
+    kEnableBoundSessionCredentialsDiceSupport{
+        &kEnableBoundSessionCredentials, "dice-support",
+        EnableBoundSessionCredentialsDiceSupport::kDisabled,
+        &enable_bound_session_credentials_dice_support};
 #endif
 
 // Enables fetching account capabilities and populating AccountInfo with the
@@ -52,10 +60,6 @@ BASE_FEATURE(kForceStartupSigninPromo,
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
-#if BUILDFLAG(IS_IOS)
-BASE_FEATURE(kFinchIosFre, "FinchIosFre", base::FEATURE_DISABLED_BY_DEFAULT);
-#endif
-
 // Enables a new version of the sync confirmation UI.
 BASE_FEATURE(kTangibleSync,
              "TangibleSync",
@@ -68,8 +72,16 @@ BASE_FEATURE(kTangibleSync,
 
 );
 
+// Enables the search engine choice feature for existing users.
 BASE_FEATURE(kSearchEngineChoice,
              "SearchEngineChoice",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables the search engine choice feature in the FRE.
+BASE_FEATURE(kSearchEngineChoiceFre,
+             "SearchEngineChoiceFre",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kUnoDesktop, "UnoDesktop", base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace switches

@@ -13,14 +13,14 @@
 #import "components/favicon/core/fallback_url_util.h"
 #import "components/ntp_tiles/ntp_tile.h"
 #import "ios/chrome/browser/ui/favicon/favicon_attributes_provider.h"
-#import "ios/chrome/browser/widget_kit/features.h"
+#import "ios/chrome/browser/widget_kit/model/features.h"
 #import "ios/chrome/common/app_group/app_group_constants.h"
 #import "ios/chrome/common/ntp_tile/ntp_tile.h"
 #import "ios/chrome/common/ui/favicon/favicon_attributes.h"
 #import "net/base/mac/url_conversions.h"
 
 #if BUILDFLAG(ENABLE_WIDGET_KIT_EXTENSION)
-#import "ios/chrome/browser/widget_kit/widget_kit_swift.h"
+#import "ios/chrome/browser/widget_kit/model/model_swift.h"
 #endif
 
 namespace content_suggestions_tile_saver {
@@ -158,6 +158,7 @@ void UpdateShortcutsWidget() {
 }
 
 void WriteSavedMostVisited(NSDictionary<NSURL*, NTPTile*>* most_visited_data) {
+  NSDate* last_modification_date = NSDate.date;
   NSError* error = nil;
   NSData* data = [NSKeyedArchiver archivedDataWithRootObject:most_visited_data
                                        requiringSecureCoding:NO
@@ -171,6 +172,8 @@ void WriteSavedMostVisited(NSDictionary<NSURL*, NTPTile*>* most_visited_data) {
   NSUserDefaults* sharedDefaults = app_group::GetGroupUserDefaults();
 
   [sharedDefaults setObject:data forKey:app_group::kSuggestedItems];
+  [sharedDefaults setObject:last_modification_date
+                     forKey:app_group::kSuggestedItemsLastModificationDate];
   UpdateShortcutsWidget();
 }
 

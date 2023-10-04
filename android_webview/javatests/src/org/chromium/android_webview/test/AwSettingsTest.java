@@ -1166,10 +1166,17 @@ public class AwSettingsTest {
             final boolean expectPopupEnabled = value;
             AwActivityTestRule.pollInstrumentationThread(() -> {
                 String title = getTitleOnUiThread();
-                return expectPopupEnabled ? POPUP_ENABLED.equals(title) :
-                        POPUP_BLOCKED.equals(title);
+                // When popup is enabled, expect the title to be either POPUP_ENABLED or
+                // "about:blank". The latter is possible if the document.write() that sets the
+                // title finishes before the "about:blank" navigation commits. After that
+                // navigation commits, the title will be set to "about:blank".
+                return expectPopupEnabled
+                        ? (POPUP_ENABLED.equals(title) || "about:blank".equals(title))
+                        : POPUP_BLOCKED.equals(title);
             });
-            Assert.assertEquals(value ? POPUP_ENABLED : POPUP_BLOCKED, getTitleOnUiThread());
+            String title = getTitleOnUiThread();
+            Assert.assertTrue(value ? (POPUP_ENABLED.equals(title) || "about:blank".equals(title))
+                                    : POPUP_BLOCKED.equals(title));
         }
 
         private String getData() {
@@ -1976,14 +1983,21 @@ public class AwSettingsTest {
 
         AwActivityTestRule.enableJavaScriptOnUiThread(awContents);
 
-        String targetUrl = testServer.getURL("/android_webview/test/data/fetch-echo.html")
-                + "?url=" + URLEncoder.encode("/echoheader?Sec-CH-UA&Sec-CH-UA-Mobile&User-Agent");
+        String targetUrl = testServer.getURL("/android_webview/test/data/fetch-echo.html") + "?url="
+                + URLEncoder.encode("/echoheader?Sec-CH-UA&Sec-CH-UA-Platform&User-Agent");
         mActivityTestRule.loadUrlSync(
                 awContents, contentClient.getOnPageFinishedHelper(), targetUrl);
         AwActivityTestRule.pollInstrumentationThread(
                 () -> !"running".equals(mActivityTestRule.getTitleOnUiThread(awContents)));
-        Assert.assertEquals(
-                "?0 " + customUserAgentString, mActivityTestRule.getTitleOnUiThread(awContents));
+
+        String actualTitleContent = mActivityTestRule.getTitleOnUiThread(awContents);
+        // Here we can't directly validate the exact value for the client hints: Sec-CH-UA and
+        // Sec-CH-UA-Platform since they change over release version. Try best to validate the value
+        // ends with platform string and user-agent string.
+        Assert.assertTrue(actualTitleContent.endsWith(
+                /*sec-ch-ua-platform=*/"\"Android\" " + /*user-agent=*/customUserAgentString));
+        // Sec-ch-ua value has brand AndroidWebview.
+        Assert.assertTrue(actualTitleContent.indexOf("\"Android WebView\";v=\"") != -1);
     }
 
     @Test
@@ -2040,6 +2054,7 @@ public class AwSettingsTest {
     @SmallTest
     @Feature({"AndroidWebView", "Preferences"})
     @RequiresRestart("setDatabaseEnabled is ignored after the first use of WebView in the process")
+    @CommandLineFlags.Add({"enable-features=kWebSQLAccess"})
     public void testDatabaseInitialValue() throws Throwable {
         TestAwContentsClient client = new TestAwContentsClient();
         final AwTestContainerView testContainerView =
@@ -2053,6 +2068,7 @@ public class AwSettingsTest {
     @SmallTest
     @Feature({"AndroidWebView", "Preferences"})
     @RequiresRestart("setDatabaseEnabled is ignored after the first use of WebView in the process")
+    @CommandLineFlags.Add({"enable-features=kWebSQLAccess"})
     public void testDatabaseEnabled() throws Throwable {
         TestAwContentsClient client = new TestAwContentsClient();
         final AwTestContainerView testContainerView =
@@ -2067,6 +2083,7 @@ public class AwSettingsTest {
     @SmallTest
     @Feature({"AndroidWebView", "Preferences"})
     @RequiresRestart("setDatabaseEnabled is ignored after the first use of WebView in the process")
+    @CommandLineFlags.Add({"enable-features=kWebSQLAccess"})
     public void testDatabaseDisabled() throws Throwable {
         TestAwContentsClient client = new TestAwContentsClient();
         final AwTestContainerView testContainerView =

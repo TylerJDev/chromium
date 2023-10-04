@@ -29,7 +29,8 @@ const int kFileTypePopupTag = 1234;
 
 // TODO(macOS 11): Remove this.
 CFStringRef CreateUTIFromExtension(const base::FilePath::StringType& ext) {
-  base::ScopedCFTypeRef<CFStringRef> ext_cf(base::SysUTF8ToCFStringRef(ext));
+  base::apple::ScopedCFTypeRef<CFStringRef> ext_cf(
+      base::SysUTF8ToCFStringRef(ext));
   return UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension,
                                                ext_cf.get(), nullptr);
 }
@@ -44,7 +45,7 @@ NSString* GetDescriptionFromExtension(const base::FilePath::StringType& ext) {
       return description;
     }
   } else {
-    base::ScopedCFTypeRef<CFStringRef> uti(CreateUTIFromExtension(ext));
+    base::apple::ScopedCFTypeRef<CFStringRef> uti(CreateUTIFromExtension(ext));
     NSString* description =
         base::apple::CFToNSOwnershipCast(UTTypeCopyDescription(uti.get()));
 
@@ -68,8 +69,9 @@ NSView* CreateAccessoryView() {
                                        IDS_SAVE_PAGE_FILE_FORMAT_PROMPT_MAC)];
   label.translatesAutoresizingMaskIntoConstraints = NO;
   label.textColor = NSColor.secondaryLabelColor;
-  if (base::mac::IsAtLeastOS11())
+  if (base::mac::MacOSMajorVersion() >= 11) {
     label.font = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
+  }
 
   // The popup.
   NSPopUpButton* popup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect
@@ -114,10 +116,11 @@ NSView* CreateAccessoryView() {
 
   // Horizontal and vertical baseline between the label and popup.
   CGFloat labelPopupPadding;
-  if (base::mac::IsAtLeastOS11())
+  if (base::mac::MacOSMajorVersion() >= 11) {
     labelPopupPadding = 8;
-  else
+  } else {
     labelPopupPadding = 5;
+  }
   [constraints addObject:[popup.leadingAnchor
                              constraintEqualToAnchor:label.trailingAnchor
                                             constant:labelPopupPadding]];
@@ -400,10 +403,17 @@ void SelectFileDialogBridge::Show(
   // Ensure that |callback| (rather than |this|) be retained by the block.
   auto callback = base::BindRepeating(&SelectFileDialogBridge::OnPanelEnded,
                                       weak_factory_.GetWeakPtr());
+  // In immersive fullscreen, `panel_` might be shown behind`owning_window_`.
+  // Adding `panel_` as a child of `owning_window_` seems to force `panel_` on
+  // top. See crbug.com/1484058.
+  [owning_window_ addChildWindow:panel_ ordered:NSWindowAbove];
   [panel_ beginSheetModalForWindow:owning_window_
                  completionHandler:^(NSInteger result) {
                    callback.Run(result != NSModalResponseOK);
                  }];
+  // Per crbug.com/605098, a sheet should not have a parentWindow (it should
+  // have only sheetParent), so remove it from its window parent.
+  [owning_window_ removeChildWindow:panel_];
 }
 
 void SelectFileDialogBridge::SetAccessoryView(

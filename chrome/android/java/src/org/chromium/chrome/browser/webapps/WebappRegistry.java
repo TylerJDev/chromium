@@ -27,7 +27,7 @@ import org.chromium.chrome.browser.browserservices.permissiondelegation.Installe
 import org.chromium.chrome.browser.browsing_data.UrlFilter;
 import org.chromium.chrome.browser.browsing_data.UrlFilterBridge;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.components.embedder_support.util.Origin;
 import org.chromium.webapk.lib.common.WebApkConstants;
 
@@ -236,6 +236,16 @@ public class WebappRegistry {
     }
 
     /**
+     * Returns an array of all origins that have an installed WebAPK.
+     */
+    @CalledByNative
+    private static String[] getOriginsWithWebApkAsArray() {
+        Set<String> origins = WebappRegistry.getInstance().getOriginsWithWebApk();
+        String[] originsArray = new String[origins.size()];
+        return origins.toArray(originsArray);
+    }
+
+    /**
      * Checks whether a TWA is installed for the origin, and no WebAPK.
      */
     public boolean isTwaInstalled(String origin) {
@@ -252,6 +262,16 @@ public class WebappRegistry {
         origins.addAll(getOriginsWithWebApk());
         origins.addAll(mPermissionStore.getStoredOrigins());
         return origins;
+    }
+
+    /**
+     * Returns an array of all origins that have a WebAPK or TWA installed.
+     */
+    @CalledByNative
+    public static String[] getOriginsWithInstalledAppAsArray() {
+        Set<String> origins = WebappRegistry.getInstance().getOriginsWithInstalledApp();
+        String[] originsArray = new String[origins.size()];
+        return origins.toArray(originsArray);
     }
 
     /**
@@ -370,7 +390,7 @@ public class WebappRegistry {
 
         // Do not delete WebappDataStorage if we still need it for UKM logging.
         Set<String> webApkPackagesWithPendingUkm =
-                SharedPreferencesManager.getInstance().readStringSet(
+                ChromeSharedPreferences.getInstance().readStringSet(
                         ChromePreferenceKeys.WEBAPK_UNINSTALLED_PACKAGES);
         if (webApkPackagesWithPendingUkm.contains(webApkPackageName)) return false;
 

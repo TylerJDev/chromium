@@ -136,6 +136,7 @@ class MetricsReporter {
   void OnEnterBackground();
 
   static void OnImageFetched(const GURL& url, int net_error_or_http_status);
+  static void OnResourceFetched(int net_error_or_http_status);
 
   // Actions upload.
   static void OnUploadActionsBatch(UploadActionsBatchStatus status);
@@ -221,6 +222,7 @@ class MetricsReporter {
   raw_ptr<Delegate, DanglingUntriaged> delegate_ = nullptr;
 
   StreamStats for_you_stats_;
+  StreamStats supervised_feed_stats_;
   StreamStats web_feed_stats_;
   StreamStats combined_stats_;
 

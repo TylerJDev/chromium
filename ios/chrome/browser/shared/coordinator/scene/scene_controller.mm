@@ -42,15 +42,15 @@
 #import "ios/chrome/app/chrome_overlay_window.h"
 #import "ios/chrome/app/deferred_initialization_runner.h"
 #import "ios/chrome/app/tests_hook.h"
-#import "ios/chrome/browser/browsing_data/browsing_data_remove_mask.h"
-#import "ios/chrome/browser/browsing_data/browsing_data_remover.h"
-#import "ios/chrome/browser/browsing_data/browsing_data_remover_factory.h"
-#import "ios/chrome/browser/crash_report/breadcrumbs/breadcrumb_manager_browser_agent.h"
-#import "ios/chrome/browser/crash_report/crash_keys_helper.h"
-#import "ios/chrome/browser/crash_report/crash_loop_detection_util.h"
-#import "ios/chrome/browser/crash_report/crash_report_helper.h"
-#import "ios/chrome/browser/default_browser/promo_source.h"
-#import "ios/chrome/browser/default_browser/utils.h"
+#import "ios/chrome/browser/browsing_data/model/browsing_data_remove_mask.h"
+#import "ios/chrome/browser/browsing_data/model/browsing_data_remover.h"
+#import "ios/chrome/browser/browsing_data/model/browsing_data_remover_factory.h"
+#import "ios/chrome/browser/crash_report/model/breadcrumbs/breadcrumb_manager_browser_agent.h"
+#import "ios/chrome/browser/crash_report/model/crash_keys_helper.h"
+#import "ios/chrome/browser/crash_report/model/crash_loop_detection_util.h"
+#import "ios/chrome/browser/crash_report/model/crash_report_helper.h"
+#import "ios/chrome/browser/default_browser/model/promo_source.h"
+#import "ios/chrome/browser/default_browser/model/utils.h"
 #import "ios/chrome/browser/feature_engagement/tracker_factory.h"
 #import "ios/chrome/browser/first_run/first_run.h"
 #import "ios/chrome/browser/geolocation/geolocation_logger.h"
@@ -69,7 +69,7 @@
 #import "ios/chrome/browser/policy/policy_watcher_browser_agent_observer_bridge.h"
 #import "ios/chrome/browser/promos_manager/features.h"
 #import "ios/chrome/browser/promos_manager/promos_manager_factory.h"
-#import "ios/chrome/browser/screenshot/screenshot_delegate.h"
+#import "ios/chrome/browser/screenshot/model/screenshot_delegate.h"
 #import "ios/chrome/browser/sessions/session_saving_scene_agent.h"
 #import "ios/chrome/browser/sessions/session_service_ios.h"
 #import "ios/chrome/browser/shared/coordinator/default_browser_promo/non_modal_default_browser_promo_scheduler_scene_agent.h"
@@ -89,6 +89,7 @@
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_opener.h"
 #import "ios/chrome/browser/shared/public/commands/application_commands.h"
 #import "ios/chrome/browser/shared/public/commands/browser_commands.h"
+#import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
 #import "ios/chrome/browser/shared/public/commands/browsing_data_commands.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/lens_commands.h"
@@ -110,7 +111,8 @@
 #import "ios/chrome/browser/signin/constants.h"
 #import "ios/chrome/browser/signin/identity_manager_factory.h"
 #import "ios/chrome/browser/signin/system_identity_manager.h"
-#import "ios/chrome/browser/snapshots/snapshot_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
+#import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
 #import "ios/chrome/browser/ui/app_store_rating/app_store_rating_scene_agent.h"
 #import "ios/chrome/browser/ui/app_store_rating/features.h"
 #import "ios/chrome/browser/ui/appearance/appearance_customization.h"
@@ -156,8 +158,7 @@
 #import "ios/chrome/browser/url_loading/url_loading_params.h"
 #import "ios/chrome/browser/web/page_placeholder_browser_agent.h"
 #import "ios/chrome/browser/web_state_list/session_metrics.h"
-#import "ios/chrome/browser/web_state_list/tab_insertion_browser_agent.h"
-#import "ios/chrome/browser/window_activities/window_activity_helpers.h"
+#import "ios/chrome/browser/window_activities/model/window_activity_helpers.h"
 #import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/public/provider/chrome/browser/signin/choice_api.h"
@@ -278,6 +279,10 @@ void InjectNTP(Browser* browser) {
   // The scene level component for url loading. Is passed down to
   // browser state level UrlLoadingService instances.
   std::unique_ptr<SceneUrlLoadingService> _sceneURLLoadingService;
+
+  // Map recording the number of tabs in WebStateList before the batch
+  // operation started.
+  std::map<WebStateList*, int> _tabCountBeforeBatchOperation;
 }
 
 // Navigation View controller for the settings.
@@ -576,7 +581,7 @@ void InjectNTP(Browser* browser) {
 - (void)handleTabMoveActivity:(NSUserActivity*)activity {
   DCHECK(ActivityIsTabMove(activity));
   BOOL incognito = GetIncognitoFromTabMoveActivity(activity);
-  NSString* tabID = GetTabIDFromActivity(activity);
+  web::WebStateID tabID = GetTabIDFromActivity(activity);
 
   WrangledBrowser* interface = self.currentInterface;
 
@@ -725,7 +730,9 @@ void InjectNTP(Browser* browser) {
   if (!self.settingsNavigationController) {
     self.settingsNavigationController =
         [SettingsNavigationController safetyCheckControllerForBrowser:browser
-                                                             delegate:self];
+                                                             delegate:self
+                                                   displayAsHalfSheet:NO
+                                                             referrer:referrer];
   }
 
   self.passwordCheckupCoordinator = [[PasswordCheckupCoordinator alloc]
@@ -1253,6 +1260,11 @@ void InjectNTP(Browser* browser) {
   [self.signinCoordinator
       interruptWithAction:SigninCoordinatorInterrupt::UIShutdownNoDismiss
                completion:nil];
+  // `self.signinCoordinator.signinCompletion()` was called in the interrupt
+  // method. Therefore now `self.signinCoordinator` is now stopped, and
+  // `self.signinCoordinator` is now nil.
+  DCHECK(!self.signinCoordinator)
+      << base::SysNSStringToUTF8([self.signinCoordinator description]);
 
   [self.historyCoordinator stop];
   self.historyCoordinator = nil;
@@ -1363,7 +1375,7 @@ void InjectNTP(Browser* browser) {
 
 // Returns 'YES' if the tabID from the given `activity` is valid.
 - (BOOL)isTabActivityValid:(NSUserActivity*)activity {
-  NSString* tabID = GetTabIDFromActivity(activity);
+  web::WebStateID tabID = GetTabIDFromActivity(activity);
 
   ChromeBrowserState* browserState = self.currentInterface.browserState;
   BrowserList* browserList =
@@ -1480,6 +1492,12 @@ void InjectNTP(Browser* browser) {
     }
   }
 
+  if (_signedInAccountsVC) {
+    // Don't handle intents if the user has the Signed In Accounts view
+    // controller presented on the screen.
+    return NO;
+  }
+
   return YES;
 }
 
@@ -1501,12 +1519,13 @@ void InjectNTP(Browser* browser) {
 }
 
 - (void)showHistory {
+  CHECK(!self.currentInterface.incognito)
+      << "Current interface is incognito and should NOT show history. Call "
+         "this on regular interface.";
   self.historyCoordinator = [[HistoryCoordinator alloc]
       initWithBaseViewController:self.currentInterface.viewController
                          browser:self.mainInterface.browser];
-  self.historyCoordinator.loadStrategy =
-      self.currentInterface.incognito ? UrlLoadStrategy::ALWAYS_IN_INCOGNITO
-                                      : UrlLoadStrategy::NORMAL;
+  self.historyCoordinator.loadStrategy = UrlLoadStrategy::NORMAL;
   self.historyCoordinator.delegate = self;
   [self.historyCoordinator start];
 }
@@ -1553,7 +1572,6 @@ void InjectNTP(Browser* browser) {
 - (void)displayTabSwitcherForcingRegularTabs:(BOOL)forcing {
   DCHECK(!self.mainCoordinator.isTabGridActive);
   if (!self.isProcessingVoiceSearchCommand) {
-    [self.currentInterface.bvc userEnteredTabSwitcher];
 
     if (forcing && self.currentInterface.incognito) {
       [self setCurrentInterfaceForMode:ApplicationMode::NORMAL];
@@ -1810,7 +1828,19 @@ void InjectNTP(Browser* browser) {
           instantSigninCoordinatorWithBaseViewController:baseViewController
                                                  browser:mainBrowser
                                                 identity:command.identity
-                                             accessPoint:command.accessPoint];
+                                             accessPoint:command.accessPoint
+                                             promoAction:command.promoAction];
+      break;
+    case AuthenticationOperation::kSheetSigninAndHistorySync:
+      self.signinCoordinator = [SigninCoordinator
+          sheetSigninAndHistorySyncCoordinatorWithBaseViewController:
+              baseViewController
+                                                             browser:mainBrowser
+                                                         accessPoint:
+                                                             command.accessPoint
+                                                         promoAction:
+                                                             command
+                                                                 .promoAction];
       break;
   }
   [self startSigninCoordinatorWithCompletion:command.callback];
@@ -2101,6 +2131,7 @@ void InjectNTP(Browser* browser) {
                                  completion:nil];
 }
 
+// Shows the Password Checkup page for `referrer`.
 - (void)showPasswordCheckupPageForReferrer:
     (password_manager::PasswordCheckReferrer)referrer {
   if (!password_manager::features::IsPasswordCheckupEnabled()) {
@@ -2137,6 +2168,8 @@ void InjectNTP(Browser* browser) {
                                  completion:nil];
 }
 
+// Opens the Password Issues list displaying compromised, weak or reused
+// credentials for `warningType` and `referrer`.
 - (void)
     showPasswordIssuesWithWarningType:(password_manager::WarningType)warningType
                              referrer:(password_manager::PasswordCheckReferrer)
@@ -2254,18 +2287,30 @@ void InjectNTP(Browser* browser) {
                                  completion:nil];
 }
 
-- (void)showSafetyCheckSettingsAndStartSafetyCheck {
+// Displays the Safety Check (via Settings) for `referrer`. `showHalfSheet`
+// determines whether the Safety Check will be displayed as a half-sheet, or
+// full-page modal.
+- (void)showAndStartSafetyCheckInHalfSheet:(BOOL)showHalfSheet
+                                  referrer:
+                                      (password_manager::PasswordCheckReferrer)
+                                          referrer {
   UIViewController* baseViewController = self.currentInterface.viewController;
+
   if (self.settingsNavigationController) {
     [self.settingsNavigationController
-            showSafetyCheckSettingsAndStartSafetyCheck];
+        showAndStartSafetyCheckInHalfSheet:showHalfSheet
+                                  referrer:referrer];
     return;
   }
+
   Browser* browser = self.mainInterface.browser;
 
-  self.settingsNavigationController =
-      [SettingsNavigationController safetyCheckControllerForBrowser:browser
-                                                           delegate:self];
+  self.settingsNavigationController = [SettingsNavigationController
+      safetyCheckControllerForBrowser:browser
+                             delegate:self
+                   displayAsHalfSheet:showHalfSheet
+                             referrer:referrer];
+
   [baseViewController presentViewController:self.settingsNavigationController
                                    animated:YES
                                  completion:nil];
@@ -2469,6 +2514,10 @@ void InjectNTP(Browser* browser) {
       return ^{
         [weakSelf startLensWithEntryPoint:LensEntrypoint::Spotlight];
       };
+    case START_LENS_FROM_INTENTS:
+      return ^{
+        [weakSelf startLensWithEntryPoint:LensEntrypoint::Intents];
+      };
     case FOCUS_OMNIBOX:
       return ^{
         [weakSelf focusOmnibox];
@@ -2480,6 +2529,59 @@ void InjectNTP(Browser* browser) {
     case SEARCH_PASSWORDS:
       return ^{
         [weakSelf startPasswordSearch];
+      };
+    case OPEN_READING_LIST:
+      return ^{
+        [weakSelf openReadingList];
+      };
+    case OPEN_BOOKMARKS:
+      return ^{
+        [weakSelf openBookmarks];
+      };
+    case OPEN_RECENT_TABS:
+      return ^{
+        [weakSelf openRecentTabs];
+      };
+    case OPEN_TAB_GRID:
+      return ^{
+        [weakSelf.mainCoordinator showTabGrid];
+      };
+    case SET_CHROME_DEFAULT_BROWSER:
+      return ^{
+        [weakSelf showDefaultBrowserSettings];
+      };
+    case VIEW_HISTORY:
+      return ^{
+        [weakSelf showHistory];
+      };
+    case OPEN_PAYMENT_METHODS:
+      return ^{
+        [weakSelf openPaymentMethods];
+      };
+    case RUN_SAFETY_CHECK:
+      return ^{
+        [weakSelf
+            showAndStartSafetyCheckInHalfSheet:NO
+                                      referrer:password_manager::
+                                                   PasswordCheckReferrer::
+                                                       kSafetyCheckMagicStack];
+      };
+    case MANAGE_PASSWORDS:
+      return ^{
+        [weakSelf showPasswordSearchPage];
+      };
+    case MANAGE_SETTINGS:
+      return ^{
+        [weakSelf showSettingsFromViewController:weakSelf.currentInterface
+                                                     .viewController];
+      };
+    case OPEN_LATEST_TAB:
+      return ^{
+        [weakSelf openLatestTab];
+      };
+    case OPEN_CLEAR_BROWSING_DATA_DIALOG:
+      return ^{
+        [weakSelf openClearBrowsingDataDialog];
       };
     default:
       return nil;
@@ -2546,13 +2648,86 @@ void InjectNTP(Browser* browser) {
 }
 
 - (void)startPasswordSearch {
+  Browser* browser = self.currentInterface.browser;
+  if (!browser) {
+    return;
+  }
+  feature_engagement::Tracker* tracker =
+      feature_engagement::TrackerFactory::GetForBrowserState(
+          browser->GetBrowserState());
+  if (tracker) {
+    tracker->NotifyEvent(
+        feature_engagement::events::kPasswordManagerWidgetPromoUsed);
+  }
+
+  id<ApplicationSettingsCommands> applicationSettingsCommandsHandler =
+      HandlerForProtocol(browser->GetCommandDispatcher(),
+                         ApplicationSettingsCommands);
+  [applicationSettingsCommandsHandler showPasswordSearchPage];
+}
+
+- (void)openReadingList {
   if (!self.currentInterface.browser) {
     return;
   }
-  id<ApplicationSettingsCommands> applicationSettingsCommandsHandler =
+  id<BrowserCoordinatorCommands> browserCoordinatorCommandsHandler =
       HandlerForProtocol(self.currentInterface.browser->GetCommandDispatcher(),
-                         ApplicationSettingsCommands);
-  [applicationSettingsCommandsHandler showPasswordSearchPage];
+                         BrowserCoordinatorCommands);
+  [browserCoordinatorCommandsHandler showReadingList];
+}
+
+- (void)openBookmarks {
+  if (!self.currentInterface.browser) {
+    return;
+  }
+  id<BrowserCoordinatorCommands> browserCoordinatorCommandsHandler =
+      HandlerForProtocol(self.currentInterface.browser->GetCommandDispatcher(),
+                         BrowserCoordinatorCommands);
+  [browserCoordinatorCommandsHandler showBookmarksManager];
+}
+
+- (void)openRecentTabs {
+  if (!self.currentInterface.browser) {
+    return;
+  }
+  id<BrowserCoordinatorCommands> browserCoordinatorCommandsHandler =
+      HandlerForProtocol(self.currentInterface.browser->GetCommandDispatcher(),
+                         BrowserCoordinatorCommands);
+  [browserCoordinatorCommandsHandler showRecentTabs];
+}
+
+- (void)openPaymentMethods {
+  if (!self.currentInterface.browser) {
+    return;
+  }
+
+  id<ApplicationCommands> applicationCommandsHandler =
+      HandlerForProtocol(self.currentInterface.browser->GetCommandDispatcher(),
+                         ApplicationCommands);
+  [applicationCommandsHandler showCreditCardSettings];
+}
+
+- (void)openClearBrowsingDataDialog {
+  if (!self.currentInterface.browser) {
+    return;
+  }
+
+  id<ApplicationCommands> applicationCommandsHandler =
+      HandlerForProtocol(self.currentInterface.browser->GetCommandDispatcher(),
+                         ApplicationCommands);
+  [applicationCommandsHandler showClearBrowsingDataSettings];
+}
+
+- (void)openLatestTab {
+  WebStateList* webStateList = self.currentInterface.browser->GetWebStateList();
+  web::WebState* webState = StartSurfaceRecentTabBrowserAgent::FromBrowser(
+                                self.currentInterface.browser)
+                                ->most_recent_tab();
+  if (!webState) {
+    return;
+  }
+  int index = webStateList->GetIndexOfWebState(webState);
+  webStateList->ActivateWebStateAt(index);
 }
 
 #pragma mark - TabOpening implementation.
@@ -3343,23 +3518,13 @@ void InjectNTP(Browser* browser) {
       // Do nothing when a WebState is selected and its status is updated.
       break;
     case WebStateListChange::Type::kDetach: {
-      // Do nothing on initialization.
-      if (!self.currentInterface.browser) {
-        return;
+      // Do nothing during batch operation.
+      if (webStateList->IsBatchInProgress()) {
+        break;
       }
 
-      // Triggers the switcher view when the last WebState is closed on a device
-      // that uses the switcher.
-      const WebStateListChangeDetach& detachChange =
-          change.As<WebStateListChangeDetach>();
       if (webStateList->empty()) {
-        if (detachChange.detached_web_state()
-                ->GetBrowserState()
-                ->IsOffTheRecord()) {
-          [self lastIncognitoTabClosed];
-        } else {
-          [self lastRegularTabClosed];
-        }
+        [self onLastWebStateClosedForWebStateList:webStateList];
       }
       break;
     }
@@ -3372,6 +3537,37 @@ void InjectNTP(Browser* browser) {
     case WebStateListChange::Type::kInsert:
       // Do nothing when a WebState is inserted.
       break;
+  }
+}
+
+- (void)webStateListWillBeginBatchOperation:(WebStateList*)webStateList {
+  _tabCountBeforeBatchOperation.insert(
+      std::make_pair(webStateList, webStateList->count()));
+}
+
+- (void)webStateListBatchOperationEnded:(WebStateList*)webStateList {
+  auto iter = _tabCountBeforeBatchOperation.find(webStateList);
+  DCHECK(iter != _tabCountBeforeBatchOperation.end());
+
+  // Triggers the switcher view if the list is empty and at least one tab
+  // was closed (i.e. it was not empty before the batch operation).
+  if (webStateList->empty() && iter->second != 0) {
+    [self onLastWebStateClosedForWebStateList:webStateList];
+  }
+
+  _tabCountBeforeBatchOperation.erase(iter);
+}
+
+#pragma mark - Private methods
+
+// Triggers the switcher view when the last WebState is closed on a device
+// that uses the switcher.
+- (void)onLastWebStateClosedForWebStateList:(WebStateList*)webStateList {
+  DCHECK(webStateList->empty());
+  if (webStateList == self.incognitoInterface.browser->GetWebStateList()) {
+    [self lastIncognitoTabClosed];
+  } else if (webStateList == self.mainInterface.browser->GetWebStateList()) {
+    [self lastRegularTabClosed];
   }
 }
 
@@ -3563,11 +3759,11 @@ void InjectNTP(Browser* browser) {
 // it.
 - (void)addANewTabAndPresentBrowser:(Browser*)browser
                   withURLLoadParams:(const UrlLoadParams&)urlLoadParams {
+  TabInsertion::Params tabInsertionParams;
+  tabInsertionParams.should_skip_new_tab_animation =
+      urlLoadParams.from_external;
   TabInsertionBrowserAgent::FromBrowser(browser)->InsertWebState(
-      urlLoadParams.web_params, nil, false, browser->GetWebStateList()->count(),
-      /*in_background=*/false, /*inherit_opener=*/false,
-      /*should_show_start_surface=*/false,
-      /*should_skip_new_tab_animation=*/urlLoadParams.from_external);
+      urlLoadParams.web_params, tabInsertionParams);
   [self beginActivatingBrowser:browser focusOmnibox:NO];
 }
 

@@ -29,7 +29,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.Callback;
@@ -39,6 +38,7 @@ import org.chromium.base.test.util.ScalableTimeout;
 import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.AccountProperties;
 import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.ContinueButtonProperties;
 import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.DataSharingConsentProperties;
+import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.ErrorProperties;
 import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.HeaderProperties;
 import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.HeaderProperties.HeaderType;
 import org.chromium.chrome.browser.ui.android.webid.AccountSelectionProperties.IdpSignInProperties;
@@ -52,7 +52,6 @@ import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.widget.ButtonCompat;
 import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.util.Collections;
 
@@ -61,10 +60,9 @@ import java.util.Collections;
  * sheet.
  */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(shadows = {ShadowGURL.class})
 public class AccountSelectionViewTest {
-    private static final GURL TEST_PROFILE_PIC = JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL);
-    private static final GURL TEST_CONFIG_URL = JUnitTestGURLs.getGURL(JUnitTestGURLs.URL_1);
+    private static final GURL TEST_PROFILE_PIC = JUnitTestGURLs.EXAMPLE_URL;
+    private static final GURL TEST_CONFIG_URL = JUnitTestGURLs.URL_1;
 
     private static final Account ANA =
             new Account("Ana", "ana@email.example", "Ana Doe", "Ana", TEST_PROFILE_PIC, true);
@@ -130,7 +128,7 @@ public class AccountSelectionViewTest {
         assertEquals("Incorrect title",
                 mResources.getString(R.string.account_selection_sheet_title_explicit_signin,
                         "example.org", "idp.org"),
-                title.getText());
+                title.getText().toString());
         assertEquals("Incorrect subtitle", "", subtitle.getText());
     }
 
@@ -151,7 +149,7 @@ public class AccountSelectionViewTest {
         assertEquals("Incorrect title",
                 mResources.getString(R.string.account_selection_sheet_title_explicit_signin,
                         "iframe-example.org", "idp.org"),
-                title.getText());
+                title.getText().toString());
         assertEquals("Incorrect subtitle",
                 mResources.getString(
                         R.string.account_selection_sheet_subtitle_explicit, "example.org"),
@@ -172,7 +170,7 @@ public class AccountSelectionViewTest {
         TextView subtitle = mContentView.findViewById(R.id.header_subtitle);
 
         assertEquals("Incorrect title", mResources.getString(R.string.verify_sheet_title),
-                title.getText());
+                title.getText().toString());
         assertEquals("Incorrect subtitle", "", subtitle.getText());
     }
 
@@ -190,7 +188,8 @@ public class AccountSelectionViewTest {
         TextView subtitle = mContentView.findViewById(R.id.header_subtitle);
 
         assertEquals("Incorrect title",
-                mResources.getString(R.string.verify_sheet_title_auto_reauthn), title.getText());
+                mResources.getString(R.string.verify_sheet_title_auto_reauthn),
+                title.getText().toString());
         assertEquals("Incorrect subtitle", "", subtitle.getText());
     }
 
@@ -304,7 +303,7 @@ public class AccountSelectionViewTest {
 
             assertEquals("Incorrect title",
                     mResources.getString(rpContext.mTitleId, "example.org", "idp.org"),
-                    title.getText());
+                    title.getText().toString());
             assertEquals("Incorrect subtitle", "", subtitle.getText());
         }
     }
@@ -326,7 +325,7 @@ public class AccountSelectionViewTest {
 
             assertEquals("Incorrect title",
                     mResources.getString(rpContext.mTitleId, "iframe-example.org", "idp.org"),
-                    title.getText());
+                    title.getText().toString());
             assertEquals("Incorrect subtitle",
                     mResources.getString(
                             R.string.account_selection_sheet_subtitle_explicit, "example.org"),
@@ -339,14 +338,14 @@ public class AccountSelectionViewTest {
         final String idpEtldPlusOne = "idp.org";
         mModel.set(ItemProperties.IDP_SIGNIN, buildIdpSignInItem(idpEtldPlusOne));
         assertEquals(View.VISIBLE, mContentView.getVisibility());
-        TextView consent = mContentView.findViewById(R.id.idp_signin);
-        assertTrue(consent.isShown());
+        TextView idpSignin = mContentView.findViewById(R.id.idp_signin);
+        assertTrue(idpSignin.isShown());
         String expectedText = mResources.getString(
                 R.string.idp_signin_status_mismatch_dialog_body, idpEtldPlusOne);
         // We use toString() here because otherwise getText() returns a
         // Spanned, which is not equal to the string we get from the resources.
-        assertEquals(
-                "Incorrect IDP sign in mismatch body dialog text", expectedText, consent.getText());
+        assertEquals("Incorrect IDP sign in mismatch body dialog text", expectedText,
+                idpSignin.getText().toString());
 
         mModel.set(ItemProperties.CONTINUE_BUTTON, buildContinueButton(null, null));
         ButtonCompat continueButton =
@@ -356,6 +355,32 @@ public class AccountSelectionViewTest {
         continueButton.performClick();
 
         waitForEvent(mAccountCallback).onResult(eq(null));
+    }
+
+    @Test
+    public void testErrorDisplayed() {
+        final String idpEtldPlusOne = "idp.org";
+        mModel.set(ItemProperties.ERROR_SUMMARY, buildErrorItem(idpEtldPlusOne));
+        mModel.set(ItemProperties.ERROR_DESCRIPTION, buildErrorItem(idpEtldPlusOne));
+        assertEquals(View.VISIBLE, mContentView.getVisibility());
+
+        TextView errorSummary = mContentView.findViewById(R.id.error_summary);
+        assertTrue(errorSummary.isShown());
+        String expectedErrorSummaryText =
+                mResources.getString(R.string.signin_generic_error_dialog_summary, idpEtldPlusOne);
+        // We use toString() here because otherwise getText() returns a
+        // Spanned, which is not equal to the string we get from the resources.
+        assertEquals("Incorrect error summary text", expectedErrorSummaryText,
+                errorSummary.getText().toString());
+
+        TextView errorDescription = mContentView.findViewById(R.id.error_description);
+        assertTrue(errorDescription.isShown());
+        String expectedErrorDescriptionText =
+                mResources.getString(R.string.signin_generic_error_dialog_description);
+        // We use toString() here because otherwise getText() returns a
+        // Spanned, which is not equal to the string we get from the resources.
+        assertEquals("Incorrect error description text", expectedErrorDescriptionText,
+                errorDescription.getText().toString());
     }
 
     private RecyclerView getAccounts() {
@@ -411,6 +436,12 @@ public class AccountSelectionViewTest {
     private PropertyModel buildIdpSignInItem(String idpEtldPlusOne) {
         return new PropertyModel.Builder(IdpSignInProperties.ALL_KEYS)
                 .with(IdpSignInProperties.IDP_FOR_DISPLAY, idpEtldPlusOne)
+                .build();
+    }
+
+    private PropertyModel buildErrorItem(String idpEtldPlusOne) {
+        return new PropertyModel.Builder(ErrorProperties.ALL_KEYS)
+                .with(ErrorProperties.IDP_FOR_DISPLAY, idpEtldPlusOne)
                 .build();
     }
 }

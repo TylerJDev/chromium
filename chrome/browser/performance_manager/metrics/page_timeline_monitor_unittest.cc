@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,15 @@
 
 #include <map>
 #include <memory>
+#include <utility>
 
 #include "base/containers/fixed_flat_map.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/system/sys_info.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
@@ -17,6 +22,7 @@
 #include "components/performance_manager/embedder/graph_features.h"
 #include "components/performance_manager/public/decorators/page_live_state_decorator.h"
 #include "components/performance_manager/public/decorators/tab_page_decorator.h"
+#include "components/performance_manager/public/features.h"
 #include "components/performance_manager/public/mojom/lifecycle.mojom-shared.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/performance_manager/test_support/graph_test_harness.h"
@@ -39,7 +45,8 @@ namespace {
 using PageMeasurementBackgroundState =
     PageTimelineMonitor::PageMeasurementBackgroundState;
 
-// A class that returns constant 50% CPU used since it was created.
+// A class that returns defaults to returning 50% CPU used since it was created,
+// but the divisor for what proportion of a CPU is being used is configurable.
 class FixedCPUMeasurementDelegate final
     : public PageTimelineCPUMonitor::CPUMeasurementDelegate {
  public:
@@ -47,16 +54,23 @@ class FixedCPUMeasurementDelegate final
   ~FixedCPUMeasurementDelegate() final = default;
 
   base::TimeDelta GetCumulativeCPUUsage() final {
-    return (base::TimeTicks::Now() - creation_time_) / 2;
+    return (base::TimeTicks::Now() - creation_time_) / cpu_divisor_;
   }
 
   static std::unique_ptr<CPUMeasurementDelegate> Create(const ProcessNode*) {
     return std::make_unique<FixedCPUMeasurementDelegate>();
   }
 
+  static void SetCPUDivisor(int divisor) {
+    FixedCPUMeasurementDelegate::cpu_divisor_ = divisor;
+  }
+
  private:
   base::TimeTicks creation_time_ = base::TimeTicks::Now();
+  static int cpu_divisor_;
 };
+
+int FixedCPUMeasurementDelegate::cpu_divisor_ = 2;
 
 }  // namespace
 
@@ -70,8 +84,6 @@ class PageTimelineMonitorUnitTest : public GraphTestHarness {
       delete;
 
   void SetUp() override {
-    GetGraphFeatures().EnableExecutionContextRegistry();
-
     GraphTestHarness::SetUp();
 
     graph()->PassToGraph(
@@ -80,6 +92,7 @@ class PageTimelineMonitorUnitTest : public GraphTestHarness {
     std::unique_ptr<PageTimelineMonitor> monitor =
         std::make_unique<PageTimelineMonitor>();
     monitor_ = monitor.get();
+    monitor_->SetTriggerCollectionManuallyForTesting();
     monitor_->SetShouldCollectSliceCallbackForTesting(
         base::BindRepeating([]() { return true; }));
     monitor_->cpu_monitor_.SetCPUMeasurementDelegateFactoryForTesting(
@@ -96,11 +109,17 @@ class PageTimelineMonitorUnitTest : public GraphTestHarness {
   // To allow tests to call its methods and view its state.
   raw_ptr<PageTimelineMonitor> monitor_;
 
+  base::HistogramTester histogram_tester_;
+
  protected:
   ukm::TestUkmRecorder* test_ukm_recorder() { return test_ukm_recorder_.get(); }
   PageTimelineMonitor* monitor() { return monitor_; }
 
   void TriggerCollectSlice() { monitor_->CollectSlice(); }
+
+  void TriggerCollectPageResourceUsage() {
+    monitor_->CollectPageResourceUsage();
+  }
 
   void ResetUkmRecorder() {
     test_ukm_recorder_ = std::make_unique<ukm::TestAutoSetUkmRecorder>();
@@ -118,9 +137,9 @@ class PageTimelineMonitorUnitTest : public GraphTestHarness {
 
 void PageTimelineMonitorUnitTest::TestBackgroundStates(
     std::map<ukm::SourceId, PageMeasurementBackgroundState> expected_states) {
-  TriggerCollectSlice();
+  TriggerCollectPageResourceUsage();
   auto entries = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
   // Expect 1 entry per page.
   EXPECT_EQ(entries.size(), expected_states.size());
   for (const ukm::mojom::UkmEntry* entry : entries) {
@@ -130,6 +149,46 @@ void PageTimelineMonitorUnitTest::TestBackgroundStates(
   }
   ResetUkmRecorder();
 }
+
+// A test that runs with various values of the kUseResourceAttributionCPUMonitor
+// feature flag.
+class PageTimelineMonitorWithFeatureTest
+    : public PageTimelineMonitorUnitTest,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  PageTimelineMonitorWithFeatureTest() {
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {{features::kPageTimelineMonitor,
+          {{"use_resource_attribution_cpu_monitor",
+            GetParam() ? "true" : "false"}}},
+         {performance_manager::features::kCPUInterventionEvaluationLogging,
+          {{"threshold_chrome_cpu_percent",
+            base::NumberToString(
+                int(100 / base::SysInfo::NumberOfProcessors() / 2))}}}},
+        {});
+  }
+
+  void SetUp() override {
+    if (features::kUseResourceAttributionCPUMonitor.Get()) {
+      GetGraphFeatures().EnableResourceAttributionRegistries();
+    }
+    PageTimelineMonitorUnitTest::SetUp();
+  }
+
+  void TearDown() override {
+    // Destroy `monitor_` before `scoped_feature_list_` so that the feature flag
+    // doesn't change during its destructor.
+    graph()->TakeFromGraph(monitor_.ExtractAsDangling());
+    PageTimelineMonitorUnitTest::TearDown();
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         PageTimelineMonitorWithFeatureTest,
+                         ::testing::Bool());
 
 TEST_F(PageTimelineMonitorUnitTest, TestPageTimeline) {
   MockSinglePageInSingleProcessGraph mock_graph(graph());
@@ -145,10 +204,32 @@ TEST_F(PageTimelineMonitorUnitTest, TestPageTimeline) {
       ukm::builders::PerformanceManager_PageTimelineState::kEntryName);
   EXPECT_EQ(entries.size(), 1UL);
 
-  // Unsliced resource usage metrics should be collected along with the slice.
+  // Unsliced resource usage metrics should not be collected along with the
+  // slice.
   auto entries2 = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
-  EXPECT_EQ(entries2.size(), 1UL);
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
+  EXPECT_TRUE(entries2.empty());
+}
+
+TEST_F(PageTimelineMonitorUnitTest, TestPageResourceUsage) {
+  MockSinglePageInSingleProcessGraph mock_graph(graph());
+  ukm::SourceId mock_source_id = ukm::NoURLSourceId();
+  mock_graph.page->SetType(performance_manager::PageType::kTab);
+  mock_graph.page->SetUkmSourceId(mock_source_id);
+  mock_graph.page->SetIsVisible(true);
+  mock_graph.page->SetLifecycleStateForTesting(mojom::LifecycleState::kRunning);
+
+  TriggerCollectPageResourceUsage();
+
+  auto entries = test_ukm_recorder()->GetEntriesByName(
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
+  EXPECT_EQ(entries.size(), 1UL);
+
+  // Sliced resource usage metrics should not be collected along with
+  // PageResourceUsage.
+  auto entries2 = test_ukm_recorder()->GetEntriesByName(
+      ukm::builders::PerformanceManager_PageTimelineState::kEntryName);
+  EXPECT_TRUE(entries2.empty());
 }
 
 TEST_F(PageTimelineMonitorUnitTest,
@@ -167,12 +248,6 @@ TEST_F(PageTimelineMonitorUnitTest,
   auto entries = test_ukm_recorder()->GetEntriesByName(
       ukm::builders::PerformanceManager_PageTimelineState::kEntryName);
   EXPECT_EQ(entries.size(), 0UL);
-
-  // Unsliced resource usage metrics should be collected even when the slice is
-  // not.
-  auto entries2 = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
-  EXPECT_EQ(entries2.size(), 1UL);
 }
 
 TEST_F(PageTimelineMonitorUnitTest, TestPageTimelineNavigation) {
@@ -187,21 +262,25 @@ TEST_F(PageTimelineMonitorUnitTest, TestPageTimelineNavigation) {
   mock_graph.page->SetLifecycleStateForTesting(mojom::LifecycleState::kRunning);
 
   TriggerCollectSlice();
+  TriggerCollectPageResourceUsage();
+
   auto entries = test_ukm_recorder()->GetEntriesByName(
       ukm::builders::PerformanceManager_PageTimelineState::kEntryName);
   EXPECT_EQ(entries.size(), 1UL);
   auto entries2 = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
   EXPECT_EQ(entries2.size(), 1UL);
 
   mock_graph.page->SetUkmSourceId(mock_source_id_2);
 
   TriggerCollectSlice();
+  TriggerCollectPageResourceUsage();
+
   entries = test_ukm_recorder()->GetEntriesByName(
       ukm::builders::PerformanceManager_PageTimelineState::kEntryName);
   EXPECT_EQ(entries.size(), 2UL);
   entries2 = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
   EXPECT_EQ(entries2.size(), 2UL);
 
   std::vector<ukm::SourceId> ids;
@@ -220,12 +299,13 @@ TEST_F(PageTimelineMonitorUnitTest, TestOnlyRecordTabs) {
   mock_graph.page->SetLifecycleStateForTesting(mojom::LifecycleState::kRunning);
 
   TriggerCollectSlice();
+  TriggerCollectPageResourceUsage();
 
   auto entries = test_ukm_recorder()->GetEntriesByName(
       ukm::builders::PerformanceManager_PageTimelineState::kEntryName);
   EXPECT_EQ(entries.size(), 0UL);
   auto entries2 = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
   EXPECT_EQ(entries2.size(), 0UL);
 }
 
@@ -509,7 +589,7 @@ TEST_F(PageTimelineMonitorUnitTest, TestUpdatePageNodeBeforeTypeChange) {
   TriggerCollectSlice();
 }
 
-TEST_F(PageTimelineMonitorUnitTest, TestResourceUsage) {
+TEST_P(PageTimelineMonitorWithFeatureTest, TestResourceUsage) {
   MockMultiplePagesWithMultipleProcessesGraph mock_graph(graph());
   const ukm::SourceId mock_source_id = ukm::AssignNewSourceId();
   mock_graph.page->SetType(performance_manager::PageType::kTab);
@@ -526,10 +606,10 @@ TEST_F(PageTimelineMonitorUnitTest, TestResourceUsage) {
   // Let an arbitrary amount of time pass so there's some CPU usage to measure.
   task_env().FastForwardBy(base::Minutes(1));
 
-  TriggerCollectSlice();
+  TriggerCollectPageResourceUsage();
 
   auto entries = test_ukm_recorder()->GetEntriesByName(
-      ukm::builders::PerformanceManager_PageResourceUsage::kEntryName);
+      ukm::builders::PerformanceManager_PageResourceUsage2::kEntryName);
   // Expect 1 entry per page.
   EXPECT_EQ(entries.size(), 2UL);
 
@@ -617,5 +697,48 @@ TEST_F(PageTimelineMonitorUnitTest, TestResourceUsageBackgroundState) {
        {mock_source_id2,
         PageMeasurementBackgroundState::kMixedForegroundBackground}});
 }
+
+#if !BUILDFLAG(IS_ANDROID)
+TEST_P(PageTimelineMonitorWithFeatureTest, TestCPUInterventionMetrics) {
+  MockMultiplePagesWithMultipleProcessesGraph mock_graph(graph());
+  const ukm::SourceId mock_source_id = ukm::AssignNewSourceId();
+  mock_graph.page->SetType(performance_manager::PageType::kTab);
+  mock_graph.page->SetUkmSourceId(mock_source_id);
+  mock_graph.page->SetIsVisible(true);
+
+  const ukm::SourceId mock_source_id2 = ukm::AssignNewSourceId();
+  mock_graph.other_page->SetType(performance_manager::PageType::kTab);
+  mock_graph.other_page->SetUkmSourceId(mock_source_id2);
+
+  // Let an arbitrary amount of time pass so there's some CPU usage to measure.
+  task_env().FastForwardBy(base::Minutes(1));
+  TriggerCollectPageResourceUsage();
+
+  histogram_tester_.ExpectUniqueSample(
+      "PerformanceManager.PerformanceInterventions.CPU.TotalBackgroundCPU."
+      "Immediate",
+      0.75 * 100 / base::SysInfo::NumberOfProcessors(), 1);
+
+  // Fast forward for Delayed UMA to be logged.
+  task_env().FastForwardBy(base::Minutes(1));
+
+  if (GetParam()) {
+    histogram_tester_.ExpectUniqueSample(
+        "PerformanceManager.PerformanceInterventions.CPU.TotalBackgroundCPU."
+        "Delayed",
+        0.75 * 100 / base::SysInfo::NumberOfProcessors(), 1);
+  }
+
+  // Lower CPU measurement so the duration is logged.
+  FixedCPUMeasurementDelegate::SetCPUDivisor(6);
+  task_env().FastForwardBy(base::Minutes(1));
+  TriggerCollectPageResourceUsage();
+
+  histogram_tester_.ExpectUniqueSample(
+      "PerformanceManager.PerformanceInterventions.CPU."
+      "DurationOverThreshold",
+      base::Minutes(2).InMilliseconds(), 1);
+}
+#endif
 
 }  // namespace performance_manager::metrics

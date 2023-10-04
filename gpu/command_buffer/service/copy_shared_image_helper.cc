@@ -29,6 +29,7 @@
 #include "third_party/skia/include/gpu/GrBackendSemaphore.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/GrTypes.h"
 #include "third_party/skia/include/gpu/GrYUVABackendTextures.h"
 #include "third_party/skia/include/gpu/ganesh/SkImageGanesh.h"
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
@@ -227,7 +228,7 @@ void SubmitIfNecessary(std::vector<GrBackendSemaphore> signal_semaphores,
 
   if (need_submit) {
     CHECK(context->gr_context());
-    context->gr_context()->submit(sync_cpu);
+    context->gr_context()->submit(sync_cpu ? GrSyncCpu::kYes : GrSyncCpu::kNo);
   }
 
   if (context->graphite_context()) {
@@ -430,6 +431,10 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertRGBAToYUVAMailboxes(
 }
 
 base::expected<void, GLError> CopySharedImageHelper::ConvertYUVAMailboxesToRGB(
+    GLint src_x,
+    GLint src_y,
+    GLsizei width,
+    GLsizei height,
     GLenum planes_yuv_color_space,
     GLenum plane_config,
     GLenum subsampling,
@@ -502,10 +507,20 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertYUVAMailboxesToRGB(
     }
 
     sk_sp<SkImage> result_image;
-    SkISize dest_size =
-        SkISize::Make(dest_surface->width(), dest_surface->height());
-    SkYUVAInfo yuva_info(dest_size, src_plane_config, src_subsampling,
-                         src_yuv_color_space);
+
+    gfx::Size dest_size =
+        gfx::Size(dest_surface->width(), dest_surface->height());
+
+    gfx::Rect dest_rect(0, 0, width, height);
+    if (!gfx::Rect(dest_size).Contains(dest_rect)) {
+      return base::unexpected(GLError(GL_INVALID_VALUE,
+                                      "ConvertYUVAMailboxesToRGB",
+                                      "destination texture bad dimensions."));
+    }
+
+    auto src_size = yuva_images[0]->size();
+    SkYUVAInfo yuva_info(gfx::SizeToSkISize(src_size), src_plane_config,
+                         src_subsampling, src_yuv_color_space);
     if (auto* gr_context = shared_context_state_->gr_context()) {
       std::array<GrBackendTexture, SkYUVAInfo::kMaxPlanes> yuva_textures;
       for (int i = 0; i < num_src_planes; ++i) {
@@ -537,8 +552,10 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertYUVAMailboxesToRGB(
     } else {
       SkPaint paint;
       paint.setBlendMode(SkBlendMode::kSrc);
-      dest_surface->getCanvas()->drawImage(result_image, 0, 0,
-                                           SkSamplingOptions(), &paint);
+      SkRect src_rect = SkRect::MakeXYWH(src_x, src_y, width, height);
+      dest_surface->getCanvas()->drawImageRect(
+          result_image, src_rect, gfx::RectToSkRect(dest_rect),
+          SkSamplingOptions(), &paint, SkCanvas::kStrict_SrcRectConstraint);
       drew_image = true;
     }
   }
@@ -619,6 +636,13 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
                                     "Dest shared image is not writable"));
   }
 
+  // Flush dest surface and submit if necessary before exiting.
+  absl::Cleanup cleanup = [&]() {
+    FlushSurface(dest_scoped_access.get());
+    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
+                      is_drdc_enabled_);
+  };
+
   gfx::Rect new_cleared_rect;
   gfx::Rect old_cleared_rect = dest_shared_image->ClearedRect();
   if (!gles2::TextureManager::CombineAdjacentRects(old_cleared_rect, dest_rect,
@@ -638,6 +662,8 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
           dest_scoped_access.get(), representation_factory_,
           shared_context_state_, is_drdc_enabled_, begin_semaphores,
           end_semaphores)) {
+    // Cancel cleanup as TryCopySubTextureINTERNALMemory already handles it.
+    std::move(cleanup).Cancel();
     return base::ok();
   }
 
@@ -660,9 +686,6 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
     if (!dest_shared_image->IsCleared()) {
       dest_shared_image->SetClearedRect(new_cleared_rect);
     }
-    FlushSurface(dest_scoped_access.get());
-    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                      is_drdc_enabled_);
 
     // Note, that we still generate error for the client to indicate there was
     // problem.
@@ -687,10 +710,6 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
     DCHECK(ret);
   }
   if (!source_scoped_access) {
-    // We still need to flush surface for begin semaphores above.
-    FlushSurface(dest_scoped_access.get());
-    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                      is_drdc_enabled_);
     return base::unexpected(GLError(GL_INVALID_VALUE, "glCopySubTexture",
                                     "Source shared image is not accessable"));
   }
@@ -708,8 +727,6 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
                                  dest_shared_image->surface_origin());
     if (dest_format.is_single_plane()) {
       auto* canvas = dest_scoped_access->surface()->getCanvas();
-      SkPaint paint;
-      paint.setBlendMode(SkBlendMode::kSrc);
 
       // Reinterpret the source image as being in the destination color space,
       // to disable color conversion.
@@ -718,19 +735,14 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
         source_image_reinterpreted = source_image->reinterpretColorSpace(
             canvas->imageInfo().refColorSpace());
       }
-      // Flip via canvas as Graphite doesn't support bottom left origin images.
-      // TODO(crbug.com/1449764): Remove this once Graphite supports bottom left
-      // origin images and we remove bottom left destination surfaces.
-      const int save_count = canvas->save();
-      if (shared_context_state_->graphite_context() && unpack_flip_y) {
-        canvas->translate(0.0f, static_cast<float>(dest_rect.height()));
-        canvas->scale(1.0f, -1.0f);
-      }
+
+      SkPaint paint;
+      paint.setBlendMode(SkBlendMode::kSrc);
+
       canvas->drawImageRect(source_image_reinterpreted,
                             gfx::RectToSkRect(source_rect),
                             gfx::RectToSkRect(dest_rect), SkSamplingOptions(),
                             &paint, SkCanvas::kStrict_SrcRectConstraint);
-      canvas->restoreToCount(save_count);
     } else {
       // TODO(crbug.com/1450879): Make this path work for Graphite after Dawn
       // supports multiplanar rendering and we integrate it into Chrome.
@@ -771,6 +783,8 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
     }
   }
 
+  // Cancel cleanup as the cleanup order is different here.
+  std::move(cleanup).Cancel();
   FlushSurface(dest_scoped_access.get());
   source_scoped_access->ApplyBackendSurfaceEndState();
   SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
@@ -838,7 +852,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImageToGLTexture(
     canvas->clipRect(dest_rect);
     canvas->clear(SkColors::kBlack);
 
-    direct_context->flush(dest_surface);
+    direct_context->flush(dest_surface.get());
     SubmitIfNecessary({}, shared_context_state_, is_drdc_enabled_);
 
     // Note, that we still generate error for the client to indicate there was
@@ -869,7 +883,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImageToGLTexture(
   }
   if (!source_scoped_access) {
     // We still need to flush surface for begin semaphores above.
-    direct_context->flush(dest_surface);
+    direct_context->flush(dest_surface.get());
     SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
                       is_drdc_enabled_);
 
@@ -902,7 +916,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImageToGLTexture(
         SkSamplingOptions(), &paint, SkCanvas::kStrict_SrcRectConstraint);
   }
 
-  direct_context->flush(dest_surface);
+  direct_context->flush(dest_surface.get());
   source_scoped_access->ApplyBackendSurfaceEndState();
   SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
                     is_drdc_enabled_);

@@ -336,7 +336,9 @@ class WTF_EXPORT StringImpl {
   static void CopyChars(T* destination,
                         const T* source,
                         wtf_size_t num_characters) {
-    memcpy(destination, source, num_characters * sizeof(T));
+    if (num_characters > 0) {
+      memcpy(destination, source, num_characters * sizeof(T));
+    }
   }
 
   ALWAYS_INLINE static void CopyChars(UChar* destination,
@@ -478,7 +480,7 @@ class WTF_EXPORT StringImpl {
                  wtf_size_t length = UINT_MAX) const;
 
 #if BUILDFLAG(IS_APPLE)
-  base::ScopedCFTypeRef<CFStringRef> CreateCFString();
+  base::apple::ScopedCFTypeRef<CFStringRef> CreateCFString();
 #endif
 #ifdef __OBJC__
   operator NSString*();

@@ -86,13 +86,11 @@ class FeedStream : public FeedApi,
     virtual void ClearAll() = 0;
     virtual AccountInfo GetAccountInfo() = 0;
     virtual bool IsSigninAllowed() = 0;
-    // Returns true if Sync is enabled for the user. If the user is not signed
-    // in it also returns false.
-    virtual bool IsSyncOn() = 0;
     virtual void PrefetchImage(const GURL& url) = 0;
     virtual void RegisterExperiments(const Experiments& experiments) = 0;
     virtual void RegisterFeedUserSettingsFieldTrial(
         base::StringPiece group) = 0;
+    virtual std::string GetCountry() = 0;
   };
 
   FeedStream(RefreshTaskScheduler* refresh_task_scheduler,
@@ -138,6 +136,12 @@ class FeedStream : public FeedApi,
                 base::OnceCallback<void(bool)> callback) override;
   void ManualRefresh(SurfaceId surface_id,
                      base::OnceCallback<void(bool)> callback) override;
+  void FetchResource(
+      const GURL& url,
+      const std::string& method,
+      const std::vector<std::string>& header_names_and_values,
+      const std::string& post_data,
+      base::OnceCallback<void(NetworkResponse)> callback) override;
   void ExecuteOperations(
       SurfaceId surface_id,
       std::vector<feedstore::DataOperation> operations) override;
@@ -255,7 +259,6 @@ class FeedStream : public FeedApi,
 
   bool IsSigninAllowed() const { return delegate_->IsSigninAllowed(); }
   bool IsSignedIn() const { return !delegate_->GetAccountInfo().IsEmpty(); }
-  bool IsSyncOn() const { return delegate_->IsSyncOn(); }
   AccountInfo GetAccountInfo() const { return delegate_->GetAccountInfo(); }
 
   // Determines if we should attempt loading the stream or refreshing at all.
@@ -415,11 +418,14 @@ class FeedStream : public FeedApi,
   void BackgroundRefreshComplete(LoadStreamTask::Result result);
   void LoadTaskComplete(const LoadStreamTask::Result& result);
   void UploadActionsComplete(UploadActionsTask::Result result);
+  void FetchResourceComplete(base::OnceCallback<void(NetworkResponse)> callback,
+                             FeedNetwork::RawResponse response);
   void ClearAll();
   void ClearStream(const StreamType& stream_type, int sequence_number);
 
   bool IsFeedEnabledByEnterprisePolicy();
   bool IsFeedEnabled();
+  bool IsFeedEnabledByDse();
 
   bool HasReachedConditionsToUploadActionsWithNoticeCard();
 
@@ -499,6 +505,7 @@ class FeedStream : public FeedApi,
   BooleanPrefMember has_stored_data_;
   BooleanPrefMember snippets_enabled_by_policy_;
   BooleanPrefMember articles_list_visible_;
+  BooleanPrefMember snippets_enabled_by_dse_;
   BooleanPrefMember signin_allowed_;
 
   // State loaded at startup:

@@ -38,7 +38,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "chrome/browser/apps/app_service/app_service_proxy.h"
-#include "chrome/browser/apps/app_service/app_service_proxy_ash.h"
 #include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
 #include "chrome/browser/apps/app_service/extension_apps_utils.h"
 #include "chrome/browser/apps/app_service/package_id.h"
@@ -50,6 +49,7 @@
 #include "chrome/browser/ash/app_list/app_list_syncable_service_factory.h"
 #include "chrome/browser/ash/app_list/app_service/app_service_app_icon_loader.h"
 #include "chrome/browser/ash/app_list/app_service/app_service_promise_app_icon_loader.h"
+#include "chrome/browser/ash/app_list/app_service/app_service_shortcut_icon_loader.h"
 #include "chrome/browser/ash/app_list/arc/arc_app_utils.h"
 #include "chrome/browser/ash/app_list/md_icon_normalizer.h"
 #include "chrome/browser/ash/arc/arc_util.h"
@@ -69,6 +69,7 @@
 #include "chrome/browser/ui/ash/shelf/app_service/app_service_app_window_shelf_controller.h"
 #include "chrome/browser/ui/ash/shelf/app_service/shelf_app_service_app_updater.h"
 #include "chrome/browser/ui/ash/shelf/app_service/shelf_app_service_promise_app_updater.h"
+#include "chrome/browser/ui/ash/shelf/app_service/shelf_app_service_shortcut_updater.h"
 #include "chrome/browser/ui/ash/shelf/app_shortcut_shelf_item_controller.h"
 #include "chrome/browser/ui/ash/shelf/app_window_shelf_controller.h"
 #include "chrome/browser/ui/ash/shelf/app_window_shelf_item_controller.h"
@@ -90,14 +91,14 @@
 #include "chrome/browser/ui/settings_window_manager_chromeos.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/webui/settings/ash/app_management/app_management_uma.h"
+#include "chrome/browser/ui/webui/ash/settings/app_management/app_management_uma.h"
 #include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "chrome/common/pref_names.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/chrome_unscaled_resources.h"
-#include "chrome/grit/chromium_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "chromeos/strings/grit/chromeos_strings.h"
@@ -105,6 +106,8 @@
 #include "components/app_constants/constants.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/services/app_service/public/cpp/app_types.h"
+#include "components/services/app_service/public/cpp/shortcut/shortcut.h"
+#include "components/services/app_service/public/cpp/shortcut/shortcut_update.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/user_manager/user_manager.h"
@@ -112,6 +115,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/browser/management_policy.h"
+#include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/window.h"
@@ -1058,19 +1062,24 @@ void ChromeShelfController::OnAppUninstalledPrepared(
 void ChromeShelfController::OnPromiseAppUpdate(
     const apps::PromiseAppUpdate& update) {
   int index = model_->ItemIndexByAppID(update.PackageId().ToString());
+
+  // If item doesn't exist yet, then we have just created the promise app. Go
+  // through sync and check if the item should be pinned. If it should be
+  // pinned, the UpdatePinnedAppsFromSync() call will create an item for it.
   if (index == kInvalidIndex) {
+    UpdatePinnedAppsFromSync();
     return;
   }
+
   ash::ShelfItem item = model_->items()[index];
-  if (update.Name().has_value()) {
-    item.title = base::UTF8ToUTF16(update.Name().value());
-  }
   if (update.Progress().has_value()) {
     item.progress = update.Progress().value();
   }
   if (update.StatusChanged()) {
     item.app_status =
         ShelfControllerHelper::ConvertPromiseStatusToAppStatus(update.Status());
+    item.title = base::UTF8ToUTF16(
+        ShelfControllerHelper::GetLabelForPromiseStatus(update.Status()));
   }
   model_->Set(index, item);
 }
@@ -1088,6 +1097,42 @@ void ChromeShelfController::OnPromiseAppRemoved(
   UnpinShelfItemInternal(item.id);
 }
 
+void ChromeShelfController::OnShortcutUpdated(
+    const apps::ShortcutUpdate& update) {
+  // When shortcut got initialized in the AppService, we update the
+  // pin location from sync.
+  if (update.ShortcutInitialized()) {
+    UpdatePinnedAppsFromSync();
+  }
+
+  int index = model_->ItemIndexByAppID(update.ShortcutId().value());
+  if (index == kInvalidIndex) {
+    return;
+  }
+  ash::ShelfItem item = model_->items()[index];
+
+  if (update.IconKeyChanged()) {
+    AppIconLoader* app_icon_loader =
+        GetAppIconLoaderForApp(update.ShortcutId().value());
+    if (app_icon_loader) {
+      app_icon_loader->FetchImage(update.ShortcutId().value());
+    }
+  }
+
+  std::u16string title = base::UTF8ToUTF16(update.Name());
+  if (item.title != title) {
+    item.title = title;
+    model_->Set(index, item);
+  }
+}
+
+void ChromeShelfController::OnShortcutRemoved(const apps::ShortcutId& id) {
+  ash::ShelfID shelf_id(id.value());
+  if (model_->ItemByID(shelf_id)) {
+    UnpinShelfItemInternal(shelf_id);
+  }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // AppIconLoaderDelegate:
 
@@ -1097,7 +1142,9 @@ void ChromeShelfController::OnAppImageUpdated(const std::string& app_id,
   bool is_standard_icon = true;
   if (!AppServiceAppIconLoader::CanLoadImage(latest_active_profile_, app_id) &&
       !AppServicePromiseAppIconLoader::CanLoadImage(latest_active_profile_,
-                                                    app_id)) {
+                                                    app_id) &&
+      !AppServiceShortcutIconLoader::CanLoadImage(latest_active_profile_,
+                                                  app_id)) {
     is_standard_icon = false;
   }
 
@@ -1294,8 +1341,21 @@ void ChromeShelfController::UpdatePinnedAppsFromSync() {
   // the new pin at that position.
   for (const auto& pref_shelf_id : pinned_apps) {
     const std::string& app_id = pref_shelf_id.app_id;
-    // Do not show apps in the shelf if they are explicitly forbidden.
-    if (IsAppHiddenFromShelf(profile(), app_id)) {
+    std::string promise_package_id =
+        shelf_prefs_->GetPromisePackageIdForSyncItem(app_id);
+
+    // Checks whether the sync item matches with a current promise app that can
+    // be shown in the shelf.
+    bool is_valid_promise_app =
+        IsPromiseAppReadyToShowInShelf(profile(), promise_package_id);
+
+    // Checks whether the sync item matches an installed app that can be shown
+    // in the shelf.
+    bool is_valid_app =
+        shelf_controller_helper_->IsValidIDForCurrentUser(app_id) &&
+        !IsAppHiddenFromShelf(profile(), app_id);
+
+    if (!is_valid_app && !is_valid_promise_app) {
       continue;
     }
 
@@ -1306,12 +1366,18 @@ void ChromeShelfController::UpdatePinnedAppsFromSync() {
     int app_index = index;
     for (; app_index < model_->item_count(); ++app_index) {
       const ash::ShelfItem& item = model_->items()[app_index];
-      if (item.id == pref_shelf_id)
+      if (is_valid_app && item.id == pref_shelf_id) {
         break;
+      }
+      if (is_valid_promise_app && item.id.app_id == promise_package_id) {
+        break;
+      }
     }
 
+    std::string item_id = is_valid_promise_app ? promise_package_id : app_id;
+
     const bool item_pinned = EnsureAppPinnedInModelAtIndex(
-        app_id,
+        item_id,
         /*current_index=*/app_index < model_->item_count() ? app_index : -1,
         /*target_index=*/index);
 
@@ -1457,6 +1523,12 @@ ash::ShelfID ChromeShelfController::InsertAppItem(
         latest_active_profile_, item_delegate->shelf_id().app_id);
     item.is_promise_app = ShelfControllerHelper::IsPromiseApp(
         latest_active_profile_, item_delegate->shelf_id().app_id);
+
+    // TODO(b/302408509): Temporary fix for ShelfViews crash that happens only
+    // when a ShelfItem created by sync has kPending/ kInstalling app states.
+    if (item.is_promise_app) {
+      item.app_status = ash::AppStatus::kReady;
+    }
   }
   model_->AddAt(index, item, std::move(item_delegate));
 
@@ -1552,6 +1624,11 @@ void ChromeShelfController::AddAppUpdaterAndIconLoader(Profile* profile) {
       app_updaters_for_profile.emplace_back(
           std::make_unique<ShelfPromiseAppUpdater>(this, profile));
     }
+
+    if (base::FeatureList::IsEnabled(features::kCrosWebAppShortcutUiUpdate)) {
+      app_updaters_for_profile.emplace_back(
+          std::make_unique<ShelfAppServiceShortcutUpdater>(this, profile));
+    }
   }
 
   if (!base::Contains(app_icon_loaders_, profile)) {
@@ -1565,6 +1642,15 @@ void ChromeShelfController::AddAppUpdaterAndIconLoader(Profile* profile) {
       app_icon_loaders_[profile].emplace_back(
           std::make_unique<AppServicePromiseAppIconLoader>(
               profile, extension_misc::EXTENSION_ICON_MEDIUM, this));
+    }
+
+    if (base::FeatureList::IsEnabled(features::kCrosWebAppShortcutUiUpdate)) {
+      app_icon_loaders_for_profile.emplace_back(
+          std::make_unique<AppServiceShortcutIconLoader>(
+              profile, extension_misc::EXTENSION_ICON_MEDIUM,
+              // TODO(crbug.com/1480423): Update the size after the effects
+              // visual done.
+              extension_misc::EXTENSION_ICON_SMALLISH, this));
     }
 
     // Some special extensions open new windows, and on Chrome OS, those windows

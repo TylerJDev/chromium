@@ -98,6 +98,9 @@ extern const char kEnableEarlyProcessSingleton[];
 extern const char kEnableExtensionActivityLogging[];
 extern const char kEnableExtensionActivityLogTesting[];
 extern const char kEnableHangoutServicesExtensionForTesting[];
+#if BUILDFLAG(IS_CHROMEOS)
+extern const char kEnableLacrosSharedComponentsDir[];
+#endif
 extern const char kEnableNaCl[];
 extern const char kEnableNetBenchmarking[];
 extern const char kEnablePotentiallyAnnoyingSecurityFeatures[];
@@ -204,7 +207,6 @@ extern const char kWinJumplistAction[];
 
 #if BUILDFLAG(IS_ANDROID)
 extern const char kAuthAndroidNegotiateAccountType[];
-extern const char kEnableAccessibilityTabSwitcher[];
 extern const char kForceDeviceOwnership[];
 extern const char kForceEnableNightMode[];
 extern const char kForceShowUpdateMenuBadge[];
@@ -249,6 +251,7 @@ extern const char kEnableProfileShortcutManager[];
 extern const char kFromInstaller[];
 extern const char kHideIcons[];
 extern const char kNoNetworkProfileWarning[];
+extern const char kNoPreReadMainDll[];
 extern const char kNotificationInlineReply[];
 extern const char kNotificationLaunchId[];
 extern const char kPrefetchArgumentBrowserBackground[];

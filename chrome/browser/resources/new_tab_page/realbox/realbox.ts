@@ -621,13 +621,6 @@ export class RealboxElement extends PolymerElement {
   }
 
   /**
-   * @param e Event containing index of the match that was clicked.
-   */
-  private onMatchClick_(e: CustomEvent<{index: number, event: MouseEvent}>) {
-    this.navigateToMatch_(e.detail.index, e.detail.event);
-  }
-
-  /**
    * @param e Event containing index of the match that received focus.
    */
   private onMatchFocusin_(e: CustomEvent<number>) {
@@ -640,16 +633,6 @@ export class RealboxElement extends PolymerElement {
       inline: '',
       moveCursorToEnd: true,
     });
-  }
-
-  /**
-   * @param e Event containing index of the match that was removed.
-   */
-  private onMatchRemove_(e: CustomEvent<number>) {
-    const index = e.detail;
-    const match = this.result_!.matches[index];
-    assert(match);
-    this.pageHandler_.deleteAutocompleteMatch(index, match.destinationUrl);
   }
 
   private onVoiceSearchClick_() {

@@ -5,6 +5,8 @@
 import {TestRunner} from 'test_runner';
 import {PerformanceTestRunner} from 'performance_test_runner';
 
+import * as TimelineModel from 'devtools/models/timeline_model/timeline_model.js';
+
 function waitUntilIdle() {
   return new Promise(resolve=>{
     window.requestIdleCallback(()=>resolve());
@@ -16,7 +18,6 @@ function waitUntilIdle() {
   // The main purpose of the test is to demonstrate that after producing the
   // code cache on the 2nd load, it gets cleared on disk by subsequent loads of
   // the subresource, even if the response instructs to reuse the old resource.
-  await TestRunner.loadLegacyModule('timeline');
   await TestRunner.showPanel('timeline');
 
   // Clear browser cache to avoid any existing entries for the fetched scripts

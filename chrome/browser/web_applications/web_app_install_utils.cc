@@ -55,6 +55,7 @@
 #include "components/services/app_service/public/cpp/share_target.h"
 #include "components/services/app_service/public/cpp/url_handler_info.h"
 #include "components/webapps/browser/banners/app_banner_settings_helper.h"
+#include "components/webapps/browser/installable/installable_evaluator.h"
 #include "components/webapps/browser/installable/installable_manager.h"
 #include "components/webapps/browser/installable/installable_metrics.h"
 #include "content/public/common/content_features.h"
@@ -87,7 +88,7 @@ namespace {
 // value can change overtime as new features are added.
 constexpr int kMaxIcons = 20;
 constexpr SquareSizePx kMaxIconSize =
-    webapps::InstallableManager::kMaximumIconSizeInPx;
+    webapps::InstallableEvaluator::kMaximumIconSizeInPx;
 
 // Returns whether the home tab icons exist.
 bool HomeTabIconsExistInTabStrip(const WebAppInstallInfo* web_app_info) {
@@ -1205,12 +1206,7 @@ void SetWebAppManifestFields(const WebAppInstallInfo& web_app_info,
   web_app.SetSyncFallbackData(std::move(sync_fallback_data));
 
   if (!skip_icons_on_download_failure) {
-    web_app.SetManifestIcons(web_app_info.manifest_icons);
-    for (IconPurpose purpose : kIconPurposes) {
-      web_app.SetDownloadedIconSizes(
-          purpose, GetSquareSizePxs(web_app_info.icon_bitmaps, purpose));
-    }
-    web_app.SetIsGeneratedIcon(web_app_info.is_generated_icon);
+    SetWebAppProductIconFields(web_app_info, web_app);
     web_app.SetShortcutsMenuInfo(GetShortcutsMenuInfoWithIconSizes(
         web_app_info.shortcuts_menu_item_infos,
         web_app_info.shortcuts_menu_icon_bitmaps));
@@ -1248,8 +1244,18 @@ void SetWebAppManifestFields(const WebAppInstallInfo& web_app_info,
   }
 }
 
+void SetWebAppProductIconFields(const WebAppInstallInfo& web_app_info,
+                                WebApp& web_app) {
+  web_app.SetManifestIcons(web_app_info.manifest_icons);
+  for (IconPurpose purpose : kIconPurposes) {
+    web_app.SetDownloadedIconSizes(
+        purpose, GetSquareSizePxs(web_app_info.icon_bitmaps, purpose));
+  }
+  web_app.SetIsGeneratedIcon(web_app_info.is_generated_icon);
+}
+
 void MaybeDisableOsIntegration(const WebAppRegistrar* app_registrar,
-                               const AppId& app_id,
+                               const webapps::AppId& app_id,
                                InstallOsHooksOptions* options) {
 #if !BUILDFLAG(IS_CHROMEOS)  // Deeper OS integration is expected on ChromeOS.
   DCHECK(app_registrar);

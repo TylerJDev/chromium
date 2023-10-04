@@ -298,8 +298,9 @@ void WebContentsHandler::OnCookiesAccessed(
     content::RenderFrameHost* rfh,
     const content::CookieAccessDetails& details) {
   auto* pscs = PageSpecificContentSettings::GetForPage(rfh->GetPage());
-  if (pscs)
+  if (pscs) {
     pscs->OnCookiesAccessed(details);
+  }
 }
 
 void WebContentsHandler::OnTrustTokensAccessed(
@@ -355,8 +356,9 @@ void WebContentsHandler::OnServiceWorkerAccessed(
     const GURL& scope,
     content::AllowServiceWorkerResult allowed) {
   auto* pscs = PageSpecificContentSettings::GetForPage(frame->GetPage());
-  if (pscs)
-    pscs->OnServiceWorkerAccessed(scope, allowed);
+  if (pscs) {
+    pscs->OnServiceWorkerAccessed(scope, frame->GetStorageKey(), allowed);
+  }
 }
 
 void WebContentsHandler::OnSharedDictionaryAccessed(
@@ -501,6 +503,13 @@ AccessDetails::AccessDetails(SiteDataType site_data_type,
       is_from_primary_page(is_from_primary_page) {}
 
 AccessDetails::~AccessDetails() = default;
+
+bool AccessDetails::operator<(const AccessDetails& other) const {
+  return std::tie(site_data_type, access_type, url, blocked_by_policy,
+                  is_from_primary_page) <
+         std::tie(other.site_data_type, other.access_type, other.url,
+                  other.blocked_by_policy, other.is_from_primary_page);
+}
 
 PageSpecificContentSettings::SiteDataObserver::SiteDataObserver(
     content::WebContents* web_contents)
@@ -656,8 +665,24 @@ void PageSpecificContentSettings::StorageAccessed(
             return BrowsingDataModel::StorageType::kQuotaStorage;
         }
       })();
-      settings->OnBrowsingDataAccessed(storage_key, bdm_storage_type,
-                                       blocked_by_policy);
+
+      if (storage_type == StorageType::SESSION_STORAGE) {
+        auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
+        const auto& session_storage_namespace_map =
+            web_contents->GetController().GetSessionStorageNamespaceMap();
+        const auto& storage_partition_config =
+            web_contents->GetSiteInstance()->GetStoragePartitionConfig();
+        const auto& namespace_id =
+            session_storage_namespace_map.at(storage_partition_config);
+
+        content::SessionStorageUsageInfo session_storage_usage_info{
+            storage_key, namespace_id->id()};
+        settings->OnBrowsingDataAccessed(session_storage_usage_info,
+                                         bdm_storage_type, blocked_by_policy);
+      } else {
+        settings->OnBrowsingDataAccessed(storage_key, bdm_storage_type,
+                                         blocked_by_policy);
+      }
     } else {
       settings->OnStorageAccessed(storage_type, storage_key, blocked_by_policy);
     }
@@ -1026,31 +1051,38 @@ void PageSpecificContentSettings::OnCookiesAccessed(
 
 void PageSpecificContentSettings::OnServiceWorkerAccessed(
     const GURL& scope,
-    content::AllowServiceWorkerResult allowed,
+    const blink::StorageKey& storage_key,
+    content::AllowServiceWorkerResult allowed_result,
     content::Page* originating_page) {
   DCHECK(scope.is_valid());
   originating_page = originating_page ? originating_page : &page();
-  if (allowed) {
-    allowed_local_shared_objects_.service_workers()->Add(
-        url::Origin::Create(scope));
+  if (base::FeatureList::IsEnabled(
+          browsing_data::features::kMigrateStorageToBDM)) {
+    auto& model = allowed_result ? allowed_browsing_data_model_
+                                 : blocked_browsing_data_model_;
+    // The size isn't relevant here and won't be displayed in the UI.
+    model->AddBrowsingData(storage_key,
+                           BrowsingDataModel::StorageType::kQuotaStorage,
+                           /*storage_size=*/0);
   } else {
-    blocked_local_shared_objects_.service_workers()->Add(
-        url::Origin::Create(scope));
+    auto& local_shared_objects = allowed_result ? allowed_local_shared_objects_
+                                                : blocked_local_shared_objects_;
+    local_shared_objects.service_workers()->Add(url::Origin::Create(scope));
   }
 
-  if (allowed.javascript_blocked_by_policy()) {
+  if (allowed_result.javascript_blocked_by_policy()) {
     OnContentBlocked(ContentSettingsType::JAVASCRIPT);
   } else {
     OnContentAllowed(ContentSettingsType::JAVASCRIPT);
   }
-  if (allowed.cookies_blocked_by_policy()) {
+  if (allowed_result.cookies_blocked_by_policy()) {
     OnContentBlocked(ContentSettingsType::COOKIES);
   } else {
     OnContentAllowed(ContentSettingsType::COOKIES);
   }
 
   MaybeUpdateParent(&PageSpecificContentSettings::OnServiceWorkerAccessed,
-                    scope, allowed, originating_page);
+                    scope, storage_key, allowed_result, originating_page);
 }
 
 void PageSpecificContentSettings::OnSharedWorkerAccessed(
@@ -1114,7 +1146,9 @@ void PageSpecificContentSettings::OnTrustTokenAccessed(
 void PageSpecificContentSettings::OnBrowsingDataAccessed(
     BrowsingDataModel::DataKey data_key,
     BrowsingDataModel::StorageType storage_type,
-    bool blocked) {
+    bool blocked,
+    content::Page* originating_page) {
+  originating_page = originating_page ? originating_page : &page();
   auto& model =
       blocked ? blocked_browsing_data_model_ : allowed_browsing_data_model_;
 
@@ -1122,30 +1156,37 @@ void PageSpecificContentSettings::OnBrowsingDataAccessed(
   model->AddBrowsingData(data_key, storage_type, /*storage_size=*/0);
 
   if (blocked) {
+    // Reduce the set of items reported for block to things that are obviously
+    // related to cookies, as that is the icon that is displayed.
     // TODO(crbug.com/1456641): When the COOKIES content setting Omnibox entry
-    // correctly reflects site data, stop ignoring these types.
-    constexpr base::EnumSet<BrowsingDataModel::StorageType,
-                            BrowsingDataModel::StorageType::kFirstType,
-                            BrowsingDataModel::StorageType::kLastType>
-        ignored_types_for_block = {
-            BrowsingDataModel::StorageType::kTrustTokens,
-            BrowsingDataModel::StorageType::kSharedStorage,
-            BrowsingDataModel::StorageType::kInterestGroup,
-            BrowsingDataModel::StorageType::kAttributionReporting,
-        };
-    if (!ignored_types_for_block.Has(storage_type)) {
+    // correctly reflects site data, reconsider limiting the types.
+    if (blocked_browsing_data_model_->IsBlockedByThirdPartyCookieBlocking(
+            storage_type)) {
       OnContentBlocked(ContentSettingsType::COOKIES);
     }
   } else {
     OnContentAllowed(ContentSettingsType::COOKIES);
   }
   MaybeUpdateParent(&PageSpecificContentSettings::OnBrowsingDataAccessed,
-                    data_key, storage_type, blocked);
+                    data_key, storage_type, blocked, originating_page);
 
   // TODO(njeunje): Look into populating an actual url for this access details.
   // Could be obtained from the `data_key`.
-  AccessDetails access_details{SiteDataType::kUnknown, AccessType::kUnknown,
-                               GURL(), blocked, false};
+  GURL accessing_url =
+      absl::holds_alternative<blink::StorageKey>(data_key)
+          ? absl::get<blink::StorageKey>(data_key).origin().GetURL()
+          : GURL();
+
+  // Session storage uses a different DataKey than other storage types.
+  if (storage_type == BrowsingDataModel::StorageType::kSessionStorage) {
+    accessing_url = absl::get<content::SessionStorageUsageInfo>(data_key)
+                        .storage_key.origin()
+                        .GetURL();
+  }
+
+  AccessDetails access_details{SiteDataType::kStorage, AccessType::kUnknown,
+                               accessing_url, blocked,
+                               originating_page->IsPrimary()};
   MaybeNotifySiteDataObservers(access_details);
 }
 

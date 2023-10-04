@@ -15,17 +15,17 @@
 #import "components/search_engines/template_url_service.h"
 #import "components/strings/grit/components_strings.h"
 #import "components/supervised_user/core/common/supervised_user_utils.h"
-#import "ios/chrome/browser/bookmarks/account_bookmark_model_factory.h"
-#import "ios/chrome/browser/bookmarks/local_or_syncable_bookmark_model_factory.h"
-#import "ios/chrome/browser/bring_android_tabs/bring_android_tabs_to_ios_service.h"
-#import "ios/chrome/browser/bring_android_tabs/bring_android_tabs_to_ios_service_factory.h"
-#import "ios/chrome/browser/bring_android_tabs/features.h"
+#import "ios/chrome/browser/bookmarks/model/account_bookmark_model_factory.h"
+#import "ios/chrome/browser/bookmarks/model/local_or_syncable_bookmark_model_factory.h"
+#import "ios/chrome/browser/bring_android_tabs/model/bring_android_tabs_to_ios_service.h"
+#import "ios/chrome/browser/bring_android_tabs/model/bring_android_tabs_to_ios_service_factory.h"
+#import "ios/chrome/browser/bring_android_tabs/model/features.h"
 #import "ios/chrome/browser/favicon/ios_chrome_favicon_loader_factory.h"
 #import "ios/chrome/browser/find_in_page/find_tab_helper.h"
 #import "ios/chrome/browser/find_in_page/util.h"
 #import "ios/chrome/browser/main/browser_util.h"
 #import "ios/chrome/browser/policy/policy_util.h"
-#import "ios/chrome/browser/reading_list/reading_list_browser_agent.h"
+#import "ios/chrome/browser/reading_list/model/reading_list_browser_agent.h"
 #import "ios/chrome/browser/search_engines/template_url_service_factory.h"
 #import "ios/chrome/browser/sessions/ios_chrome_tab_restore_service_factory.h"
 #import "ios/chrome/browser/shared/coordinator/alert/action_sheet_coordinator.h"
@@ -53,10 +53,10 @@
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/shared/ui/util/util_swift.h"
 #import "ios/chrome/browser/signin/identity_manager_factory.h"
-#import "ios/chrome/browser/sync/session_sync_service_factory.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
-#import "ios/chrome/browser/synced_sessions/distant_session.h"
-#import "ios/chrome/browser/synced_sessions/synced_sessions_util.h"
+#import "ios/chrome/browser/sync/model/session_sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/synced_sessions/model/distant_session.h"
+#import "ios/chrome/browser/synced_sessions/model/synced_sessions_util.h"
 #import "ios/chrome/browser/tabs/features.h"
 #import "ios/chrome/browser/tabs/inactive_tabs/features.h"
 #import "ios/chrome/browser/ui/authentication/history_sync/history_sync_coordinator.h"
@@ -69,8 +69,6 @@
 #import "ios/chrome/browser/ui/history/history_coordinator.h"
 #import "ios/chrome/browser/ui/history/history_coordinator_delegate.h"
 #import "ios/chrome/browser/ui/history/public/history_presentation_delegate.h"
-#import "ios/chrome/browser/ui/incognito_reauth/incognito_reauth_mediator.h"
-#import "ios/chrome/browser/ui/incognito_reauth/incognito_reauth_scene_agent.h"
 #import "ios/chrome/browser/ui/main/bvc_container_view_controller.h"
 #import "ios/chrome/browser/ui/menu/tab_context_menu_delegate.h"
 #import "ios/chrome/browser/ui/recent_tabs/recent_tabs_mediator.h"
@@ -82,7 +80,9 @@
 #import "ios/chrome/browser/ui/snackbar/snackbar_coordinator.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/grid_commands.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/grid_mediator_delegate.h"
+#import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/incognito/incognito_grid_coordinator.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/incognito/incognito_grid_mediator.h"
+#import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/regular/regular_grid_coordinator.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/regular/regular_grid_mediator.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/inactive_tabs/inactive_tabs_button_mediator.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/inactive_tabs/inactive_tabs_coordinator.h"
@@ -172,6 +172,12 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 
   // Mediator of the tab grid.
   TabGridMediator* _mediator;
+
+  // Incognito grid coordinator.
+  IncognitoGridCoordinator* _incognitoGridCoordinator;
+
+  // Regular grid coordinator.
+  RegularGridCoordinator* _regularGridCoordinator;
 }
 
 // Browser that contain tabs from the main pane (i.e. non-incognito).
@@ -195,8 +201,6 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 @property(nonatomic, strong) IncognitoGridMediator* incognitoTabsMediator;
 // Mediator for PriceCardView - this is only for regular Tabs.
 @property(nonatomic, strong) PriceCardMediator* priceCardMediator;
-// Mediator for incognito reauth.
-@property(nonatomic, strong) IncognitoReauthMediator* incognitoAuthMediator;
 // Mediator for remote Tabs.
 @property(nonatomic, strong) RecentTabsMediator* remoteTabsMediator;
 // Mediator for pinned Tabs.
@@ -696,15 +700,6 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 #pragma mark - ChromeCoordinator
 
 - (void)start {
-  // TODO(crbug.com/1246931): refactor to call setIncognitoBrowser from this
-  // function.
-  IncognitoReauthSceneAgent* reauthAgent = [IncognitoReauthSceneAgent
-      agentFromScene:SceneStateBrowserAgent::FromBrowser(_incognitoBrowser)
-                         ->GetSceneState()];
-
-  [self.dispatcher startDispatchingToTarget:reauthAgent
-                                forProtocol:@protocol(IncognitoReauthCommands)];
-
   _mediator = [[TabGridMediator alloc]
       initWithPrefService:self.regularBrowser->GetBrowserState()->GetPrefs()];
 
@@ -714,9 +709,6 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
   TabGridViewController* baseViewController = [[TabGridViewController alloc]
       initWithPageConfiguration:_pageConfiguration];
   baseViewController.handler = applicationCommandsHandler;
-  baseViewController.reauthHandler =
-      HandlerForProtocol(self.dispatcher, IncognitoReauthCommands);
-  baseViewController.reauthAgent = reauthAgent;
   baseViewController.tabPresentationDelegate = self;
   baseViewController.layoutGuideCenter = LayoutGuideCenterForBrowser(nil);
   baseViewController.delegate = self;
@@ -731,41 +723,31 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
                                                              browser:nil];
   _toolbarsCoordinator.searchDelegate = self.baseViewController;
   _toolbarsCoordinator.actionWrangler = self.baseViewController;
-  _toolbarsCoordinator.delegateWrangler = self.baseViewController;
   [_toolbarsCoordinator start];
   self.baseViewController.topToolbar = _toolbarsCoordinator.topToolbar;
   self.baseViewController.bottomToolbar = _toolbarsCoordinator.bottomToolbar;
-  // TODO(crbug.com/1457146): To remove when -updateToolbarButtons function call
-  // is not needed anymore.
-  self.baseViewController.toolbarCommandsWrangler =
-      _toolbarsCoordinator.commandsWrangler;
 
-  self.regularTabsMediator = [[RegularGridMediator alloc]
-      initWithConsumer:baseViewController.regularTabsConsumer];
+  _regularGridCoordinator = [[RegularGridCoordinator alloc]
+      initWithBaseViewController:self.baseViewController
+                         browser:_regularBrowser
+                 toolbarsMutator:_toolbarsCoordinator.toolbarsMutator
+            gridMediatorDelegate:self];
+  // TODO(crbug.com/1457146): Init view controller inside the coordinator. Also
+  // it should be a RegularViewController instead of a TabGridViewController.
+  _regularGridCoordinator.regularViewController = self.baseViewController;
+  [_regularGridCoordinator start];
+  self.regularTabsMediator = _regularGridCoordinator.regularGridMediator;
+  if (IsPinnedTabsEnabled()) {
+    // TODO(crbug.com/1457146): To remove when pinned tabs is fully moved.
+    self.pinnedTabsMediator = _regularGridCoordinator.pinnedTabsMediator;
+  }
+
   ChromeBrowserState* regularBrowserState =
       _regularBrowser ? _regularBrowser->GetBrowserState() : nullptr;
   WebStateList* regularWebStateList =
       _regularBrowser ? _regularBrowser->GetWebStateList() : nullptr;
   self.priceCardMediator =
       [[PriceCardMediator alloc] initWithWebStateList:regularWebStateList];
-
-  self.regularTabsMediator.browser = _regularBrowser;
-  // TODO(crbug.com/1457146): The action wrangler should be the regular grid
-  // view controller.
-  self.regularTabsMediator.actionWrangler = self.baseViewController;
-  self.regularTabsMediator.delegate = self;
-  if (regularBrowserState) {
-    self.regularTabsMediator.tabRestoreService =
-        IOSChromeTabRestoreServiceFactory::GetForBrowserState(
-            regularBrowserState);
-  }
-
-  if (IsPinnedTabsEnabled()) {
-    self.pinnedTabsMediator = [[PinnedTabsMediator alloc]
-        initWithConsumer:baseViewController.pinnedTabsConsumer];
-    self.pinnedTabsMediator.browser = _regularBrowser;
-    baseViewController.pinnedTabsDelegate = self.pinnedTabsMediator;
-  }
 
   // Offer to manage inactive regular tabs iff the regular tabs grid is
   // available. The regular tabs can be disabled by policy, making the grid
@@ -779,34 +761,25 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
              prefService:GetApplicationContext()->GetLocalState()];
   }
 
-  self.incognitoTabsMediator = [[IncognitoGridMediator alloc]
-      initWithConsumer:baseViewController.incognitoTabsConsumer];
-  // TODO(crbug.com/1457146): The action wrangler should be the incognito grid
-  // view controller.
-  self.incognitoTabsMediator.actionWrangler = self.baseViewController;
-  self.incognitoTabsMediator.browser = _incognitoBrowser;
-  self.incognitoTabsMediator.delegate = self;
-
-  baseViewController.regularTabsDelegate = self.regularTabsMediator;
-  baseViewController.incognitoTabsDelegate = self.incognitoTabsMediator;
-
-  baseViewController.regularTabsDragDropHandler = self.regularTabsMediator;
-  baseViewController.incognitoTabsDragDropHandler = self.incognitoTabsMediator;
-  if (IsPinnedTabsEnabled()) {
-    baseViewController.pinnedTabsDragDropHandler = self.pinnedTabsMediator;
-  }
-
   baseViewController.priceCardDataSource = self.priceCardMediator;
 
-  baseViewController.regularTabsShareableItemsProvider =
-      self.regularTabsMediator;
-  baseViewController.incognitoTabsShareableItemsProvider =
-      self.incognitoTabsMediator;
 
-  self.incognitoAuthMediator =
-      [[IncognitoReauthMediator alloc] initWithReauthAgent:reauthAgent];
-  self.incognitoAuthMediator.consumer =
-      self.baseViewController.incognitoTabsConsumer;
+  _incognitoGridCoordinator = [[IncognitoGridCoordinator alloc]
+      initWithBaseViewController:self.baseViewController
+                         browser:_incognitoBrowser
+                 toolbarsMutator:_toolbarsCoordinator.toolbarsMutator
+            gridMediatorDelegate:self];
+  // TODO(crbug.com/1457146): Init view controller inside the coordinator. Also
+  // it should be a IncognitoViewController instead of a TabGridViewController.
+  _incognitoGridCoordinator.incognitoViewController = self.baseViewController;
+  [_incognitoGridCoordinator start];
+  self.incognitoTabsMediator = _incognitoGridCoordinator.incognitoGridMediator;
+
+  self.baseViewController.incognitoTabsDelegate = self.incognitoTabsMediator;
+  self.baseViewController.incognitoTabsDragDropHandler =
+      self.incognitoTabsMediator;
+  self.baseViewController.incognitoTabsShareableItemsProvider =
+      self.incognitoTabsMediator;
 
   self.recentTabsContextMenuHelper =
       [[RecentTabsContextMenuHelper alloc] initWithBrowser:self.regularBrowser
@@ -875,8 +848,6 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
       applicationCommandsHandler;
   baseViewController.remoteTabsViewController.loadStrategy =
       UrlLoadStrategy::ALWAYS_NEW_FOREGROUND_TAB;
-  baseViewController.remoteTabsViewController.restoredTabDisposition =
-      WindowOpenDisposition::NEW_FOREGROUND_TAB;
   baseViewController.remoteTabsViewController.presentationDelegate = self;
 
   self.firstPresentation = YES;
@@ -892,16 +863,18 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
     [self.remoteTabsMediator refreshSessionsView];
   }
 
-  _mediator.regularPageMutator = self.regularTabsMediator;
+  _mediator.regularPageMutator = _regularGridCoordinator.regularGridMediator;
   _mediator.incognitoPageMutator = self.incognitoTabsMediator;
   _mediator.remotePageMutator = self.remoteTabsMediator;
 
-  self.incognitoTabsMediator.toolbarsMutator =
-      _toolbarsCoordinator.toolbarsMutator;
-  self.regularTabsMediator.toolbarsMutator =
-      _toolbarsCoordinator.toolbarsMutator;
   self.remoteTabsMediator.toolbarsMutator =
       _toolbarsCoordinator.toolbarsMutator;
+
+  self.incognitoTabsMediator.tabPresentationDelegate = self;
+  self.regularTabsMediator.tabPresentationDelegate = self;
+
+  self.incognitoTabsMediator.gridConsumer = self.baseViewController;
+  self.regularTabsMediator.gridConsumer = self.baseViewController;
 
   self.snackbarCoordinator =
       [[SnackbarCoordinator alloc] initWithBaseViewController:baseViewController
@@ -953,9 +926,11 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
   [_toolbarsCoordinator stop];
   _toolbarsCoordinator = nil;
 
-  // Disconnect UI from models they observe.
-  self.regularTabsMediator.browser = nil;
-  self.incognitoTabsMediator.browser = nil;
+  [_incognitoGridCoordinator stop];
+  _incognitoGridCoordinator = nil;
+
+  [_regularGridCoordinator stop];
+  _regularGridCoordinator = nil;
 
   // TODO(crbug.com/845192) : RecentTabsTableViewController behaves like a
   // coordinator and that should be factored out.
@@ -1027,9 +1002,10 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 - (void)
     showCloseItemsConfirmationActionSheetWithBaseGridMediator:
         (BaseGridMediator*)baseGridMediator
-                                                        items:(NSArray<
-                                                                  NSString*>*)
-                                                                  items
+                                                      itemIDs:
+                                                          (const std::set<
+                                                              web::WebStateID>&)
+                                                              itemIDs
                                                        anchor:(UIBarButtonItem*)
                                                                   buttonAnchor {
   if (baseGridMediator == self.regularTabsMediator) {
@@ -1058,15 +1034,17 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 
   __weak BaseGridMediator* weakBaseGridMediator = baseGridMediator;
   __weak TabGridCoordinator* weakSelf = self;
+  // Copy the set of items, so that the following block can use it.
+  std::set<web::WebStateID> itemIDsCopy = itemIDs;
   [self.actionSheetCoordinator
       addItemWithTitle:base::SysUTF16ToNSString(
                            l10n_util::GetPluralStringFUTF16(
                                IDS_IOS_TAB_GRID_CLOSE_ALL_TABS_CONFIRMATION,
-                               items.count))
+                               itemIDs.size()))
                 action:^{
                   base::RecordAction(base::UserMetricsAction(
                       "MobileTabGridSelectionCloseTabsConfirmed"));
-                  [weakBaseGridMediator closeItemsWithIDs:items];
+                  [weakBaseGridMediator closeItemsWithIDs:itemIDsCopy];
                   [weakSelf dismissActionSheetCoordinator];
                 }
                  style:UIAlertActionStyleDestructive];
@@ -1115,13 +1093,9 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
   // Reconnect the incognito mediators to the incognito view controller.
   self.incognitoTabsMediator.consumer =
       self.baseViewController.incognitoTabsConsumer;
-  self.incognitoAuthMediator.consumer =
-      self.baseViewController.incognitoTabsConsumer;
 
   // Reset the connection between the incognito view controller and the
   // mediator.
-  self.baseViewController.reauthHandler =
-      HandlerForProtocol(self.dispatcher, IncognitoReauthCommands);
   self.baseViewController.incognitoTabsContextMenuProvider =
       self.incognitoTabContextMenuHelper;
   self.baseViewController.incognitoTabsShareableItemsProvider =
@@ -1191,7 +1165,7 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 
 - (void)inactiveTabsCoordinator:
             (InactiveTabsCoordinator*)inactiveTabsCoordinator
-            didSelectItemWithID:(NSString*)itemID {
+            didSelectItemWithID:(web::WebStateID)itemID {
   WebStateList* regularWebStateList = self.regularBrowser->GetWebStateList();
   int toInsertIndex = regularWebStateList->count();
 
@@ -1229,13 +1203,21 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 }
 
 - (void)showHistorySyncOptInAfterDedicatedSignIn:(BOOL)dedicatedSignInDone {
+  // Stop the previous coordinator since the user can tap on the promo button
+  // to open a new History Sync Page while the dismiss animation of the previous
+  // one is in progress.
+  _historySyncPopupCoordinator.delegate = nil;
+  [_historySyncPopupCoordinator stop];
+  _historySyncPopupCoordinator = nil;
   // Show the History Sync Opt-In screen. The coordinator will dismiss itself
   // if there is no signed-in account (eg. if sign-in unsuccessful) or if sync
   // is disabled by policies.
   _historySyncPopupCoordinator = [[HistorySyncPopupCoordinator alloc]
       initWithBaseViewController:_baseViewController
                          browser:self.regularBrowser
-             dedicatedSignInDone:dedicatedSignInDone
+                   showUserEmail:!dedicatedSignInDone
+               signOutIfDeclined:dedicatedSignInDone
+                      isOptional:NO
                      accessPoint:signin_metrics::AccessPoint::
                                      ACCESS_POINT_RECENT_TABS];
   _historySyncPopupCoordinator.delegate = self;
@@ -1265,7 +1247,7 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 
   BOOL inIncognito = self.regularBrowser->GetBrowserState()->IsOffTheRecord();
   OpenDistantSessionInBackground(
-      session, inIncognito,
+      session, inIncognito, GetDefaultNumberOfTabsToLoadSimultaneously(),
       UrlLoadingBrowserAgent::FromBrowser(self.regularBrowser),
       self.baseViewController.remoteTabsViewController.loadStrategy);
 
@@ -1333,15 +1315,15 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
   [self.bookmarksCoordinator presentBookmarkEditorForURL:URL];
 }
 
-- (void)pinTabWithIdentifier:(NSString*)identifier {
-  [self.regularTabsMediator setPinState:YES forItemWithIdentifier:identifier];
+- (void)pinTabWithIdentifier:(web::WebStateID)identifier {
+  [self.regularTabsMediator setPinState:YES forItemWithID:identifier];
 }
 
-- (void)unpinTabWithIdentifier:(NSString*)identifier {
-  [self.pinnedTabsMediator setPinState:NO forItemWithIdentifier:identifier];
+- (void)unpinTabWithIdentifier:(web::WebStateID)identifier {
+  [self.pinnedTabsMediator setPinState:NO forItemWithID:identifier];
 }
 
-- (void)closeTabWithIdentifier:(NSString*)identifier
+- (void)closeTabWithIdentifier:(web::WebStateID)identifier
                      incognito:(BOOL)incognito
                         pinned:(BOOL)pinned {
   if (incognito) {
@@ -1431,27 +1413,52 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 #pragma mark - SnackbarCoordinatorDelegate
 
 - (CGFloat)snackbarCoordinatorBottomOffsetForCurrentlyPresentedView:
-    (SnackbarCoordinator*)snackbarCoordinator {
-  NSString* bottomToolbarGuideName;
-  if ([self.bvcContainer currentBVC]) {
-    // Use the BVC bottom bar as the offset as it is currently presented.
-    bottomToolbarGuideName = kSecondaryToolbarGuide;
-  } else {
+               (SnackbarCoordinator*)snackbarCoordinator
+                                                forceBrowserToolbar:
+                                                    (BOOL)forceBrowserToolbar {
+  if (!self.bvcContainer.currentBVC) {
     // The tab grid is being show so use tab grid bottom bar.
-    bottomToolbarGuideName = kTabGridBottomToolbarGuide;
+    // kTabGridBottomToolbarGuide is stored in the shared layout guide center.
+    UIView* tabGridBottomToolbarView = [LayoutGuideCenterForBrowser(nil)
+        referencedViewUnderName:kTabGridBottomToolbarGuide];
+    return CGRectGetHeight(tabGridBottomToolbarView.bounds);
   }
 
+  if (!forceBrowserToolbar &&
+      self.bvcContainer.currentBVC.presentedViewController) {
+    UIViewController* presentedViewController =
+        self.bvcContainer.currentBVC.presentedViewController;
+
+    // When the presented view is a navigation controller, return the navigation
+    // controller's toolbar height.
+    if ([presentedViewController isKindOfClass:UINavigationController.class]) {
+      UINavigationController* navigationController =
+          base::apple::ObjCCastStrict<UINavigationController>(
+              presentedViewController);
+
+      if (navigationController.toolbar &&
+          !navigationController.isToolbarHidden) {
+        CGFloat toolbarHeight =
+            CGRectGetHeight(presentedViewController.view.frame) -
+            CGRectGetMinY(navigationController.toolbar.frame);
+        return toolbarHeight;
+      } else {
+        return 0.0;
+      }
+    }
+  }
+
+  // Use the BVC bottom bar as the offset.
   Browser* browser = nil;
   if (snackbarCoordinator == self.snackbarCoordinator) {
     browser = self.regularBrowser;
   } else if (snackbarCoordinator == self.incognitoSnackbarCoordinator) {
     browser = self.incognitoBrowser;
   }
-
-  DCHECK(browser);
+  CHECK(browser);
 
   UIView* bottomToolbar = [LayoutGuideCenterForBrowser(browser)
-      referencedViewUnderName:bottomToolbarGuideName];
+      referencedViewUnderName:kSecondaryToolbarGuide];
 
   return CGRectGetHeight(bottomToolbar.bounds);
 }
@@ -1459,7 +1466,7 @@ bool FindNavigatorShouldBePresentedInBrowser(Browser* browser) {
 #pragma mark - HistorySyncPopupCoordinatorDelegate
 
 - (void)historySyncPopupCoordinator:(HistorySyncPopupCoordinator*)coordinator
-         didCloseWithDeclinedByUser:(BOOL)declined {
+                didFinishWithResult:(SigninCoordinatorResult)result {
   _historySyncPopupCoordinator.delegate = nil;
   [_historySyncPopupCoordinator stop];
   _historySyncPopupCoordinator = nil;

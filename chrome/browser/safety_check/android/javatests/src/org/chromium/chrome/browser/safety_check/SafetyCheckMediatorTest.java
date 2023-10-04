@@ -41,9 +41,9 @@ import org.chromium.base.CollectionUtil;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.UmaRecorderHolder;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
 import org.chromium.base.test.BaseRobolectricTestRule;
 import org.chromium.base.test.util.JniMocker;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.password_check.PasswordCheck;
 import org.chromium.chrome.browser.password_check.PasswordCheckFactory;
 import org.chromium.chrome.browser.password_check.PasswordCheckUIStatus;
@@ -55,8 +55,8 @@ import org.chromium.chrome.browser.password_manager.PasswordManagerBackendSuppor
 import org.chromium.chrome.browser.password_manager.PasswordStoreBridge;
 import org.chromium.chrome.browser.password_manager.PasswordStoreBridge.PasswordStoreObserver;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.preferences.Pref;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.safety_check.SafetyCheckMediator.SafetyCheckInteractions;
 import org.chromium.chrome.browser.safety_check.SafetyCheckProperties.PasswordsState;
@@ -78,6 +78,7 @@ import org.chromium.ui.modelutil.PropertyModel;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 
 /** Unit tests for {@link SafetyCheckMediator}. */
 @RunWith(ParameterizedRobolectricTestRunner.class)
@@ -146,25 +147,19 @@ public class SafetyCheckMediatorTest {
 
     private Callback<Exception> mRunPasswordCheckFailedCallback;
 
-    private boolean mUseNewApi;
+    private boolean mUseGmsApi;
 
     @Parameters
     public static Collection<Object[]> data() {
         return Arrays.asList(new Object[][] {{false}, {true}});
     }
-
-    public SafetyCheckMediatorTest(boolean useNewApi) {
-        mUseNewApi = useNewApi;
+    public SafetyCheckMediatorTest(boolean useGmsApi) {
+        mUseGmsApi = useGmsApi;
         ContextUtils.initApplicationContextForTests(ApplicationProvider.getApplicationContext());
-        if (useNewApi) {
-            Features.getInstance().enable(ChromeFeatureList.UNIFIED_PASSWORD_MANAGER_ANDROID);
-        } else {
-            Features.getInstance().disable(ChromeFeatureList.UNIFIED_PASSWORD_MANAGER_ANDROID);
-        }
     }
 
     private void setPasswordCheckResult(boolean hasError) {
-        if (!mUseNewApi) {
+        if (!mUseGmsApi) {
             verify(mPasswordCheck).startCheck();
             mMediator.onPasswordCheckStatusChanged(
                     hasError ? PasswordCheckUIStatus.ERROR_UNKNOWN : PasswordCheckUIStatus.IDLE);
@@ -182,7 +177,7 @@ public class SafetyCheckMediatorTest {
     }
 
     private void fetchSavedPasswords(int count) {
-        if (mUseNewApi) {
+        if (mUseGmsApi) {
             when(mPasswordStoreBridge.getPasswordStoreCredentialsCount()).thenReturn(count);
             mMediator.onSavedPasswordsChanged(count);
         } else {
@@ -192,7 +187,7 @@ public class SafetyCheckMediatorTest {
     }
 
     private void fetchBreachedPasswords(int count) {
-        if (mUseNewApi) {
+        if (mUseGmsApi) {
             assertNotNull(mBreachPasswordsCallback);
             mBreachPasswordsCallback.onResult(count);
             mBreachPasswordsCallback = null;
@@ -203,7 +198,7 @@ public class SafetyCheckMediatorTest {
     }
 
     private void failBreachedPasswordsFetch() {
-        if (!mUseNewApi) return;
+        if (!mUseGmsApi) return;
         assertNotNull(mBreachPasswordsFailureCallback);
         mBreachPasswordsFailureCallback.onResult(new Exception());
         mBreachPasswordsCallback = null;
@@ -211,7 +206,7 @@ public class SafetyCheckMediatorTest {
     }
 
     private void setInitialPasswordsCount(int passwordCount, int breachedCount) {
-        if (mUseNewApi) {
+        if (mUseGmsApi) {
             doAnswer(invocation -> {
                 Callback<Integer> callback = invocation.getArgument(2);
                 callback.onResult(breachedCount);
@@ -247,7 +242,7 @@ public class SafetyCheckMediatorTest {
     }
 
     private void captureBreachPasswordsCallback() {
-        if (!mUseNewApi) return;
+        if (!mUseGmsApi) return;
         doAnswer(invocation -> {
             mBreachPasswordsCallback = invocation.getArgument(2);
             mBreachPasswordsFailureCallback = invocation.getArgument(3);
@@ -259,7 +254,7 @@ public class SafetyCheckMediatorTest {
     }
 
     private void captureRunPasswordCheckCallback() {
-        if (!mUseNewApi) return;
+        if (!mUseGmsApi) return;
         doAnswer(invocation -> {
             mRunPasswordCheckSuccessfullyCallback = invocation.getArgument(2);
             mRunPasswordCheckFailedCallback = invocation.getArgument(3);
@@ -276,10 +271,14 @@ public class SafetyCheckMediatorTest {
         when(mSyncService.isSyncFeatureEnabled()).thenReturn(true);
         when(mSyncService.isEngineInitialized()).thenReturn(true);
         when(mSyncService.hasSyncConsent()).thenReturn(true);
-        when(mSyncService.getSelectedTypes())
-                .thenReturn(CollectionUtil.newHashSet(UserSelectableType.PASSWORDS));
         when(mSyncService.getAccountInfo())
                 .thenReturn(CoreAccountInfo.createFromEmailAndGaiaId(TEST_EMAIL_ADDRESS, "0"));
+        if (mUseGmsApi) {
+            when(mSyncService.getSelectedTypes())
+                    .thenReturn(CollectionUtil.newHashSet(UserSelectableType.PASSWORDS));
+        } else {
+            when(mSyncService.getSelectedTypes()).thenReturn(new HashSet<>());
+        }
     }
 
     @Before
@@ -300,7 +299,7 @@ public class SafetyCheckMediatorTest {
                 .thenReturn(false);
 
         mModel = SafetyCheckProperties.createSafetyCheckModel();
-        if (mUseNewApi) {
+        if (mUseGmsApi) {
             // TODO(crbug.com/1346235): Use existing fake instead of mocking
             PasswordCheckupClientHelperFactory mockPasswordCheckFactory =
                     mock(PasswordCheckupClientHelperFactory.class);
@@ -412,7 +411,7 @@ public class SafetyCheckMediatorTest {
 
     @Test
     public void testPasswordsCheckBackendOutdated() {
-        if (!mUseNewApi) return;
+        if (!mUseGmsApi) return;
         captureRunPasswordCheckCallback();
         mMediator.performSafetyCheck();
         mRunPasswordCheckFailedCallback.onResult(new PasswordCheckBackendException(
@@ -471,7 +470,7 @@ public class SafetyCheckMediatorTest {
     @Test
     public void testNullStateLessThan10MinsPasswordsSafeState() {
         // Ran just now.
-        SharedPreferencesManager preferenceManager = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferenceManager = ChromeSharedPreferences.getInstance();
         preferenceManager.writeLong(ChromePreferenceKeys.SETTINGS_SAFETY_CHECK_LAST_RUN_TIMESTAMP,
                 System.currentTimeMillis());
         // Safe Browsing: on.
@@ -500,7 +499,7 @@ public class SafetyCheckMediatorTest {
     @Test
     public void testNullStateLessThan10MinsNoSavedPasswords() {
         // Ran just now.
-        SharedPreferencesManager preferenceManager = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferenceManager = ChromeSharedPreferences.getInstance();
         preferenceManager.writeLong(ChromePreferenceKeys.SETTINGS_SAFETY_CHECK_LAST_RUN_TIMESTAMP,
                 System.currentTimeMillis());
         // Safe Browsing: disabled by admin.
@@ -529,7 +528,7 @@ public class SafetyCheckMediatorTest {
     @Test
     public void testNullStateLessThan10MinsPasswordsUnsafeState() {
         // Ran just now.
-        SharedPreferencesManager preferenceManager = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferenceManager = ChromeSharedPreferences.getInstance();
         preferenceManager.writeLong(ChromePreferenceKeys.SETTINGS_SAFETY_CHECK_LAST_RUN_TIMESTAMP,
                 System.currentTimeMillis());
         // Safe Browsing: off.
@@ -558,7 +557,7 @@ public class SafetyCheckMediatorTest {
     @Test
     public void testNullStateMoreThan10MinsPasswordsSafeState() {
         // Ran 20 mins ago.
-        SharedPreferencesManager preferenceManager = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferenceManager = ChromeSharedPreferences.getInstance();
         preferenceManager.writeLong(ChromePreferenceKeys.SETTINGS_SAFETY_CHECK_LAST_RUN_TIMESTAMP,
                 System.currentTimeMillis() - (20 * 60 * 1000));
         // Safe Browsing: on.
@@ -587,7 +586,7 @@ public class SafetyCheckMediatorTest {
     @Test
     public void testNullStateMoreThan10MinsPasswordsUnsafeState() {
         // Ran 20 mins ago.
-        SharedPreferencesManager preferenceManager = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferenceManager = ChromeSharedPreferences.getInstance();
         preferenceManager.writeLong(ChromePreferenceKeys.SETTINGS_SAFETY_CHECK_LAST_RUN_TIMESTAMP,
                 System.currentTimeMillis() - (20 * 60 * 1000));
         // Safe Browsing: off.
@@ -648,7 +647,7 @@ public class SafetyCheckMediatorTest {
 
         setPasswordCheckResult(/*hasError=*/false);
         captureBreachPasswordsCallback();
-        if (mUseNewApi) {
+        if (mUseGmsApi) {
             fetchBreachedPasswords(18);
         }
         assertEquals(PasswordsState.COMPROMISED_EXIST, mModel.get(PASSWORDS_STATE));
@@ -661,7 +660,7 @@ public class SafetyCheckMediatorTest {
     @Test
     public void testPasswordCheckWhenRanImmediately() {
         final int savedPasswordsCount = 6;
-        if (mUseNewApi) {
+        if (mUseGmsApi) {
             // Pretend there are passwords saved and they have been fetched.
             setPasswordCountOnStoreBridge(savedPasswordsCount);
         }
@@ -669,7 +668,7 @@ public class SafetyCheckMediatorTest {
         mMediator.performSafetyCheck();
         assertEquals(PasswordsState.CHECKING, mModel.get(PASSWORDS_STATE));
 
-        if (!mUseNewApi) {
+        if (!mUseGmsApi) {
             verify(mPasswordCheck).addObserver(mMediator, false);
             fetchSavedPasswords(savedPasswordsCount);
         }

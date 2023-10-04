@@ -176,7 +176,8 @@ FeedServiceFactory::FeedServiceFactory()
 
 FeedServiceFactory::~FeedServiceFactory() = default;
 
-KeyedService* FeedServiceFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+FeedServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   // Currently feed service is only supported for kWebUiFeed on desktop.
   // TODO(jianli): Update all other places that depend on FeedServiceFactory
@@ -212,11 +213,15 @@ KeyedService* FeedServiceFactory::BuildServiceInstanceFor(
 #if BUILDFLAG(IS_ANDROID)
   chrome_info.start_surface =
       base::FeatureList::IsEnabled(chrome::android::kStartSurfaceAndroid);
+  chrome_info.is_new_tab_search_engine_url_android_enabled =
+      base::FeatureList::IsEnabled(
+          chrome::android::kNewTabSearchEngineUrlAndroid);
 #else
   chrome_info.start_surface = false;
+  chrome_info.is_new_tab_search_engine_url_android_enabled = false;
 #endif
 
-  return new FeedService(
+  return std::make_unique<FeedService>(
       std::make_unique<FeedServiceDelegateImpl>(),
 #if BUILDFLAG(IS_ANDROID)
       std::make_unique<RefreshTaskSchedulerImpl>(

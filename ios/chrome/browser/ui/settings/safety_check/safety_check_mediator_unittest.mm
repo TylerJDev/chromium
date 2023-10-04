@@ -20,6 +20,7 @@
 #import "components/password_manager/core/browser/password_form.h"
 #import "components/password_manager/core/browser/password_manager_test_utils.h"
 #import "components/password_manager/core/browser/test_password_store.h"
+#import "components/password_manager/core/browser/ui/password_check_referrer.h"
 #import "components/password_manager/core/common/password_manager_features.h"
 #import "components/prefs/pref_service.h"
 #import "components/prefs/testing_pref_service.h"
@@ -38,6 +39,8 @@
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/browser_state/test_chrome_browser_state.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_backed_boolean.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
 #import "ios/chrome/browser/shared/ui/table_view/cells/table_view_text_item.h"
@@ -45,17 +48,17 @@
 #import "ios/chrome/browser/signin/authentication_service.h"
 #import "ios/chrome/browser/signin/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/fake_authentication_service_delegate.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/ui/content_suggestions/content_suggestions_feature.h"
 #import "ios/chrome/browser/ui/settings/cells/settings_check_item.h"
 #import "ios/chrome/browser/ui/settings/safety_check/safety_check_constants.h"
 #import "ios/chrome/browser/ui/settings/safety_check/safety_check_consumer.h"
 #import "ios/chrome/browser/ui/settings/safety_check/safety_check_mediator+private.h"
-#import "ios/chrome/browser/ui/settings/utils/pref_backed_boolean.h"
 #import "ios/chrome/browser/upgrade/upgrade_constants.h"
 #import "ios/chrome/browser/upgrade/upgrade_recommended_details.h"
 #import "ios/chrome/common/string_util.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
-#import "ios/chrome/grit/ios_chromium_strings.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/web/public/test/web_task_environment.h"
@@ -94,6 +97,18 @@ PrefService* SetPrefService() {
   PrefRegistrySimple* registry = prefs->registry();
   registry->RegisterBooleanPref(prefs::kSafeBrowsingEnabled, true);
   registry->RegisterBooleanPref(prefs::kSafeBrowsingEnhanced, true);
+  return prefs;
+}
+
+// Registers local preference for the Safety Check last run time.
+PrefService* SetLocalPrefService() {
+  TestingPrefServiceSimple* prefs = new TestingPrefServiceSimple();
+
+  PrefRegistrySimple* registry = prefs->registry();
+
+  registry->RegisterTimePref(prefs::kIosSettingsSafetyCheckLastRunTime,
+                             base::Time());
+
   return prefs;
 }
 
@@ -167,11 +182,16 @@ class SafetyCheckMediatorTest : public PlatformTest {
 
     pref_service_ = SetPrefService();
 
-    mediator_ =
-        [[SafetyCheckMediator alloc] initWithUserPrefService:pref_service_
-                                        passwordCheckManager:password_check_
-                                                 authService:auth_service_
-                                                 syncService:syncService()];
+    local_pref_service_ = SetLocalPrefService();
+
+    mediator_ = [[SafetyCheckMediator alloc]
+        initWithUserPrefService:pref_service_
+               localPrefService:local_pref_service_
+           passwordCheckManager:password_check_
+                    authService:auth_service_
+                    syncService:syncService()
+                       referrer:password_manager::PasswordCheckReferrer::
+                                    kSafetyCheck];
   }
 
   syncer::SyncService* syncService() {
@@ -191,6 +211,11 @@ class SafetyCheckMediatorTest : public PlatformTest {
     [defaults removeObjectForKey:kIOSChromeUpToDateKey];
     [defaults removeObjectForKey:kIOSChromeNextVersionKey];
     [defaults removeObjectForKey:kIOSChromeUpgradeURLKey];
+  }
+
+  void resetLocalPrefsForTesting() {
+    local_pref_service_->SetTime(prefs::kIosSettingsSafetyCheckLastRunTime,
+                                 base::Time());
   }
 
   // Creates a form.
@@ -265,6 +290,7 @@ class SafetyCheckMediatorTest : public PlatformTest {
   scoped_refptr<IOSChromePasswordCheckManager> password_check_;
   SafetyCheckMediator* mediator_;
   PrefService* pref_service_;
+  PrefService* local_pref_service_;
   PrefBackedBoolean* safe_browsing_preference_;
 };
 
@@ -353,6 +379,28 @@ TEST_F(SafetyCheckMediatorTest, TimestampResetIfNoIssuesInCheck) {
   EXPECT_EQ(base::Time(), lastCompletedCheck);
 
   resetNSUserDefaultsForTesting();
+}
+
+// Checks the timestamp of the latest run is set after the Safety Check
+// completes its run.
+TEST_F(SafetyCheckMediatorTest, TimestampSetForLatestRun) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures({kMagicStack, kSafetyCheckMagicStack}, {});
+
+  mediator_.checkDidRun = true;
+
+  mediator_.passwordCheckRowState =
+      PasswordCheckRowStateUnmutedCompromisedPasswords;
+
+  [mediator_ resetsCheckStartItemIfNeeded];
+
+  base::Time lastRunTime =
+      local_pref_service_->GetTime(prefs::kIosSettingsSafetyCheckLastRunTime);
+
+  EXPECT_GE(lastRunTime, base::Time::Now() - base::Seconds(1));
+  EXPECT_LE(lastRunTime, base::Time::Now() + base::Seconds(1));
+
+  resetLocalPrefsForTesting();
 }
 
 #pragma mark - Safe Browsing check tests

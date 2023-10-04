@@ -7,7 +7,9 @@
 #include <string>
 
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
 #include "components/webapps/browser/android/webapps_icon_utils.h"
+#include "components/webapps/browser/features.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/manifest/manifest.h"
@@ -16,6 +18,7 @@
 
 namespace webapps {
 
+using blink::mojom::DisplayMode;
 using Purpose = blink::mojom::ManifestImageResource_Purpose;
 
 blink::Manifest::ImageResource CreateImage(const std::string& url,
@@ -48,6 +51,8 @@ class ShortcutInfoTest : public testing::Test {
  protected:
   ShortcutInfo info_;
   blink::mojom::Manifest manifest_;
+
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 TEST_F(ShortcutInfoTest, AllAttributesUpdate) {
@@ -120,6 +125,25 @@ TEST_F(ShortcutInfoTest, UpdateFromWebPageMetadata) {
   ASSERT_EQ(metadata->application_url, info_.url);
   ASSERT_EQ(metadata->application_url, info_.scope);
   ASSERT_EQ(blink::mojom::DisplayMode::kStandalone, info_.display);
+}
+
+TEST_F(ShortcutInfoTest, WebPageMetadataTitleAppName) {
+  info_ = ShortcutInfo(GURL());
+  webapps::mojom::WebPageMetadataPtr metadata =
+      webapps::mojom::WebPageMetadata::New();
+  metadata->title = u"title";
+
+  info_.UpdateFromWebPageMetadata(*metadata);
+  ASSERT_EQ(metadata->title, info_.user_title);
+  ASSERT_EQ(metadata->title, info_.name);
+  ASSERT_EQ(metadata->title, info_.short_name);
+
+  // prefer "application_name" over "title"
+  metadata->application_name = u"app name";
+  info_.UpdateFromWebPageMetadata(*metadata);
+  ASSERT_EQ(metadata->application_name, info_.user_title);
+  ASSERT_EQ(metadata->application_name, info_.name);
+  ASSERT_EQ(metadata->application_name, info_.short_name);
 }
 
 TEST_F(ShortcutInfoTest, UpdateFromEmptyMetadata) {
@@ -332,6 +356,54 @@ TEST_F(ShortcutInfoTest, ManifestIdFallback) {
 
   // If id is not specified, use start_url.
   EXPECT_EQ(info_.manifest_id.spec(), manifest_.start_url.spec());
+}
+
+TEST_F(ShortcutInfoTest, UpdateDisplayModeWebApk) {
+  scoped_feature_list_.InitAndEnableFeature(
+      features::kUniversalInstallManifest);
+
+  std::vector<DisplayMode> display_modes = {
+      DisplayMode::kUndefined, DisplayMode::kBrowser, DisplayMode::kMinimalUi,
+      DisplayMode::kStandalone, DisplayMode::kFullscreen};
+
+  for (auto display : display_modes) {
+    info_.display = display;
+
+    info_.UpdateDisplayMode(true);
+
+    switch (display) {
+      case DisplayMode::kUndefined:
+      case DisplayMode::kBrowser:
+        EXPECT_EQ(info_.display, DisplayMode::kMinimalUi);
+        break;
+      default:
+        EXPECT_EQ(info_.display, display);
+    }
+  }
+}
+
+TEST_F(ShortcutInfoTest, UpdateDisplayModeNotWebApk) {
+  scoped_feature_list_.InitAndEnableFeature(
+      features::kUniversalInstallManifest);
+
+  std::vector<DisplayMode> display_modes = {
+      DisplayMode::kUndefined, DisplayMode::kBrowser, DisplayMode::kMinimalUi,
+      DisplayMode::kStandalone, DisplayMode::kFullscreen};
+
+  for (auto display : display_modes) {
+    info_.display = display;
+
+    info_.UpdateDisplayMode(false);
+
+    switch (display) {
+      case DisplayMode::kUndefined:
+      case DisplayMode::kBrowser:
+        EXPECT_EQ(info_.display, DisplayMode::kBrowser);
+        break;
+      default:
+        EXPECT_EQ(info_.display, DisplayMode::kMinimalUi);
+    }
+  }
 }
 
 }  // namespace webapps

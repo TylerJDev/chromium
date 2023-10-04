@@ -14,7 +14,10 @@
 
   #acceleratorViewList {
     display: grid;
-    row-gap: 5px;
+  }
+
+  #acceleratorViewList accelerator-edit-view:not(:last-of-type) {
+    border-bottom: var(--cr-separator-line);
   }
 
   #addIcon {
@@ -50,10 +53,11 @@
     border-radius: 16px;
     display: flex;
     flex-direction: column;
+    min-height: 296px;
     justify-content: space-between;
     margin-left: 32px;
     margin-right: 32px;
-    padding: 8px;
+    padding: 0 8px 8px 8px;
   }
 
   #dialogTitle {
@@ -68,6 +72,11 @@
   [slot='button-container'] {
     display: flex;
     justify-content: space-between;
+  }
+
+  #maxAcceleratorsReached{
+    padding-block-start: 8px;
+    padding-block-end: 4px;
   }
 </style>
 

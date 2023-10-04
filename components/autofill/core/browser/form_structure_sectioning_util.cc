@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -145,8 +145,9 @@ bool BelongsToCurrentSection(const ServerFieldTypeSet& seen_types,
   // There are many phone number field types and their classification is
   // generally a little bit off. Furthermore, forms often ask for multiple phone
   // numbers, e.g. both a daytime and evening phone number.
-  if (AutofillType(current_type).group() == FieldTypeGroup::kPhoneHome)
+  if (AutofillType(current_type).group() == FieldTypeGroup::kPhone) {
     return true;
+  }
 
   return !HaveSeenSimilarType(current_type, seen_types);
 }

@@ -25,7 +25,6 @@ const MILLISECONDS_PER_SECOND = 1000;
  *   email: (string|undefined),
  *   readOnlyEmail: (string|undefined),
  *   signinTime: (number),
- *   newOobeLayoutEnabled: (boolean),
  * }}
  */
 export let EduCoexistenceParams;
@@ -72,7 +71,6 @@ export class EduCoexistenceController extends PostMessageApiServer {
     super(webview, originURLPrefix, originURLPrefix);
 
     this.ui = ui;
-    this.newOobeLayoutEnabled_ = params.newOobeLayoutEnabled;
     this.isOobe_ = params.sourceUi === 'oobe';
     this.flowURL_ = flowURL;
     this.originURLPrefix_ = originURLPrefix;
@@ -133,11 +131,6 @@ export class EduCoexistenceController extends PostMessageApiServer {
   }
 
   /** @return {boolean} */
-  getNewOobeLayoutEnabled() {
-    return this.newOobeLayoutEnabled_;
-  }
-
-  /** @return {boolean} */
   getIsOobe() {
     return this.isOobe_;
   }
@@ -168,7 +161,7 @@ export class EduCoexistenceController extends PostMessageApiServer {
         'getEduAccountEmail', this.getEduAccountEmail_.bind(this));
     this.registerMethod(
         'getTimeDeltaSinceSigninSeconds',
-        this.getTimeDeltaSinceSigninSeconds_.bind(this));
+        this.getTimeDeltaSinceSigninSeconds.bind(this));
 
     // Add listeners for Authenticator.
     this.addAuthExtHostListeners_();
@@ -304,11 +297,11 @@ export class EduCoexistenceController extends PostMessageApiServer {
   }
 
   /**
-   * @private
+   * Made public for testing purposes.
    * @return {number} Returns the number of seconds that have elapsed since
    * the user's initial signin.
    */
-  getTimeDeltaSinceSigninSeconds_() {
+  getTimeDeltaSinceSigninSeconds() {
     return (Date.now() - this.signinTime_) / MILLISECONDS_PER_SECOND;
   }
 }

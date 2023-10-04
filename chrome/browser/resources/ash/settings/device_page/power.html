@@ -6,6 +6,9 @@
   cr-policy-indicator {
     padding-inline-end: 8px;
   }
+  .dropdown-row {
+    --cr-section-min-height: 64px;
+  }
 </style>
 <div id="powerSourceRow" class="cr-row first"
     hidden$="[[!batteryStatus_.present]]">
@@ -37,38 +40,41 @@
 </div>
 
 <settings-toggle-button id="batterySaverToggle"
+    class$="[[getClassForRow_(batteryStatus_.present, 'batterySaver')]]"
     hidden$="[[batterySaverHidden_]]"
     pref="{{prefs.power.cros_battery_saver_active}}"
     label="$i18n{powerBatterySaverLabel}"
     sub-label="$i18n{powerBatterySaverSubtext}"
-    disabled="[[batterySaverToggleDisabled_]]"
+    disabled="[[isExternalPowerAC_]]"
     deep-link-focus-id$="[[Setting.kBatterySaver]]">
 </settings-toggle-button>
 
-<settings-toggle-button hidden$="[[!adaptiveChargingEnabled_]]"
-  class$="[[getClassForRow_(batteryStatus_.present, 'adaptiveCharging')]]"
-  id="adaptiveChargingToggle"
-  pref="[[adaptiveChargingPref_]]"
-  label="$i18n{powerAdaptiveChargingLabel}"
-  sub-label="$i18n{powerAdaptiveChargingSubtext}"
-  learn-more-url="$i18n{powerAdaptiveChargingLearnMoreUrl}"
-  on-settings-boolean-control-change="onAdaptiveChargingToggleChange_"
-  deep-link-focus-id$="[[Setting.kAdaptiveCharging]]"
-  no-set-pref>
+<settings-toggle-button id="adaptiveChargingToggle"
+    class$="[[getClassForRow_(batteryStatus_.present, 'adaptiveCharging')]]"
+    hidden$="[[!adaptiveChargingEnabled_]]"
+    pref="[[adaptiveChargingPref_]]"
+    label="$i18n{powerAdaptiveChargingLabel}"
+    sub-label="$i18n{powerAdaptiveChargingSubtext}"
+    learn-more-url="$i18n{powerAdaptiveChargingLearnMoreUrl}"
+    on-settings-boolean-control-change="onAdaptiveChargingToggleChange_"
+    deep-link-focus-id$="[[Setting.kAdaptiveCharging]]"
+    no-set-pref>
 </settings-toggle-button>
 
-<div class$="[[getClassForRow_(batteryStatus_.present, 'idle')]]">
-  <div id="powerIdleLabel" class="flex" aria-label="true">
-    $i18n{powerIdleLabel}
-  </div>
-  <template is="dom-if" if="[[!batteryStatus_.present]]" restamp>
+<template is="dom-if" if="[[!batteryStatus_.present]]" restamp>
+  <div class$="[[getClassForRow_(batteryStatus_.present, 'idle')]]">
+    <div id="powerIdleLabel" class="flex" aria-label="true">
+      $i18n{powerIdleLabel}
+    </div>
+
     <template is="dom-if" if="[[acIdleManaged_]]" restamp>
       <cr-policy-indicator id="noBatteryAcIdleManagedIndicator"
           indicator-type="devicePolicy"
           icon-aria-label="$i18n{powerIdleWhileChargingAriaLabel}">
       </cr-policy-indicator>
     </template>
-    <select id="noBatteryAcIdleSelect" class="md-select"
+    <select id="noBatteryAcIdleSelect"
+        class="md-select"
         on-change="onAcIdleSelectChange_"
         disabled="[[shouldAcIdleSelectBeDisabled_]]"
         aria-label="$i18n{powerIdleWhileChargingAriaLabel}"
@@ -79,13 +85,22 @@
         </option>
       </template>
     </select>
-  </template>
-</div>
+  </div>
+</template>
 
 <template is="dom-if" if="[[batteryStatus_.present]]" restamp>
-  <div id="acIdleSettingBox" class="cr-row indented first">
+  <template is="dom-if" if="[[!isRevampWayfindingEnabled_]]">
+    <div class$="[[getClassForRow_(batteryStatus_.present, 'idle')]]">
+      <div id="powerIdleLabel" class="flex" aria-label="true">
+        $i18n{powerIdleLabel}
+      </div>
+    </div>
+  </template>
+
+  <div id="acIdleSettingBox"
+      class$="[[getClassForRow_(batteryStatus_.present, 'acIdle')]]">
     <div class="flex" aria-hidden="true">
-      $i18n{powerIdleWhileChargingLabel}
+      $i18n{powerInactiveWhilePluggedInLabel}
     </div>
     <template is="dom-if" if="[[acIdleManaged_]]" restamp>
       <cr-policy-indicator id="acIdleManagedIndicator"
@@ -106,9 +121,10 @@
     </select>
   </div>
 
-  <div id="batteryIdleSettingBox" class="cr-row indented">
+  <div id="batteryIdleSettingBox"
+      class$="[[getClassForRow_(batteryStatus_.present, 'batteryIdle')]]">
     <div class="flex" aria-hidden="true">
-      $i18n{powerIdleWhileOnBatteryLabel}
+      $i18n{powerInactiveWhileOnBatteryLabel}
     </div>
     <template is="dom-if" if="[[batteryIdleManaged_]]" restamp>
       <cr-policy-indicator id="batteryIdleManagedIndicator"
@@ -130,8 +146,9 @@
   </div>
 </template>
 
-<settings-toggle-button hidden$="[[!hasLid_]]" id="lidClosedToggle"
-  pref="[[lidClosedPref_]]" label="[[lidClosedLabel_]]"
+<settings-toggle-button id="lidClosedToggle"
+  class$="[[getClassForRow_(batteryStatus_.present, 'lidClosed')]]"
+  hidden$="[[!hasLid_]]" pref="[[lidClosedPref_]]" label="[[lidClosedLabel_]]"
   on-settings-boolean-control-change="onLidClosedToggleChange_" no-set-pref
   deep-link-focus-id$="[[Setting.kSleepWhenLaptopLidClosed]]">
 </settings-toggle-button>

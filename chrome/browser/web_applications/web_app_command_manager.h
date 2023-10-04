@@ -19,6 +19,7 @@
 #include "chrome/browser/web_applications/commands/web_app_command.h"
 #include "chrome/browser/web_applications/locks/web_app_lock_manager.h"
 #include "chrome/browser/web_applications/web_app_id.h"
+#include "components/webapps/common/web_app_id.h"
 
 class Profile;
 
@@ -29,7 +30,7 @@ class WebContents;
 namespace web_app {
 
 class WebAppProvider;
-enum class WebAppUrlLoaderResult;
+class WebAppUrlLoader;
 
 // The command manager is used to schedule commands or callbacks to write & read
 // from the WebAppProvider system. To use, simply call `ScheduleCommand` to
@@ -108,10 +109,11 @@ class WebAppCommandManager {
 
   std::vector<std::unique_ptr<WebAppCommand>> commands_waiting_for_start_;
 
-  raw_ptr<Profile> profile_;
-  raw_ptr<WebAppProvider> provider_;
+  raw_ptr<Profile> profile_ = nullptr;
+  raw_ptr<WebAppProvider> provider_ = nullptr;
 
   std::unique_ptr<content::WebContents> shared_web_contents_;
+  std::unique_ptr<WebAppUrlLoader> url_loader_;
 
   bool started_ = false;
   bool is_in_shutdown_ = false;

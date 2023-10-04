@@ -28,7 +28,7 @@ import {FastPairSavedDevice, FastPairSavedDevicesOptInStatus} from './settings_f
 const SettingsBluetoothSavedDevicesSubpageElementBase =
     RouteObserverMixin(WebUiListenerMixin(I18nMixin(PolymerElement)));
 
-class SettingsBluetoothSavedDevicesSubpageElement extends
+export class SettingsBluetoothSavedDevicesSubpageElement extends
     SettingsBluetoothSavedDevicesSubpageElementBase {
   static get is() {
     return 'os-settings-bluetooth-saved-devices-subpage' as const;
@@ -88,7 +88,7 @@ class SettingsBluetoothSavedDevicesSubpageElement extends
         OsBluetoothDevicesSubpageBrowserProxyImpl.getInstance();
   }
 
-  override ready() {
+  override ready(): void {
     super.ready();
     this.addWebUiListener(
         'fast-pair-saved-devices-list', this.getSavedDevices_.bind(this));

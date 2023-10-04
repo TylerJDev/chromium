@@ -34,7 +34,6 @@ import org.junit.runner.RunWith;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.keyboard_accessory.ManualFillingTestHelper;
@@ -47,6 +46,7 @@ import org.chromium.chrome.browser.password_manager.PasswordStoreCredential;
 import org.chromium.chrome.browser.password_manager.PasswordSyncControllerDelegateFactory;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.ChromeTabbedActivityTestRule;
+import org.chromium.chrome.test.util.browser.Features.DisableFeatures;
 import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.content_public.browser.test.util.TestThreadUtils;
 import org.chromium.net.test.EmbeddedTestServer;
@@ -94,6 +94,7 @@ public class PasswordAccessoryIntegrationTest {
                 mTestServer.getURL("/chrome/test/data/password/password_form.html"));
         mHelper.focusPasswordField(false);
         mHelper.waitForKeyboardAccessoryToBeShown();
+        mHelper.waitForKeyboardToShow();
         whenDisplayed(isKeyboardAccessoryTabLayout()).perform(selectTabAtPosition(0));
 
         // Check that the provided elements are there.
@@ -132,21 +133,23 @@ public class PasswordAccessoryIntegrationTest {
     }
 
     @Test
-    @SmallTest
+    @MediumTest
     @DisableIf.Device(type = {UiDisableIf.TABLET}) // https://crbug.com/1111770
-    @DisabledTest(message = "https://crbug.com/1467320")
+    @DisableFeatures({ChromeFeatureList.UNIFIED_PASSWORD_MANAGER_LOCAL_PWD_MIGRATION_WARNING})
     public void testFillsPasswordOnTap() throws TimeoutException {
-        mHelper.loadTestPage(false);
-        mHelper.cacheCredentials("mpark@abc.com", "ShorterPassword");
-
-        // Focus the field to bring up the accessory.
-        mHelper.focusPasswordField();
+        preparePasswordBridge();
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            mPasswordStoreBridge.insertPasswordCredential(new PasswordStoreCredential(
+                    new GURL(mTestServer.getURL("/")), "mpark@abc.com", "ShorterPassword"));
+        });
+        mHelper.loadUrl("/chrome/test/data/password/password_form.html");
+        mHelper.focusPasswordField(false);
         mHelper.waitForKeyboardAccessoryToBeShown();
+        mHelper.waitForKeyboardToShow();
         whenDisplayed(isKeyboardAccessoryTabLayout()).perform(selectTabAtPosition(0));
 
         // Click the suggestion.
         whenDisplayed(withText("ShorterPassword")).perform(click());
-
         // The callback should have triggered and set the reference to the selected Item.
         CriteriaHelper.pollInstrumentationThread(
                 () -> mHelper.getPasswordText().equals("ShorterPassword"));
@@ -174,14 +177,15 @@ public class PasswordAccessoryIntegrationTest {
     @Test
     @SmallTest
     @EnableFeatures(ChromeFeatureList.RECOVER_FROM_NEVER_SAVE_ANDROID)
-    @DisabledTest(message = "https://crbug.com/1465414")
     public void testEnablesUndenylistingToggle() throws TimeoutException, InterruptedException {
-        mHelper.loadTestPage(false);
-        mHelper.cacheCredentials(new String[0], new String[0], true);
-
-        // Focus the field to bring up the accessory.
-        mHelper.focusPasswordField();
+        preparePasswordBridge();
+        String url = mTestServer.getURL("/chrome/test/data/password/password_form.html");
+        TestThreadUtils.runOnUiThreadBlocking(
+                () -> { mPasswordStoreBridge.blocklistForTesting(url); });
+        mActivityTestRule.loadUrl(url);
+        mHelper.focusPasswordField(false);
         mHelper.waitForKeyboardAccessoryToBeShown();
+        mHelper.waitForKeyboardToShow();
         whenDisplayed(isKeyboardAccessoryTabLayout()).perform(selectTabAtPosition(0));
 
         whenDisplayed(withId(R.id.option_toggle_switch)).check(matches(isNotChecked()));

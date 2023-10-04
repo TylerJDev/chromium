@@ -112,7 +112,7 @@ size_t CountSyncableBookmarksFromModel(bookmarks::BookmarkModel* model) {
   // Does not count the root node.
   while (iterator.has_next()) {
     const bookmarks::BookmarkNode* node = iterator.Next();
-    if (model->client()->CanSyncNode(node)) {
+    if (!model->client()->IsNodeManaged(node)) {
       ++count;
     }
   }
@@ -327,8 +327,7 @@ void BookmarkModelTypeProcessor::ModelReadyToSync(
   DCHECK(!bookmark_tracker_);
   DCHECK(!bookmark_model_observer_);
 
-  // TODO(crbug.com/950869): Remove after investigations are completed.
-  TRACE_EVENT0("browser", "BookmarkModelTypeProcessor::ModelReadyToSync");
+  TRACE_EVENT0("sync", "BookmarkModelTypeProcessor::ModelReadyToSync");
 
   bookmark_model_ = model;
   schedule_save_closure_ = schedule_save_closure;

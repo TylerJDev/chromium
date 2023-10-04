@@ -34,7 +34,7 @@ namespace {
 // Returns true if all |profiles| have the same value for the data retrieved by
 // |get_data|.
 bool HaveSameData(
-    const std::vector<AutofillProfile*>& profiles,
+    const std::vector<const AutofillProfile*>& profiles,
     const std::string& app_locale,
     base::RepeatingCallback<std::u16string(const AutofillProfile&,
                                            const std::string&)> get_data,
@@ -123,7 +123,7 @@ std::vector<ServerFieldType> ExtractSpecifiedAddressFieldTypes(
   auto should_be_extracted =
       [&extract_street_address_types](ServerFieldType type) -> bool {
     return AutofillType(AutofillType(type).GetStorableType()).group() ==
-               FieldTypeGroup::kAddressHome &&
+               FieldTypeGroup::kAddress &&
            (extract_street_address_types ? IsStreetAddressPart(type)
                                          : !IsStreetAddressPart(type));
   };
@@ -152,8 +152,7 @@ AutofillProfile MakeTrimmedProfile(const AutofillProfile& profile,
   AutofillProfile trimmed_profile(profile.guid());
   trimmed_profile.set_language_code(profile.language_code());
 
-  const AutofillType country_code_type(HtmlFieldType::kCountryCode,
-                                       HtmlFieldMode::kNone);
+  const AutofillType country_code_type(HtmlFieldType::kCountryCode);
   const std::u16string country_code =
       profile.GetInfo(country_code_type, app_locale);
   trimmed_profile.SetInfo(country_code_type, country_code, app_locale);
@@ -304,22 +303,23 @@ std::u16string GetLabelPhone(const AutofillProfile& profile,
                    data_util::GetCountryCodeWithFallback(profile, app_locale)));
 }
 
-bool HaveSameEmailAddresses(const std::vector<AutofillProfile*>& profiles,
+bool HaveSameEmailAddresses(const std::vector<const AutofillProfile*>& profiles,
                             const std::string& app_locale) {
   return HaveSameData(profiles, app_locale, base::BindRepeating(&GetLabelEmail),
                       base::BindRepeating(base::BindRepeating(&Equals)));
 }
 
-bool HaveSameFirstNames(const std::vector<AutofillProfile*>& profiles,
+bool HaveSameFirstNames(const std::vector<const AutofillProfile*>& profiles,
                         const std::string& app_locale) {
   return HaveSameData(profiles, app_locale,
                       base::BindRepeating(&GetLabelFirstName),
                       base::BindRepeating(base::BindRepeating(&Equals)));
 }
 
-bool HaveSameNonStreetAddresses(const std::vector<AutofillProfile*>& profiles,
-                                const std::string& app_locale,
-                                const std::vector<ServerFieldType>& types) {
+bool HaveSameNonStreetAddresses(
+    const std::vector<const AutofillProfile*>& profiles,
+    const std::string& app_locale,
+    const std::vector<ServerFieldType>& types) {
   // In general, comparing non street addresses with Equals, which uses ==, is
   // not ideal since Düsseldorf and Dusseldorf will be considered distinct. It's
   // okay to use it here because near-duplicate non street addresses like this
@@ -329,7 +329,7 @@ bool HaveSameNonStreetAddresses(const std::vector<AutofillProfile*>& profiles,
                       base::BindRepeating(&Equals));
 }
 
-bool HaveSamePhoneNumbers(const std::vector<AutofillProfile*>& profiles,
+bool HaveSamePhoneNumbers(const std::vector<const AutofillProfile*>& profiles,
                           const std::string& app_locale) {
   // Note that the same country code is used in all comparisons.
   auto equals = [](const std::string& country_code,
@@ -349,9 +349,10 @@ bool HaveSamePhoneNumbers(const std::vector<AutofillProfile*>& profiles,
                                        app_locale));
 }
 
-bool HaveSameStreetAddresses(const std::vector<AutofillProfile*>& profiles,
-                             const std::string& app_locale,
-                             const std::vector<ServerFieldType>& types) {
+bool HaveSameStreetAddresses(
+    const std::vector<const AutofillProfile*>& profiles,
+    const std::string& app_locale,
+    const std::vector<ServerFieldType>& types) {
   // In general, comparing street addresses with Equals, which uses ==, is not
   // ideal since 3 Elm St and 3 Elm St. will be considered distinct. It's okay
   // to use it here because near-duplicate addresses like this are filtered
@@ -375,21 +376,20 @@ bool HasUnfocusedNonStreetAddressField(
     FieldTypeGroup focused_group,
     const std::vector<ServerFieldType>& types) {
   return HasNonStreetAddress(types) &&
-         (focused_group != FieldTypeGroup::kAddressHome ||
+         (focused_group != FieldTypeGroup::kAddress ||
           !IsNonStreetAddressPart(focused_field));
 }
 
 bool HasUnfocusedPhoneField(FieldTypeGroup focused_group,
                             uint32_t form_groups) {
-  return ContainsPhone(form_groups) &&
-         focused_group != FieldTypeGroup::kPhoneHome;
+  return ContainsPhone(form_groups) && focused_group != FieldTypeGroup::kPhone;
 }
 
 bool HasUnfocusedStreetAddressField(ServerFieldType focused_field,
                                     FieldTypeGroup focused_group,
                                     const std::vector<ServerFieldType>& types) {
   return HasStreetAddress(types) &&
-         (focused_group != FieldTypeGroup::kAddressHome ||
+         (focused_group != FieldTypeGroup::kAddress ||
           !IsStreetAddressPart(focused_field));
 }
 

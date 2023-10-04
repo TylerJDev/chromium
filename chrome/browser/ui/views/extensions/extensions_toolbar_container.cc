@@ -15,6 +15,7 @@
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/extensions/extension_action_view_controller.h"
 #include "chrome/browser/ui/extensions/settings_api_bubble_helpers.h"
 #include "chrome/browser/ui/layout_constants.h"
@@ -124,6 +125,9 @@ ExtensionsToolbarContainer::ExtensionsToolbarContainer(Browser* browser,
       display_mode_(display_mode),
       action_hover_card_controller_(
           std::make_unique<ToolbarActionHoverCardController>(this)) {
+  SetProperty(views::kElementIdentifierKey,
+              kToolbarExtensionsContainerElementId);
+
   // The container shouldn't show unless / until we have extensions available.
   SetVisible(false);
 
@@ -1032,10 +1036,11 @@ void ExtensionsToolbarContainer::MaybeShowIPH() {
   if (extensions_controls_->request_access_button()->GetVisible()) {
     const int extensions_size =
         extensions_controls_->request_access_button()->GetExtensionsCount();
-    browser_->window()->MaybeShowFeaturePromo(
-        feature_engagement::kIPHExtensionsRequestAccessButtonFeature,
-        /*close_callback=*/base::DoNothing(), /*body_params=*/extensions_size,
-        /*title_params=*/extensions_size);
+    user_education::FeaturePromoParams params(
+        feature_engagement::kIPHExtensionsRequestAccessButtonFeature);
+    params.body_params = extensions_size;
+    params.title_params = extensions_size;
+    browser_->window()->MaybeShowFeaturePromo(std::move(params));
   }
 
   if (extensions_controls_->extensions_button()->state() ==

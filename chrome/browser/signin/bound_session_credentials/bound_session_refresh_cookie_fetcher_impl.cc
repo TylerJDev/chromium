@@ -6,12 +6,14 @@
 
 #include <memory>
 
-#include "base/base64url.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
+#include "base/timer/elapsed_timer.h"
+#include "base/trace_event/typed_macros.h"
 #include "chrome/browser/signin/bound_session_credentials/session_binding_helper.h"
 #include "components/signin/public/base/wait_for_network_callback_helper.h"
 #include "google_apis/gaia/gaia_urls.h"
@@ -31,6 +33,7 @@ constexpr char kRotationChallengeHeader[] = "Sec-Session-Google-Challenge";
 constexpr char kRotationChallengeResponseHeader[] =
     "Sec-Session-Google-Response";
 constexpr char kChallengeItemKey[] = "challenge";
+const size_t kMaxAssertionRequestsAllowed = 5;
 
 bool IsExpectedCookie(
     const GURL& url,
@@ -63,6 +66,9 @@ BoundSessionRefreshCookieFetcherImpl::~BoundSessionRefreshCookieFetcherImpl() =
 
 void BoundSessionRefreshCookieFetcherImpl::Start(
     RefreshCookieCompleteCallback callback) {
+  TRACE_EVENT("browser", "BoundSessionRefreshCookieFetcherImpl::Start",
+              perfetto::Flow::FromPointer(this), "url",
+              expected_cookie_domain_);
   CHECK(!callback_);
   CHECK(callback);
   callback_ = std::move(callback);
@@ -73,6 +79,14 @@ void BoundSessionRefreshCookieFetcherImpl::Start(
 
 void BoundSessionRefreshCookieFetcherImpl::StartRefreshRequest(
     absl::optional<std::string> sec_session_challenge_response) {
+  TRACE_EVENT("browser",
+              "BoundSessionRefreshCookieFetcherImpl::StartRefreshRequest",
+              perfetto::Flow::FromPointer(this), "has_challenge",
+              sec_session_challenge_response.has_value());
+  if (!cookie_refresh_duration_.has_value()) {
+    cookie_refresh_duration_ = base::TimeTicks::Now();
+  }
+
   // TODO(b/273920907): Update the `traffic_annotation` setting once a mechanism
   // allowing the user to disable the feature is implemented.
   net::NetworkTrafficAnnotationTag traffic_annotation =
@@ -134,9 +148,6 @@ void BoundSessionRefreshCookieFetcherImpl::StartRefreshRequest(
   cookie_observers_.Add(this, remote.InitWithNewPipeAndPassReceiver());
   request->trusted_params->cookie_observer = std::move(remote);
 
-  // TODO(b/273920907): Figure out how to handle redirects. Currently
-  // `network::SimpleURLLoader::SetOnRedirectCallback()` doesn't support
-  // modifying the headers nor asynchronously resuming the reguest.
   url_loader_ =
       network::SimpleURLLoader::Create(std::move(request), traffic_annotation);
   url_loader_->SetRetryOptions(
@@ -153,6 +164,9 @@ void BoundSessionRefreshCookieFetcherImpl::StartRefreshRequest(
 void BoundSessionRefreshCookieFetcherImpl::OnURLLoaderComplete(
     scoped_refptr<net::HttpResponseHeaders> headers) {
   net::Error net_error = static_cast<net::Error>(url_loader_->NetError());
+  TRACE_EVENT("browser",
+              "BoundSessionRefreshCookieFetcherImpl::OnURLLoaderComplete",
+              perfetto::Flow::FromPointer(this), "net_error", net_error);
 
   absl::optional<std::string> challenge_header_value =
       GetChallengeIfBindingKeyAssertionRequired(headers);
@@ -218,6 +232,17 @@ void BoundSessionRefreshCookieFetcherImpl::ReportRefreshResult() {
   if (result_ == Result::kSuccess && !expected_cookies_set_) {
     result_ = Result::kServerUnexepectedResponse;
   }
+  TRACE_EVENT("browser",
+              "BoundSessionRefreshCookieFetcherImpl::ReportRefreshResult",
+              perfetto::TerminatingFlow::FromPointer(this), "result", result_);
+  base::UmaHistogramEnumeration(
+      "Signin.BoundSessionCredentials.CookieRotationResult", result_);
+
+  CHECK(cookie_refresh_duration_.has_value());
+  base::TimeDelta duration = base::TimeTicks::Now() - *cookie_refresh_duration_;
+  cookie_refresh_duration_.reset();
+  base::UmaHistogramMediumTimes(
+      "Signin.BoundSessionCredentials.CookieRotationTotalDuration", duration);
 
   std::move(callback_).Run(result_);
 }
@@ -237,18 +262,18 @@ BoundSessionRefreshCookieFetcherImpl::GetChallengeIfBindingKeyAssertionRequired(
 
 void BoundSessionRefreshCookieFetcherImpl::HandleBindingKeyAssertionRequired(
     const std::string& challenge_header_value) {
-  if (has_assertion_been_already_requested_) {
-    // TODO(b/293838716): Handle expired challenges. We currently can't
-    // distinguish expired challenges.
-    ReportChallengeRequiredUnexpectedFormat();
+  if (assertion_requests_count_ >= kMaxAssertionRequestsAllowed) {
+    CompleteRequestAndReportRefreshResult(
+        Result::kChallengeRequiredLimitExceeded);
     return;
   }
 
   // Binding key assertion required.
-  has_assertion_been_already_requested_ = true;
+  assertion_requests_count_++;
   std::string challenge = ParseChallengeHeader(challenge_header_value);
   if (challenge.empty()) {
-    ReportChallengeRequiredUnexpectedFormat();
+    CompleteRequestAndReportRefreshResult(
+        Result::kChallengeRequiredUnexpectedFormat);
     return;
   }
   RefreshWithChallenge(challenge);
@@ -259,48 +284,56 @@ std::string BoundSessionRefreshCookieFetcherImpl::ParseChallengeHeader(
     const std::string& header) {
   base::StringPairs items;
   base::SplitStringIntoKeyValuePairs(header, '=', ';', &items);
-  std::string encoded_challenge;
+  std::string challenge;
   for (const auto& [key, value] : items) {
     // TODO(b/293838716): Check `session_id` matches the current session's id.
     if (base::EqualsCaseInsensitiveASCII(key, kChallengeItemKey)) {
-      encoded_challenge = value;
+      challenge = value;
     }
   }
 
-  std::string challenge;
-  if (!encoded_challenge.empty() &&
-      base::Base64UrlDecode(encoded_challenge,
-                            base::Base64UrlDecodePolicy::DISALLOW_PADDING,
-                            &challenge)) {
-    return challenge;
+  if (!base::IsStringUTF8AllowingNoncharacters(challenge)) {
+    DVLOG(1) << "Server-side challenge has non-UTF8 characters.";
+    return std::string();
   }
-  return std::string();
+  return challenge;
 }
 
 void BoundSessionRefreshCookieFetcherImpl::
-    ReportChallengeRequiredUnexpectedFormat() {
+    CompleteRequestAndReportRefreshResult(Result result) {
   cookie_refresh_completed_ = true;
-  result_ = Result::kChallengeRequiredUnexpectedFormat;
+  result_ = result;
   ReportRefreshResult();
 }
 
 void BoundSessionRefreshCookieFetcherImpl::RefreshWithChallenge(
     const std::string& challenge) {
+  TRACE_EVENT("browser",
+              "BoundSessionRefreshCookieFetcherImpl::RefreshWithChallenge",
+              perfetto::Flow::FromPointer(this));
   session_binding_helper_->GenerateBindingKeyAssertion(
       challenge, GaiaUrls::GetInstance()->rotate_bound_cookies_url(),
       base::BindOnce(
           &BoundSessionRefreshCookieFetcherImpl::OnGenerateBindingKeyAssertion,
-          weak_ptr_factory_.GetWeakPtr()));
+          weak_ptr_factory_.GetWeakPtr(), base::ElapsedTimer()));
 }
 
 void BoundSessionRefreshCookieFetcherImpl::OnGenerateBindingKeyAssertion(
+    base::ElapsedTimer generate_assertion_timer,
     std::string assertion) {
+  base::UmaHistogramMediumTimes(
+      "Signin.BoundSessionCredentials.CookieRotationGenerateAssertionDuration",
+      generate_assertion_timer.Elapsed());
+  TRACE_EVENT(
+      "browser",
+      "BoundSessionRefreshCookieFetcherImpl::OnGenerateBindingKeyAssertion",
+      perfetto::Flow::FromPointer(this), "success", !assertion.empty());
+
   if (assertion.empty()) {
-    result_ = Result::kSignChallengeFailed;
-    cookie_refresh_completed_ = true;
-    ReportRefreshResult();
+    CompleteRequestAndReportRefreshResult(Result::kSignChallengeFailed);
     return;
   }
+
   wait_for_network_callback_helper_->DelayNetworkCall(
       base::BindOnce(&BoundSessionRefreshCookieFetcherImpl::StartRefreshRequest,
                      weak_ptr_factory_.GetWeakPtr(), std::move(assertion)));
@@ -308,6 +341,7 @@ void BoundSessionRefreshCookieFetcherImpl::OnGenerateBindingKeyAssertion(
 
 void BoundSessionRefreshCookieFetcherImpl::OnCookiesAccessed(
     std::vector<network::mojom::CookieAccessDetailsPtr> details_vector) {
+  // TODO(b/296999000): record a trace event.
   for (const auto& cookie_details : details_vector) {
     if (cookie_details->type !=
         network::mojom::CookieAccessDetails::Type::kChange) {

@@ -298,7 +298,9 @@ void AccountTrackerService::NotifyAccountRemoved(
 
 void AccountTrackerService::StartTrackingAccount(
     const CoreAccountId& account_id) {
-  CHECK(!account_id.empty());
+  // TODO(crbug.com/1488401): Change into a CHECK once there are no crash reports for
+  // tracking empty account ids.
+  DUMP_WILL_BE_CHECK(!account_id.empty());
   if (!base::Contains(accounts_, account_id)) {
     DVLOG(1) << "StartTracking " << account_id;
     AccountInfo account_info;

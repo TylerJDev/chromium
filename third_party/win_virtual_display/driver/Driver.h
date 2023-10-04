@@ -10,88 +10,12 @@
 
 #include <windows.h>
 
-#include <wdf.h>
-
-#include <avrt.h>
-#include <bugcodes.h>
-#include <d3d11_2.h>
-#include <dxgi1_5.h>
-#include <iddcx.h>
-#include <wrl.h>
-#include <wudfwdm.h>
-
-#include <memory>
-#include <vector>
-
+#include "Direct3DDevice.h"
+#include "IndirectMonitor.h"
+#include "SwapChainProcessor.h"
 #include "Trace.h"
 
-namespace Microsoft {
-namespace WRL {
-namespace Wrappers {
-// Adds a wrapper for thread handles to the existing set of WRL handle wrapper
-// classes
-typedef HandleT<HandleTraits::HANDLENullTraits> Thread;
-}  // namespace Wrappers
-}  // namespace WRL
-}  // namespace Microsoft
-
-namespace Microsoft {
-namespace IndirectDisp {
-/// <summary>
-/// Manages the creation and lifetime of a Direct3D render device.
-/// </summary>
-struct IndirectSampleMonitor {
-  static constexpr size_t szEdidBlock = 128;
-  static constexpr size_t szModeList = 3;
-
-  const BYTE pEdidBlock[szEdidBlock];
-  const struct SampleMonitorMode {
-    DWORD Width;
-    DWORD Height;
-    DWORD VSync;
-  } pModeList[szModeList];
-  const DWORD ulPreferredModeIdx;
-};
-
-/// <summary>
-/// Manages the creation and lifetime of a Direct3D render device.
-/// </summary>
-struct Direct3DDevice {
-  Direct3DDevice(LUID AdapterLuid);
-  Direct3DDevice();
-  HRESULT Init();
-
-  LUID AdapterLuid;
-  Microsoft::WRL::ComPtr<IDXGIFactory5> DxgiFactory;
-  Microsoft::WRL::ComPtr<IDXGIAdapter1> Adapter;
-  Microsoft::WRL::ComPtr<ID3D11Device> Device;
-  Microsoft::WRL::ComPtr<ID3D11DeviceContext> DeviceContext;
-};
-
-/// <summary>
-/// Manages a thread that consumes buffers from an indirect display swap-chain
-/// object.
-/// </summary>
-class SwapChainProcessor {
- public:
-  SwapChainProcessor(IDDCX_SWAPCHAIN hSwapChain,
-                     std::unique_ptr<Direct3DDevice> Device,
-                     HANDLE NewFrameEvent);
-  ~SwapChainProcessor();
-
- private:
-  static DWORD CALLBACK RunThread(LPVOID Argument);
-
-  void Run();
-  void RunCore();
-
-  IDDCX_SWAPCHAIN m_hSwapChain;
-  std::unique_ptr<Direct3DDevice> m_Device;
-  HANDLE m_hAvailableBufferEvent;
-  Microsoft::WRL::Wrappers::Thread m_hThread;
-  Microsoft::WRL::Wrappers::Event m_hTerminateEvent;
-};
-
+namespace Windows {
 /// <summary>
 /// Provides a sample implementation of an indirect display driver.
 /// </summary>
@@ -102,6 +26,8 @@ class IndirectDeviceContext {
 
   void InitAdapter();
   void FinishInit(UINT ConnectorIndex);
+
+  std::vector<IndirectSampleMonitor> sample_monitors;
 
  protected:
   WDFDEVICE m_WdfDevice;
@@ -118,11 +44,14 @@ class IndirectMonitorContext {
                        HANDLE NewFrameEvent);
   void UnassignSwapChain();
 
+  // Default modes reported for edid-less monitors. The first mode is set as
+  // preferred
+  std::vector<DriverProperties::MonitorMode> default_mode_list;
+
  private:
   IDDCX_MONITOR m_Monitor;
   std::unique_ptr<SwapChainProcessor> m_ProcessingThread;
 };
-}  // namespace IndirectDisp
-}  // namespace Microsoft
+}  // namespace Windows
 
 #endif  // THIRD_PARTY_WIN_VIRTUAL_DISPLAY_DRIVER_DRIVER_H_

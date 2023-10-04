@@ -71,7 +71,10 @@ bool StructTraits<blink::mojom::InterestGroupDataView, blink::InterestGroup>::
       !data.ReadAds(&out->ads) || !data.ReadAdComponents(&out->ad_components) ||
       !data.ReadAdSizes(&out->ad_sizes) ||
       !data.ReadSizeGroups(&out->size_groups) ||
-      !data.ReadAuctionServerRequestFlags(&out->auction_server_request_flags)) {
+      !data.ReadAuctionServerRequestFlags(&out->auction_server_request_flags) ||
+      !data.ReadAdditionalBidKey(&out->additional_bid_key) ||
+      !data.ReadAggregationCoordinatorOrigin(
+          &out->aggregation_coordinator_origin)) {
     return false;
   }
   return out->IsValid();

@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,9 +22,10 @@ class GURL;
 - (instancetype)initWithParams:(UIImage*)image
                          title:(NSString*)title
                       subtitle:(NSString*)subtitle
-            primaryActionTitle:(NSString*)primaryAction
+            primaryActionTitle:(NSString*)primaryActionTitle
               instructionSteps:(NSArray<NSString*>*)instructionSteps
                           type:(WhatsNewType)type
+                 primaryAction:(WhatsNewPrimaryAction)primaryAction
                   learnMoreURL:(const GURL&)learnMoreURL
     NS_DESIGNATED_INITIALIZER;
 

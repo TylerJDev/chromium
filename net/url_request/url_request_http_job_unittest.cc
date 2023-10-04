@@ -1755,15 +1755,23 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
   ASSERT_TRUE(https_test.Start());
 
   auto context_builder = CreateTestURLRequestContextBuilder();
-  auto* network_delegate = context_builder->set_network_delegate(
-      std::make_unique<TestNetworkDelegate>());
+  auto cookie_access_delegate = std::make_unique<TestCookieAccessDelegate>();
+  TestCookieAccessDelegate* raw_cookie_access_delegate =
+      cookie_access_delegate.get();
+  auto cm = std::make_unique<CookieMonster>(nullptr, nullptr);
+  cm->SetCookieAccessDelegate(std::move(cookie_access_delegate));
+  context_builder->SetCookieStore(std::move(cm));
   auto context = context_builder->Build();
 
   const GURL kTestUrl = https_test.GetURL("/");
+  const IsolationInfo kTestIsolationInfo =
+      IsolationInfo::CreateForInternalRequest(url::Origin::Create(kTestUrl));
   {
     TestDelegate delegate;
     std::unique_ptr<URLRequest> req(context->CreateRequest(
         kTestUrl, DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS));
+    req->set_isolation_info(kTestIsolationInfo);
+    req->set_allow_credentials(false);
     req->Start();
     delegate.RunUntilComplete();
     EXPECT_EQ("0", delegate.data_received());
@@ -1773,6 +1781,8 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
     std::unique_ptr<URLRequest> req(context->CreateRequest(
         kTestUrl, DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS));
     req->SetLoadFlags(LOAD_SKIP_CACHE_VALIDATION);
+    req->set_allow_credentials(false);
+    req->set_isolation_info(kTestIsolationInfo);
     req->Start();
     delegate.RunUntilComplete();
     EXPECT_EQ("0", delegate.data_received());
@@ -1785,12 +1795,15 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
   const int64_t kBrowserRunId = 3;
   FirstPartySetsCacheFilter cache_filter(
       {{SchemefulSite(kTestUrl), kClearAtRunId}}, kBrowserRunId);
-  network_delegate->set_fps_cache_filter(std::move(cache_filter));
+  raw_cookie_access_delegate->set_first_party_sets_cache_filter(
+      std::move(cache_filter));
   {
     TestDelegate delegate;
     std::unique_ptr<URLRequest> req(context->CreateRequest(
         kTestUrl, DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS));
     req->SetLoadFlags(LOAD_SKIP_CACHE_VALIDATION);
+    req->set_allow_credentials(false);
+    req->set_isolation_info(kTestIsolationInfo);
     req->Start();
     delegate.RunUntilComplete();
     EXPECT_EQ("1", delegate.data_received());

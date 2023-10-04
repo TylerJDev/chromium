@@ -153,7 +153,7 @@ class Tracker : public KeyedService, public base::SupportsUserData {
       const scoped_refptr<base::SequencedTaskRunner>& background_task_runner,
       leveldb_proto::ProtoDatabaseProvider* db_provider,
       base::WeakPtr<TrackerEventExporter> event_exporter,
-      ConfigurationProviderList configuration_providers =
+      const ConfigurationProviderList& configuration_providers =
           GetDefaultConfigurationProviders());
 
   // Possibly adds a command line argument for a child browser process to
@@ -168,6 +168,11 @@ class Tracker : public KeyedService, public base::SupportsUserData {
 
   // Must be called whenever an event happens.
   virtual void NotifyEvent(const std::string& event) = 0;
+
+#if !BUILDFLAG(IS_ANDROID)
+  // Notifies that the "used" event for `feature` has happened.
+  virtual void NotifyUsedEvent(const base::Feature& feature) = 0;
+#endif
 
   // This function must be called whenever the triggering condition for a
   // specific feature happens. Returns true iff the display of the in-product

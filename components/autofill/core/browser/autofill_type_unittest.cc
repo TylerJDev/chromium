@@ -68,7 +68,7 @@ TEST(AutofillTypeTest, ServerFieldTypes) {
   // Type with group and subgroup.
   AutofillType phone(PHONE_HOME_NUMBER);
   EXPECT_EQ(PHONE_HOME_NUMBER, phone.GetStorableType());
-  EXPECT_EQ(FieldTypeGroup::kPhoneHome, phone.group());
+  EXPECT_EQ(FieldTypeGroup::kPhone, phone.group());
 
   // Boundary (error) condition.
   AutofillType boundary(MAX_VALID_FIELD_TYPE);
@@ -88,37 +88,56 @@ TEST(AutofillTypeTest, ServerFieldTypes) {
 
 TEST(AutofillTypeTest, HtmlFieldTypes) {
   // Unknown type.
-  AutofillType unknown(HtmlFieldType::kUnspecified, HtmlFieldMode::kNone);
+  AutofillType unknown(HtmlFieldType::kUnspecified);
   EXPECT_EQ(UNKNOWN_TYPE, unknown.GetStorableType());
   EXPECT_EQ(FieldTypeGroup::kNoGroup, unknown.group());
 
   // Type with group but no subgroup.
-  AutofillType first(HtmlFieldType::kGivenName, HtmlFieldMode::kNone);
+  AutofillType first(HtmlFieldType::kGivenName);
   EXPECT_EQ(NAME_FIRST, first.GetStorableType());
   EXPECT_EQ(FieldTypeGroup::kName, first.group());
 
   // Type with group and subgroup.
-  AutofillType phone(HtmlFieldType::kTel, HtmlFieldMode::kNone);
+  AutofillType phone(HtmlFieldType::kTel);
   EXPECT_EQ(PHONE_HOME_WHOLE_NUMBER, phone.GetStorableType());
-  EXPECT_EQ(FieldTypeGroup::kPhoneHome, phone.group());
+  EXPECT_EQ(FieldTypeGroup::kPhone, phone.group());
 
   // Last value, to check any offset errors.
-  AutofillType last(HtmlFieldType::kCreditCardExp4DigitYear,
-                    HtmlFieldMode::kNone);
+  AutofillType last(HtmlFieldType::kCreditCardExp4DigitYear);
   EXPECT_EQ(CREDIT_CARD_EXP_4_DIGIT_YEAR, last.GetStorableType());
   EXPECT_EQ(FieldTypeGroup::kCreditCard, last.group());
+}
 
-  // Shipping mode.
-  AutofillType shipping_first(HtmlFieldType::kGivenName,
-                              HtmlFieldMode::kShipping);
-  EXPECT_EQ(NAME_FIRST, shipping_first.GetStorableType());
-  EXPECT_EQ(FieldTypeGroup::kName, shipping_first.group());
+class AutofillTypeTestForHtmlFieldTypes
+    : public ::testing::TestWithParam<std::underlying_type_t<HtmlFieldType>> {
+ public:
+  HtmlFieldType html_field_type() const {
+    return ToSafeHtmlFieldType(GetParam(), HtmlFieldType::kUnrecognized);
+  }
+};
 
-  // Billing mode.
-  AutofillType billing_first(HtmlFieldType::kGivenName,
-                             HtmlFieldMode::kBilling);
-  EXPECT_EQ(NAME_FIRST, billing_first.GetStorableType());
-  EXPECT_EQ(FieldTypeGroup::kNameBilling, billing_first.group());
+INSTANTIATE_TEST_SUITE_P(
+    AutofillTypeTest,
+    AutofillTypeTestForHtmlFieldTypes,
+    testing::Range(base::to_underlying(HtmlFieldType::kMinValue),
+                   base::to_underlying(HtmlFieldType::kMaxValue)));
+
+TEST_P(AutofillTypeTestForHtmlFieldTypes, GroupsOfHtmlFieldTypes) {
+  if (HtmlFieldTypeToBestCorrespondingServerFieldType(html_field_type()) ==
+      UNKNOWN_TYPE) {
+    return;
+  }
+  // TODO(crbug.com/1476882): AutofillType(HtmlFieldType::kOneTimeCode).group()
+  // is kNoGroup, but AutofillType(ONE_TIME_CODE).group() is kUnfillable.
+  if (html_field_type() == HtmlFieldType::kOneTimeCode) {
+    return;
+  }
+  AutofillType t(html_field_type());
+  SCOPED_TRACE(testing::Message()
+               << "html_field_type="
+               << FieldTypeToStringPiece(html_field_type()) << " "
+               << "field_type=" << FieldTypeToStringPiece(t.GetStorableType()));
+  EXPECT_EQ(t.group(), GroupTypeOfServerFieldType(t.GetStorableType()));
 }
 
 }  // namespace

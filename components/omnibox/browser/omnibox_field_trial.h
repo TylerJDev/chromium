@@ -291,6 +291,13 @@ bool HUPSearchDatabase();
 
 // Returns true if the OmniboxActionsUISimplification feature is enabled.
 bool IsActionsUISimplificationEnabled();
+// Indicates whether to include changes that affect the NTP realbox.
+extern const base::FeatureParam<bool> kActionsUISimplificationIncludeRealbox;
+// Indicates whether to delete extra matches produced by splitting
+// actions out to become independent suggestions. Note, this will only
+// apply if `IsActionsUISimplificationEnabled` returns true and the
+// total number of matches exceeds the limit (i.e. there are extra matches).
+extern const base::FeatureParam<bool> kActionsUISimplificationTrimExtra;
 
 // Returns true if the fuzzy URL suggestions feature is enabled.
 bool IsFuzzyUrlSuggestionsEnabled();
@@ -346,6 +353,8 @@ extern const base::FeatureParam<bool> kSquareSuggestIconEntities;
 // takes up half of the space. Should be (0, 1). No effect if
 // `kSquareSuggestIconEntities` is false or this is 1.
 extern const base::FeatureParam<double> kSquareSuggestIconEntitiesScale;
+// Gray rounded rect background for weather icons.
+extern const base::FeatureParam<bool> kSquareSuggestIconWeather;
 
 // Omnibox UI simplification - uniform row heights.
 // Returns true if the feature to enable uniform row height is enabled.
@@ -367,6 +376,9 @@ bool IsChromeRefreshSuggestIconsEnabled();
 // Returns true if the feature to enable CR23 action chip icons is enabled.
 bool IsChromeRefreshActionChipIconsEnabled();
 
+// Omnibox CR23 - action chip shape.
+// Returns true if the feature to enable CR23 action chip shape is enabled.
+bool IsChromeRefreshActionChipShapeEnabled();
 // Omnibox CR23 - suggestion hover fill shape.
 // Returns true if the feature to enable CR23 suggestion hover fill shape is
 // enabled.
@@ -471,16 +483,6 @@ extern int kDefaultMinimumTimeBetweenSuggestQueriesMs;
 extern const char kOmniboxUIUnelideURLOnHoverThresholdMsParam[];
 
 // `FeatureParam`s
-
-// Autocomplete stability and related features.
-// Limit how frequently `AutocompleteController::UpdateResult()` will be
-// invoked. See the comments at `AutocompleteController::update_debouncer_`.
-extern const base::FeatureParam<bool>
-    kAutocompleteStabilityUpdateResultDebounceFromLastRun;
-// See `kAutocompleteStabilityUpdateResultDebounceFromLastRun`. No debouncing
-// if set to 0.
-extern const base::FeatureParam<int>
-    kAutocompleteStabilityUpdateResultDebounceDelay;
 
 // Local history zero-prefix (aka zero-suggest) and prefix suggestions.
 
@@ -748,6 +750,11 @@ constexpr base::FeatureParam<bool> kActionsInSuggestPromoteReviewsAction(
 extern const base::FeatureParam<bool>
     kOmniboxModernizeVisualUpdateMergeClipboardOnNTP;
 // <- Android UI Revamp
+// ---------------------------------------------------------
+// Touch Down Trigger For Prefetch ->
+extern const base::FeatureParam<int>
+    kTouchDownTriggerForPrefetchMaxPrefetchesPerOmniboxSession;
+// <- Touch Down Trigger For Prefetch
 // ---------------------------------------------------------
 
 // New params should be inserted above this comment. They should be ordered

@@ -9,6 +9,8 @@
 #include "components/viz/common/gpu/vulkan_context_provider.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/GrTypes.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/private/chromium/GrDeferredDisplayList.h"
 #include "third_party/skia/include/private/chromium/GrSurfaceCharacterization.h"
 #include "third_party/skia/include/private/chromium/GrVkSecondaryCBDrawContext.h"
@@ -39,7 +41,7 @@ SkiaOutputDeviceVulkanSecondaryCB::SkiaOutputDeviceVulkanSecondaryCB(
   VkFormat vkFormat = VK_FORMAT_UNDEFINED;
   bool result = secondary_cb_draw_context->characterize(&characterization);
   CHECK(result);
-  characterization.backendFormat().asVkFormat(&vkFormat);
+  GrBackendFormats::AsVkFormat(characterization.backendFormat(), &vkFormat);
   auto sk_color_type = vkFormat == VK_FORMAT_R8G8B8A8_UNORM
                            ? kRGBA_8888_SkColorType
                            : kBGRA_8888_SkColorType;
@@ -60,7 +62,8 @@ SkiaOutputDeviceVulkanSecondaryCB::BeginScopedPaint() {
 void SkiaOutputDeviceVulkanSecondaryCB::Submit(bool sync_cpu,
                                                base::OnceClosure callback) {
   // Submit the primary command buffer which may render passes.
-  context_provider_->GetGrContext()->submit(sync_cpu);
+  context_provider_->GetGrContext()->submit(sync_cpu ? GrSyncCpu::kYes
+                                                     : GrSyncCpu::kNo);
   context_provider_->EnqueueSecondaryCBPostSubmitTask(std::move(callback));
 }
 

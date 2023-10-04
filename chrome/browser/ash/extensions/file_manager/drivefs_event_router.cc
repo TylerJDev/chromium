@@ -48,7 +48,8 @@ file_manager_private::DriveConfirmDialogType ConvertDialogReasonType(
 DriveFsEventRouter::DriveFsEventRouter(
     Profile* profile,
     SystemNotificationManager* notification_manager)
-    : notification_manager_(notification_manager), profile_(profile) {}
+    : profile_(profile), notification_manager_(notification_manager) {}
+
 DriveFsEventRouter::~DriveFsEventRouter() = default;
 
 DriveFsEventRouter::SyncingStatusState::SyncingStatusState() = default;
@@ -156,7 +157,16 @@ void DriveFsEventRouter::OnItemProgress(
   if (!ash::features::IsInlineSyncStatusProgressEventsEnabled()) {
     return;
   }
-  const std::string path = event.path;
+  base::FilePath file_path;
+  std::string path;
+
+  if (event.file_path.has_value()) {
+    file_path = *event.file_path;
+    path = file_path.value();
+  } else {
+    path = event.path;
+    file_path = base::FilePath(path);
+  }
 
   drivefs::SyncStatus status;
   if (event.progress == 0) {
@@ -169,9 +179,8 @@ void DriveFsEventRouter::OnItemProgress(
 
   std::vector<const drivefs::SyncState> filtered_states;
 
-  filtered_states.emplace_back(
-      drivefs::SyncState{status, static_cast<float>(event.progress) / 100.0f,
-                         base::FilePath(path)});
+  filtered_states.emplace_back(drivefs::SyncState{
+      status, static_cast<float>(event.progress) / 100.0f, file_path});
 
   if (status == drivefs::SyncStatus::kCompleted) {
     const auto previous_state_iter = path_to_sync_state_.find(path);
@@ -384,6 +393,29 @@ void DriveFsEventRouter::OnError(const drivefs::mojom::DriveError& error) {
                    file_manager_private::OnDriveSyncError::kEventName,
                    file_manager_private::OnDriveSyncError::Create(event));
   }
+}
+
+void DriveFsEventRouter::Observe(
+    drive::DriveIntegrationService* const service) {
+  DCHECK(service);
+  drive_observer_.Observe(service);
+  drivefs::DriveFsHost* const host = service->GetDriveFsHost();
+  drivefs_host_observer_.Observe(host);
+  host->set_dialog_handler(
+      base::BindRepeating(&DriveFsEventRouter::DisplayConfirmDialog,
+                          weak_ptr_factory_.GetWeakPtr()));
+}
+
+void DriveFsEventRouter::Reset() {
+  if (drivefs::DriveFsHost* const host = drivefs_host_observer_.GetSource()) {
+    host->set_dialog_handler({});
+  }
+  drivefs_host_observer_.Reset();
+  drive_observer_.Reset();
+}
+
+void DriveFsEventRouter::OnDriveIntegrationServiceDestroyed() {
+  Reset();
 }
 
 void DriveFsEventRouter::OnBulkPinProgress(

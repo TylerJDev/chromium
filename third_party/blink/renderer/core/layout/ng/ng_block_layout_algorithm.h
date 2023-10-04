@@ -37,13 +37,23 @@ struct NGPreviousInflowPosition {
   bool self_collapsing_child_had_clearance;
 };
 
-// This strut holds information for the current inflow child. The data is not
+// This struct holds information for the current inflow child. The data is not
 // useful outside of handling this single inflow child.
 struct NGInflowChildData {
+  NGInflowChildData(NGBfcOffset bfc_offset_estimate,
+                    const NGMarginStrut& margin_strut,
+                    const NGBoxStrut& margins,
+                    bool is_pushed_by_floats = false)
+      : bfc_offset_estimate(bfc_offset_estimate),
+        margin_strut(margin_strut),
+        margins(margins),
+        is_pushed_by_floats(is_pushed_by_floats) {}
+
+  NGInflowChildData(const NGInflowChildData&) = default;
+
   NGBfcOffset bfc_offset_estimate;
   NGMarginStrut margin_strut;
   NGBoxStrut margins;
-  bool allow_discard_start_margin;
   bool is_pushed_by_floats = false;
 };
 
@@ -349,7 +359,7 @@ class CORE_EXPORT NGBlockLayoutAlgorithm
     return false;
   }
 
-  // Returns true if |this| is a ruby segment (LayoutNGRubyRun) and the
+  // Returns true if |this| is a ruby segment (LayoutRubyColumn) and the
   // specified |child| is a ruby annotation box (LayoutNGRubyText).
   bool IsRubyText(const NGLayoutInputNode& child) const;
 
@@ -359,8 +369,18 @@ class CORE_EXPORT NGBlockLayoutAlgorithm
 
   // Layout |placeholder| content, and decide the location of |placeholder|.
   // This is called only if |this| is a text control.
-  void HandleTextControlPlaceholder(
+  // This function returns a new value for `NGPreviousInflowPosition::
+  // logical_block_offset`.
+  LayoutUnit HandleTextControlPlaceholder(
       NGBlockNode placeholder,
+      const NGPreviousInflowPosition& previous_inflow_position);
+  // A helper for HandleTextControlPlaceholder().
+  // This function returns a new value for `NGPreviousInflowPosition::
+  // logical_block_offset`.
+  LayoutUnit FinishTextControlPlaceholder(
+      const NGLayoutResult* result,
+      const LogicalOffset& offset,
+      bool apply_fixed_size,
       const NGPreviousInflowPosition& previous_inflow_position);
 
   // Adjusts the inline offset of the slider thumb box from the value of

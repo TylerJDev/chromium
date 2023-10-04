@@ -28,6 +28,7 @@ namespace ash {
 
 class KioskLaunchController;
 class LoginFeedback;
+class OobeMetricsHelper;
 
 // LoginDisplayHostCommon contains code which is not specific to a particular UI
 // implementation - the goal is to reduce code duplication between
@@ -95,6 +96,8 @@ class LoginDisplayHostCommon : public LoginDisplayHost,
 
   WizardContext* GetWizardContext() override;
 
+  OobeMetricsHelper* GetOobeMetricsHelper() override;
+
  protected:
   virtual void OnStartSignInScreen() = 0;
   virtual void OnStartAppLaunch() = 0;
@@ -148,9 +151,6 @@ class LoginDisplayHostCommon : public LoginDisplayHost,
   // Make sure chrome won't exit while we are at login/oobe screen.
   ScopedKeepAlive keep_alive_;
 
-  // Called after host deletion.
-  std::vector<base::OnceClosure> completion_callbacks_;
-
   KioskAppMenuController kiosk_app_menu_controller_;
 
   std::unique_ptr<LoginFeedback> login_feedback_;
@@ -166,6 +166,8 @@ class LoginDisplayHostCommon : public LoginDisplayHost,
       bootstrap_controller_;
 
   base::CallbackListSubscription app_terminating_subscription_;
+
+  std::unique_ptr<OobeMetricsHelper> oobe_metrics_helper_;
 
   base::WeakPtrFactory<LoginDisplayHostCommon> weak_factory_{this};
 };

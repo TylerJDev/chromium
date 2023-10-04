@@ -14,6 +14,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "chrome/browser/apps/app_service/app_registry_cache_waiter.h"
 #include "chrome/browser/apps/intent_helper/intent_picker_features.h"
 #include "chrome/browser/banners/test_app_banner_manager_desktop.h"
 #include "chrome/browser/feature_engagement/tracker_factory.h"
@@ -28,7 +29,6 @@
 #include "chrome/browser/ui/views/page_action/page_action_icon_view.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
-#include "chrome/browser/web_applications/test/app_registry_cache_waiter.h"
 #include "chrome/browser/web_applications/test/web_app_install_test_utils.h"
 #include "chrome/browser/web_applications/web_app_callback_app_identity.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
@@ -106,7 +106,7 @@ class FeaturePromoDialogTest : public DialogBrowserTest {
     web_app::WebAppRegistrar& registrar =
         web_app::WebAppProvider::GetForTest(profile)->registrar_unsafe();
     for (const auto& app_id : registrar.GetAppIds()) {
-      web_app::AppReadinessWaiter app_readiness_waiter(
+      apps::AppReadinessWaiter app_readiness_waiter(
           profile, app_id, apps::Readiness::kUninstalledByUser);
       web_app::test::UninstallWebApp(profile, app_id);
       app_readiness_waiter.Await();
@@ -133,14 +133,16 @@ class FeaturePromoDialogTest : public DialogBrowserTest {
     // uses a mock, cancel that and just show it directly.
     const auto status = promo_controller->GetPromoStatus(*feature_);
     if (status == user_education::FeaturePromoStatus::kQueuedForStartup)
-      promo_controller->EndPromo(*feature_);
+      promo_controller->EndPromo(
+          *feature_, user_education::FeaturePromoCloseReason::kAbortPromo);
 
     // Set up mock tracker to allow the IPH, then attempt to show it.
     EXPECT_CALL(*mock_tracker, ShouldTriggerHelpUI(Ref(*feature_)))
         .Times(1)
         .WillOnce(Return(true));
-    ASSERT_TRUE(promo_controller->MaybeShowPromo(
-        *feature_, base::DoNothing(), GetReplacementsForFeature(*feature_)));
+    user_education::FeaturePromoParams params(*feature_);
+    params.body_params = GetReplacementsForFeature(*feature_);
+    ASSERT_TRUE(promo_controller->MaybeShowPromo(std::move(params)));
   }
 
  private:

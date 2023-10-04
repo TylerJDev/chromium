@@ -87,6 +87,7 @@ public class BookmarkFolderPickerRenderTest {
     @Rule
     public final ChromeRenderTestRule mRenderTestRule =
             ChromeRenderTestRule.Builder.withPublicCorpus()
+                    .setRevision(1)
                     .setBugComponent(ChromeRenderTestRule.Component.UI_BROWSER_BOOKMARKS)
                     .build();
 
@@ -119,8 +120,7 @@ public class BookmarkFolderPickerRenderTest {
     private final BookmarkItem mUserFolderItem = new BookmarkItem(
             mUserFolderId, "UserFolder", null, true, mMobileFolderId, false, false, 0, false, 0);
     private final BookmarkItem mUserBookmarkItem = new BookmarkItem(mUserBookmarkId, "UserBookmark",
-            JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL), false, mUserFolderId, true, false,
-            0, false, 0);
+            JUnitTestGURLs.EXAMPLE_URL, false, mUserFolderId, true, false, 0, false, 0);
     private final BookmarkItem mUserFolderItem2 = new BookmarkItem(
             mUserFolderId2, "UserFolder2", null, true, mMobileFolderId, false, false, 0, false, 0);
 
@@ -175,9 +175,10 @@ public class BookmarkFolderPickerRenderTest {
         // Reading list folder
         doReturn(mReadingListFolderId).when(mBookmarkModel).getReadingListFolder();
         doReturn(mReadingListFolderItem).when(mBookmarkModel).getBookmarkById(mReadingListFolderId);
-        doReturn(Arrays.asList(mReadingListFolderId))
+        doReturn(Arrays.asList(
+                         mDesktopFolderId, mMobileFolderId, mOtherFolderId, mReadingListFolderId))
                 .when(mBookmarkModel)
-                .getTopLevelFolderIds(/*getSpecial=*/true, /*getNormal=*/false);
+                .getTopLevelFolderIds();
         // Mobile bookmarks folder
         doReturn(mMobileFolderId).when(mBookmarkModel).getMobileFolderId();
         doReturn(mMobileFolderItem).when(mBookmarkModel).getBookmarkById(mMobileFolderId);
@@ -242,9 +243,9 @@ public class BookmarkFolderPickerRenderTest {
                     mBookmarkUiPrefs, mShoppingService);
 
             mCoordinator = new BookmarkFolderPickerCoordinator(mActivity, mBookmarkModel,
-                    mBookmarkImageFetcher, Arrays.asList(mUserBookmarkId), mUserFolderId,
-                    mFinishRunnable, mAddNewFolderCoordinator, mBookmarkUiPrefs,
-                    mImprovedBookmarkRowCoordinator);
+                    mBookmarkImageFetcher, Arrays.asList(mUserBookmarkId), mFinishRunnable,
+                    mAddNewFolderCoordinator, mBookmarkUiPrefs, mImprovedBookmarkRowCoordinator,
+                    mShoppingService);
             mContentView.addView(mCoordinator.getView());
 
             Toolbar toolbar = (Toolbar) mContentView.findViewById(R.id.toolbar);

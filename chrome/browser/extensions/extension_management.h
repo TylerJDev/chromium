@@ -233,6 +233,9 @@ class ExtensionManagement : public KeyedService {
   // aren't deferred).
   ExtensionIdSet GetForcePinnedList() const;
 
+  // Returns if an extension with |id| can navigate to file URLs.
+  bool IsFileUrlNavigationAllowed(const ExtensionId& id);
+
  private:
   using SettingsIdMap =
       base::flat_map<ExtensionId,
@@ -364,7 +367,7 @@ class ExtensionManagementFactory : public ProfileKeyedServiceFactory {
   ~ExtensionManagementFactory() override;
 
   // BrowserContextKeyedServiceExtensionManagementFactory:
-  KeyedService* BuildServiceInstanceFor(
+  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
       content::BrowserContext* context) const override;
   void RegisterProfilePrefs(
       user_prefs::PrefRegistrySyncable* registry) override;

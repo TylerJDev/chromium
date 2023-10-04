@@ -15,12 +15,15 @@
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_split.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/timer/elapsed_timer.h"
+#include "base/trace_event/memory_usage_estimator.h"
+#include "components/privacy_sandbox/privacy_sandbox_attestations/privacy_sandbox_attestations_histograms.h"
 #include "components/privacy_sandbox/privacy_sandbox_attestations/privacy_sandbox_attestations_parser.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "content/public/browser/browser_thread.h"
@@ -70,6 +73,30 @@ bool IsOverriddenByFlags(const net::SchemefulSite& site) {
   return false;
 }
 
+// The sentinel file is used to prevent crash-looping if the attestations file
+// crashes during parsing, which takes place right after startup.
+// The sentinel file is placed in the attestations component installation
+// directory just before parsing. Upon successful parsing, it is removed. If a
+// sentinel file is found on next start-up, this implies the previous parsing
+// has crashed. In this case no further parsing will be attempted.
+// Once there is a new version downloaded by the component updater, the old
+// version, along with any sentinel file, will be removed.
+class SentinelFile {
+ public:
+  explicit SentinelFile(const base::FilePath& install_dir)
+      : path_(install_dir.Append(kSentinelFileName)) {}
+
+  SentinelFile(const SentinelFile&) = delete;
+  SentinelFile& operator=(const SentinelFile&) = delete;
+
+  bool IsPresent() { return base::PathExists(path_); }
+  bool Create() { return base::WriteFile(path_, ""); }
+  bool Remove() { return base::DeleteFile(path_); }
+
+ private:
+  base::FilePath path_;
+};
+
 }  // namespace
 
 // static
@@ -104,6 +131,11 @@ PrivacySandboxSettingsImpl::Status PrivacySandboxAttestations::IsSiteAttested(
   // If attestations aren't enabled, pass the check trivially.
   if (!base::FeatureList::IsEnabled(
           privacy_sandbox::kEnforcePrivacySandboxAttestations)) {
+    return PrivacySandboxSettingsImpl::Status::kAllowed;
+  }
+
+  // Test has marked all Privacy Sandbox APIs as attested for any given site.
+  if (is_all_apis_attested_for_testing_) {
     return PrivacySandboxSettingsImpl::Status::kAllowed;
   }
 
@@ -176,6 +208,11 @@ bool PrivacySandboxAttestations::IsOverridden(
   return IsOverriddenByFlags(site) || base::Contains(overridden_sites_, site);
 }
 
+void PrivacySandboxAttestations::SetAllPrivacySandboxAttestedForTesting(
+    bool all_attested) {
+  is_all_apis_attested_for_testing_ = all_attested;
+}
+
 void PrivacySandboxAttestations::SetAttestationsForTesting(
     absl::optional<PrivacySandboxAttestationsMap> attestations_map) {
   attestations_map_ = std::move(attestations_map);
@@ -242,6 +279,24 @@ void PrivacySandboxAttestations::LoadAttestationsInternal(
     return;
   }
 
+  SentinelFile sentinel_file(installed_file_path.DirName());
+  if (sentinel_file.IsPresent()) {
+    // An existing sentinel file implies previous parsing has crashed.
+    attestations_parse_progress_ = Progress::kFinished;
+    RunLoadAttestationsDoneCallbackForTesting();  // IN-TEST
+    return;
+  }
+
+  if (!sentinel_file.Create()) {
+    // Failed to create the sentinel file.
+    attestations_parse_progress_ = Progress::kFinished;
+    RunLoadAttestationsDoneCallbackForTesting();  // IN-TEST
+    return;
+  }
+
+  // If there is any error or crash during parsing, the sentinel file will
+  // persist in the installation directory. It will prevent this version of
+  // the attestations file from being parsed again.
   base::ElapsedTimer parsing_timer;
   absl::optional<PrivacySandboxAttestationsMap> attestations_map =
       ParseAttestationsFromStream(stream);
@@ -251,10 +306,24 @@ void PrivacySandboxAttestations::LoadAttestationsInternal(
     RunLoadAttestationsDoneCallbackForTesting();  // IN-TEST
     return;
   }
+
   // For an attestations file with 10,000 entries, the average parsing time is
   // around 240 milliseconds as per local testing on a n2-standard-128 with 128
-  // vCPUs and 512 GB memory.
+  // vCPUs and 512 GB memory. The estimated dynamic memory usage is around 880
+  // KB.
   base::UmaHistogramTimes(kAttestationsFileParsingUMA, parsing_timer.Elapsed());
+  base::UmaHistogramMemoryKB(
+      kAttestationsMapMemoryUsageUMA,
+      base::trace_event::EstimateMemoryUsage(attestations_map.value()) / 1024);
+
+  if (!sentinel_file.Remove()) {
+    // Failed to remove the sentinel file.
+    attestations_parse_progress_ = Progress::kFinished;
+    RunLoadAttestationsDoneCallbackForTesting();  // IN-TEST
+    return;
+  }
+
+  attestations_parse_progress_ = Progress::kFinished;
 
   // Queries on Privacy Sandbox APIs attestation status may happen on the UI
   // thread. The final assignment of the attestations map and its version is
@@ -272,7 +341,6 @@ void PrivacySandboxAttestations::SetParsedAttestations(
     PrivacySandboxAttestationsMap attestations_map) {
   file_version_ = std::move(version);
   attestations_map_ = std::move(attestations_map);
-  attestations_parse_progress_ = Progress::kFinished;
 
   RunLoadAttestationsDoneCallbackForTesting();  // IN-TEST
 }

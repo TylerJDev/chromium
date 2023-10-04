@@ -11,6 +11,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doReturn;
@@ -48,11 +49,10 @@ import org.robolectric.shadows.ShadowLooper;
 import org.chromium.base.Promise;
 import org.chromium.base.supplier.ObservableSupplier;
 import org.chromium.base.supplier.ObservableSupplierImpl;
-import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.JniMocker;
+import org.chromium.chrome.browser.ChromeRobolectricTestRunner;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.app.tabmodel.TabWindowManagerSingleton;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
@@ -65,7 +65,6 @@ import org.chromium.components.favicon.LargeIconBridgeJni;
 import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.ui.base.Clipboard;
 import org.chromium.ui.base.ClipboardImpl;
-import org.chromium.ui.display.DisplayAndroidManager;
 import org.chromium.url.GURL;
 
 import java.io.Serializable;
@@ -78,7 +77,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 /** Unit tests for HistoryClustersCoordinator. */
-@RunWith(BaseRobolectricTestRunner.class)
+@RunWith(ChromeRobolectricTestRunner.class)
 @Config(manifest = Config.NONE)
 @CommandLineFlags.
 Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE, ChromeSwitches.DISABLE_NATIVE_INITIALIZATION})
@@ -158,8 +157,8 @@ public class HistoryClustersCoordinatorTest {
         }
 
         @Override
-        public boolean areTabGroupsEnabled() {
-            return mAreTabGroupsEnabled;
+        public boolean isRenameEnabled() {
+            return mRenameEnabled;
         }
     }
 
@@ -209,12 +208,11 @@ public class HistoryClustersCoordinatorTest {
     private final ObservableSupplierImpl<Boolean> mShouldShowClearBrowsingDataSupplier =
             new ObservableSupplierImpl<>();
     private boolean mIsSeparateActivity = true;
-    private boolean mAreTabGroupsEnabled = true;
     private boolean mHasOtherFormsOfBrowsingHistory = true;
+    private boolean mRenameEnabled = true;
 
     @Before
     public void setUp() {
-        resetStaticState();
         jniMocker.mock(LargeIconBridgeJni.TEST_HOOKS, mMockLargeIconBridgeJni);
         doReturn(1L).when(mMockLargeIconBridgeJni).init();
         HistoryClustersBridge.setInstanceForTesting(mHistoryClustersBridge);
@@ -242,7 +240,6 @@ public class HistoryClustersCoordinatorTest {
     @After
     public void tearDown() {
         mActivityScenario.close();
-        resetStaticState();
     }
 
     @Test
@@ -261,10 +258,19 @@ public class HistoryClustersCoordinatorTest {
 
     @Test
     @Config(qualifiers = "w600dp-h820dp")
-    public void testOpenHistoryClustersUiTablet() {
+    public void testOpenHistoryClustersUiTablet_renameDisabled() {
+        mRenameEnabled = false;
         mHistoryClustersCoordinator.openHistoryClustersUi("pandas");
         verify(mTab).loadUrl(argThat(
                 HistoryClustersMediatorTest.hasSameUrl("chrome://history/journeys?q=pandas")));
+    }
+
+    @Test
+    @Config(qualifiers = "w600dp-h820dp")
+    public void testOpenHistoryClustersUiTablet() {
+        mHistoryClustersCoordinator.openHistoryClustersUi("pandas");
+        verify(mTab).loadUrl(argThat(
+                HistoryClustersMediatorTest.hasSameUrl("chrome://history/grouped?q=pandas")));
     }
 
     @Test
@@ -476,7 +482,6 @@ public class HistoryClustersCoordinatorTest {
     @Test
     public void testMenuItemVisibility() {
         mIsSeparateActivity = false;
-        mAreTabGroupsEnabled = false;
         mHistoryClustersCoordinator.inflateActivityView();
         HistoryClustersToolbar toolbar = mHistoryClustersCoordinator.getActivityContentView()
                                                  .findViewById(R.id.selectable_list)
@@ -484,10 +489,9 @@ public class HistoryClustersCoordinatorTest {
 
         assertNotNull(toolbar);
         assertNull(toolbar.getMenu().findItem(R.id.close_menu_id));
-        assertNull(toolbar.getMenu().findItem(R.id.selection_mode_open_in_tab_group));
+        assertNotNull(toolbar.getMenu().findItem(R.id.selection_mode_open_in_tab_group));
 
         mIsSeparateActivity = true;
-        mAreTabGroupsEnabled = true;
         mHistoryClustersCoordinator.inflateActivityView();
         toolbar = mHistoryClustersCoordinator.getActivityContentView()
                           .findViewById(R.id.selectable_list)
@@ -496,6 +500,13 @@ public class HistoryClustersCoordinatorTest {
         assertNotNull(toolbar);
         assertNotNull(toolbar.getMenu().findItem(R.id.close_menu_id));
         assertNotNull(toolbar.getMenu().findItem(R.id.selection_mode_open_in_tab_group));
+        assertFalse(toolbar.getMenu().findItem(R.id.selection_mode_open_in_tab_group).isVisible());
+
+        mSelectionDelegate.setSelectedItems(new HashSet<>(Arrays.asList(mVisit1, mVisit2)));
+        assertTrue(toolbar.getMenu().findItem(R.id.selection_mode_open_in_tab_group).isVisible());
+
+        mSelectionDelegate.setSelectedItems(new HashSet<>(Arrays.asList(mVisit1)));
+        assertNull(toolbar.getMenu().findItem(R.id.selection_mode_open_in_tab_group));
     }
 
     @Test
@@ -524,6 +535,31 @@ public class HistoryClustersCoordinatorTest {
         assertFalse(toolbar.getMenu().findItem(R.id.info_menu_id).isVisible());
     }
 
+    @Test
+    public void testOptOutPresent_renameDisabled() {
+        mRenameEnabled = false;
+        mHistoryClustersCoordinator.getActivityContentView();
+        mHistoryClustersCoordinator.setInitialQuery(QueryState.forQueryless());
+        fulfillPromise(mPromise, mClusterResult);
+
+        HistoryClustersToolbar toolbar = mHistoryClustersCoordinator.getActivityContentView()
+                                                 .findViewById(R.id.selectable_list)
+                                                 .findViewById(R.id.action_bar);
+        assertNotNull(toolbar.getMenu().findItem(R.id.optout_menu_id));
+    }
+
+    @Test
+    public void testRenameRemovesOptOut() {
+        mHistoryClustersCoordinator.getActivityContentView();
+        mHistoryClustersCoordinator.setInitialQuery(QueryState.forQueryless());
+        fulfillPromise(mPromise, mClusterResult);
+
+        HistoryClustersToolbar toolbar = mHistoryClustersCoordinator.getActivityContentView()
+                                                 .findViewById(R.id.selectable_list)
+                                                 .findViewById(R.id.action_bar);
+        assertNull(toolbar.getMenu().findItem(R.id.optout_menu_id));
+    }
+
     private <T> void fulfillPromise(Promise<T> promise, T result) {
         promise.fulfill(result);
         ShadowLooper.idleMainLooper();
@@ -536,11 +572,6 @@ public class HistoryClustersCoordinatorTest {
                 return;
             }
         }
-        assertFalse(true);
-    }
-
-    private static void resetStaticState() {
-        DisplayAndroidManager.resetInstanceForTesting();
-        TabWindowManagerSingleton.resetTabModelSelectorFactoryForTesting();
+        fail();
     }
 }

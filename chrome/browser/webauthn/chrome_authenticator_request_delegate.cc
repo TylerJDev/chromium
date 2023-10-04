@@ -14,8 +14,10 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/i18n/time_formatting.h"
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/sys_byteorder.h"
@@ -64,12 +66,14 @@
 #include "device/fido/features.h"
 #include "device/fido/fido_authenticator.h"
 #include "device/fido/fido_discovery_factory.h"
+#include "device/fido/fido_request_handler_base.h"
 #include "device/fido/fido_types.h"
 #include "device/fido/public_key_credential_descriptor.h"
 #include "device/fido/public_key_credential_user_entity.h"
 #include "extensions/common/constants.h"
 #include "net/base/url_util.h"
 #include "third_party/icu/source/common/unicode/locid.h"
+#include "third_party/icu/source/i18n/unicode/timezone.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/window_open_disposition.h"
 
@@ -92,6 +96,8 @@
 namespace {
 
 ChromeAuthenticatorRequestDelegate::TestObserver* g_observer = nullptr;
+
+static constexpr char kGoogleRpId[] = "google.com";
 
 // Returns true iff |relying_party_id| is listed in the
 // SecurityKeyPermitAttestation policy.
@@ -118,6 +124,34 @@ bool IsOriginListedInEnterpriseAttestationSwitch(
       origin_strings, [&caller_origin](base::StringPiece origin_string) {
         return url::Origin::Create(GURL(origin_string)) == caller_origin;
       });
+}
+
+// Returns true iff the credential is reported as being present on the platform
+// authenticator (i.e. it is not a phone or icloud credential).
+bool IsCredentialFromPlatformAuthenticator(
+    device::DiscoverableCredentialMetadata cred) {
+  return cred.source != device::AuthenticatorType::kICloudKeychain &&
+         cred.source != device::AuthenticatorType::kPhone;
+}
+
+// Returns true iff |cred_id| starts with the prefix reserved for passkeys used
+// to authenticate to Google services.
+bool CredIdHasGooglePasskeyAuthPrefix(const std::vector<uint8_t>& cred_id) {
+  constexpr std::string_view kPrefix = "GOOGLE_ACCOUNT:";
+  if (cred_id.size() < kPrefix.size()) {
+    return false;
+  }
+  return memcmp(cred_id.data(), kPrefix.data(), kPrefix.size()) == 0;
+}
+
+// Filters |passkeys| to only contain credentials that are used to authenticate
+// to Google services.
+void FilterGoogleAuthPasskeys(
+    std::vector<device::DiscoverableCredentialMetadata>* passkeys) {
+  std::erase_if(*passkeys, [](const auto& passkey) {
+    return IsCredentialFromPlatformAuthenticator(passkey) &&
+           !CredIdHasGooglePasskeyAuthPrefix(passkey.user.id);
+  });
 }
 
 #if BUILDFLAG(IS_MAC)
@@ -520,6 +554,8 @@ bool ChromeAuthenticatorRequestDelegate::DoesBlockRequestOnFailure(
       return dialog_model_->OnWinUserCancelled();
     case InterestingFailureReason::kHybridTransportError:
       return dialog_model_->OnHybridTransportError();
+    case InterestingFailureReason::kNoPasskeys:
+      return dialog_model_->OnNoPasskeys();
   }
   return true;
 }
@@ -529,18 +565,18 @@ void ChromeAuthenticatorRequestDelegate::OnTransactionSuccessful(
     device::FidoRequestType request_type,
     device::AuthenticatorType authenticator_type) {
 #if BUILDFLAG(IS_MAC)
-  if (request_source != RequestSource::kWebAuthentication ||
-      authenticator_type != device::AuthenticatorType::kTouchID) {
+  if (request_source != RequestSource::kWebAuthentication) {
     return;
   }
 
-  base::Time::Exploded exploded;
-  base::Time::Now().UTCExplode(&exploded);
-  Profile::FromBrowserContext(GetBrowserContext())
-      ->GetPrefs()
-      ->SetString(kWebAuthnTouchIdLastUsed,
-                  base::StringPrintf("%04d-%02d-%02d", exploded.year,
-                                     exploded.month, exploded.day_of_month));
+  if (authenticator_type == device::AuthenticatorType::kTouchID) {
+    Profile::FromBrowserContext(GetBrowserContext())
+        ->GetPrefs()
+        ->SetString(
+            kWebAuthnTouchIdLastUsed,
+            base::UnlocalizedTimeFormatWithPattern(
+                base::Time::Now(), "yyyy-MM-dd", icu::TimeZone::getGMT()));
+  }
 
   dialog_model_->RecordMacOsSuccessHistogram(request_type, authenticator_type);
 #endif
@@ -614,6 +650,14 @@ void ChromeAuthenticatorRequestDelegate::ConfigureDiscoveries(
   DCHECK(request_type == device::FidoRequestType::kGetAssertion ||
          resident_key_requirement.has_value());
 
+  // Without the UI enabled, discoveries like caBLE, Android AOA, iCloud
+  // keychain, and the enclave, don't make sense.
+  if (base::FeatureList::IsEnabled(
+          device::kWebAuthnRequireUIForComplexDiscoveries) &&
+      disable_ui_) {
+    return;
+  }
+
   const bool cable_extension_permitted = ShouldPermitCableExtension(origin);
   const bool cable_extension_provided =
       cable_extension_permitted && !pairings_from_extension.empty();
@@ -683,7 +727,10 @@ void ChromeAuthenticatorRequestDelegate::ConfigureDiscoveries(
   device::WinWebAuthnApi* const webauthn_api =
       device::WinWebAuthnApi::GetDefault();
   const bool system_handles_cable =
-      webauthn_api && webauthn_api->SupportsHybrid();
+      webauthn_api && webauthn_api->SupportsHybrid() &&
+      // For now, Chrome handles hybrid even if Windows supports it for synced
+      // GPM passkeys.
+      !base::FeatureList::IsEnabled(device::kWebAuthnListSyncedPasskeys);
 #else
   constexpr bool system_handles_cable = false;
 #endif
@@ -830,6 +877,25 @@ void ChromeAuthenticatorRequestDelegate::SetUserEntityForMakeCredentialRequest(
 
 void ChromeAuthenticatorRequestDelegate::OnTransportAvailabilityEnumerated(
     device::FidoRequestHandlerBase::TransportAvailabilityInfo data) {
+  if (base::FeatureList::IsEnabled(device::kWebAuthnFilterGooglePasskeys) &&
+      dialog_model()->relying_party_id() == kGoogleRpId &&
+      std::ranges::any_of(data.recognized_credentials,
+                          IsCredentialFromPlatformAuthenticator)) {
+    // Regrettably, Chrome will create webauthn credentials for things other
+    // than authentication (e.g. credit card autofill auth) under the rp id
+    // "google.com". To differentiate those credentials from actual passkeys you
+    // can use to sign in, Google adds a prefix to the user id.
+    // This code filter passkeys that do not match that prefix.
+    FilterGoogleAuthPasskeys(&data.recognized_credentials);
+    if (data.has_platform_authenticator_credential ==
+            device::FidoRequestHandlerBase::RecognizedCredential::
+                kHasRecognizedCredential &&
+        base::ranges::none_of(data.recognized_credentials,
+                              IsCredentialFromPlatformAuthenticator)) {
+      data.has_platform_authenticator_credential = device::
+          FidoRequestHandlerBase::RecognizedCredential::kNoRecognizedCredential;
+    }
+  }
   if (base::FeatureList::IsEnabled(device::kWebAuthnListSyncedPasskeys) &&
       base::FeatureList::IsEnabled(syncer::kSyncWebauthnCredentials) &&
       base::FeatureList::IsEnabled(device::kWebAuthnNewPasskeyUI) &&
@@ -1092,10 +1158,8 @@ absl::optional<int> ChromeAuthenticatorRequestDelegate::DaysSinceDate(
     return absl::nullopt;
   }
 
-  base::Time::Exploded exploded = {0};
-  exploded.year = year;
-  exploded.month = month;
-  exploded.day_of_month = day_of_month;
+  const base::Time::Exploded exploded = {
+      .year = year, .month = month, .day_of_month = day_of_month};
 
   base::Time t;
   if (!base::Time::FromUTCExploded(exploded, &t) || now < t) {

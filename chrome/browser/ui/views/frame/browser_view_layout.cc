@@ -98,10 +98,11 @@ class BrowserViewLayout::WebContentsModalDialogHostViews
   }
 
   gfx::Point GetDialogPosition(const gfx::Size& size) override {
+    // Horizontally places the dialog at the center of the content.
     views::View* view = browser_view_layout_->contents_container_;
-    gfx::Rect content_area = view->ConvertRectToWidget(view->GetLocalBounds());
-    const int middle_x = content_area.x() + content_area.width() / 2;
-    const int top = browser_view_layout_->web_contents_modal_dialog_top_y_;
+    gfx::Rect rect = view->ConvertRectToWidget(view->GetLocalBounds());
+    const int middle_x = rect.x() + rect.width() / 2;
+    const int top = browser_view_layout_->dialog_top_y_;
     return gfx::Point(middle_x - size.width() / 2, top);
   }
 
@@ -116,14 +117,18 @@ class BrowserViewLayout::WebContentsModalDialogHostViews
   gfx::Size GetMaximumDialogSize() override {
     views::View* view = browser_view_layout_->contents_container_;
     gfx::Rect content_area = view->ConvertRectToWidget(view->GetLocalBounds());
-    const int top = browser_view_layout_->web_contents_modal_dialog_top_y_;
+    const int top = browser_view_layout_->dialog_top_y_;
     return gfx::Size(content_area.width(), content_area.bottom() - top);
+  }
+
+  views::Widget* GetHostWidget() const {
+    return views::Widget::GetWidgetForNativeView(
+        browser_view_layout_->delegate_->GetHostViewForAnchoring());
   }
 
  private:
   gfx::NativeView GetHostView() const override {
-    return browser_view_layout_->browser_view_->GetWidgetForAnchoring()
-        ->GetNativeView();
+    return GetHostWidget()->GetNativeView();
   }
 
   // Add/remove observer.
@@ -296,7 +301,7 @@ int BrowserViewLayout::NonClientHitTest(const gfx::Point& point) {
 
   // Determine if the TabStrip exists and is capable of being clicked on. We
   // might be a popup window without a TabStrip.
-  if (delegate_->IsTabStripVisible()) {
+  if (delegate_->ShouldDrawTabStrip()) {
     // See if the mouse pointer is within the bounds of the TabStripRegionView.
     gfx::Point test_point(point);
     if (ConvertedHitTest(parent, tab_strip_region_view_, &test_point)) {
@@ -388,10 +393,9 @@ void BrowserViewLayout::Layout(views::View* browser_view) {
   int top = LayoutTitleBarForWebApp(top_inset);
   if (delegate_->ShouldLayoutTabStrip()) {
     top = LayoutTabStripRegion(top);
-    if (delegate_->IsTabStripVisible()) {
+    if (delegate_->ShouldDrawTabStrip()) {
       tab_strip_->SetBackgroundOffset(tab_strip_region_view_->GetMirroredX() +
-                                      browser_view_->GetMirroredX() +
-                                      delegate_->GetThemeBackgroundXInset());
+                                      browser_view_->GetMirroredX());
     }
     top = LayoutWebUITabStrip(top);
   }
@@ -440,8 +444,14 @@ void BrowserViewLayout::Layout(views::View* browser_view) {
   // Adjust any hosted dialogs if the browser's dialog hosting bounds changed.
   const gfx::Rect dialog_bounds(dialog_host_->GetDialogPosition(gfx::Size()),
                                 dialog_host_->GetMaximumDialogSize());
-  if (latest_dialog_bounds_ != dialog_bounds) {
-    latest_dialog_bounds_ = dialog_bounds;
+  const gfx::Rect host_widget_bounds =
+      dialog_host_->GetHostWidget()
+          ? dialog_host_->GetHostWidget()->GetClientAreaBoundsInScreen()
+          : gfx::Rect();
+  const gfx::Rect dialog_bounds_in_screen =
+      dialog_bounds + host_widget_bounds.OffsetFromOrigin();
+  if (latest_dialog_bounds_in_screen_ != dialog_bounds_in_screen) {
+    latest_dialog_bounds_in_screen_ = dialog_bounds_in_screen;
     dialog_host_->NotifyPositionRequiresUpdate();
   }
 }
@@ -531,7 +541,7 @@ int BrowserViewLayout::LayoutTitleBarForWebApp(int top) {
 
 int BrowserViewLayout::LayoutTabStripRegion(int top) {
   TRACE_EVENT0("ui", "BrowserViewLayout::LayoutTabStripRegion");
-  if (!delegate_->IsTabStripVisible()) {
+  if (!delegate_->ShouldDrawTabStrip()) {
     SetViewVisibility(tab_strip_region_view_, false);
     tab_strip_region_view_->SetBounds(0, 0, 0, 0);
     return top;
@@ -580,8 +590,7 @@ int BrowserViewLayout::LayoutToolbar(int top) {
 
 int BrowserViewLayout::LayoutBookmarkAndInfoBars(int top, int browser_view_y) {
   TRACE_EVENT0("ui", "BrowserViewLayout::LayoutBookmarkAndInfoBars");
-  web_contents_modal_dialog_top_y_ =
-      top + browser_view_y - kConstrainedWindowOverlap;
+  dialog_top_y_ = top + browser_view_y - kConstrainedWindowOverlap;
 
   if (bookmark_bar_) {
     top = std::max(toolbar_->bounds().bottom(), LayoutBookmarkBar(top));

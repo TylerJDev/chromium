@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,6 +14,7 @@
 #include "content/browser/preloading/prefetcher.h"
 #include "content/browser/preloading/preloading_data_impl.h"
 #include "content/browser/preloading/prerenderer.h"
+#include "content/common/features.h"
 #include "content/public/browser/anchor_element_preconnect_delegate.h"
 #include "content/public/common/content_client.h"
 #include "content/public/test/mock_navigation_handle.h"
@@ -62,7 +63,8 @@ class TestPrefetchService : public PrefetchService {
     PreloadingDecider::GetForCurrentDocument(
         RenderFrameHost::FromID(
             prefetch_container->GetReferringRenderFrameHostId()))
-        ->OnPrefetchEvicted(prefetch_container->GetURL());
+        ->OnPreloadDiscarded({prefetch_container->GetURL(),
+                              blink::mojom::SpeculationAction::kPrefetch});
   }
 
   std::vector<base::WeakPtr<PrefetchContainer>> prefetches_;
@@ -89,6 +91,9 @@ class MockPrerenderer : public Prerenderer {
     return prerenders_.find(url) != prerenders_.end();
   }
 
+  void SetPrerenderCancellationCallback(
+      PrerenderCancellationCallback callback) override {}
+
   std::set<GURL> prerenders_;
 };
 
@@ -103,6 +108,7 @@ class ScopedMockPrerenderer {
   }
 
   ~ScopedMockPrerenderer() {
+    prerenderer_ = nullptr;
     preloading_decider_->SetPrerendererForTesting(std::move(old_prerenderer_));
   }
 
@@ -110,7 +116,7 @@ class ScopedMockPrerenderer {
 
  private:
   raw_ptr<PreloadingDecider> preloading_decider_;
-  raw_ptr<MockPrerenderer, DanglingUntriaged> prerenderer_;
+  raw_ptr<MockPrerenderer> prerenderer_;
   std::unique_ptr<Prerenderer> old_prerenderer_;
 };
 
@@ -869,6 +875,42 @@ TEST_F(PreloadingDeciderTest,
   histogram_tester.ExpectBucketCount(
       "Preloading.Experimental.OnPointerHoverWithMotionEstimator.Positive",
       /*100*(75-0/500)=*/15, 1);
+}
+
+TEST_F(PreloadingDeciderTest, OnPreloadingHeuristicsModelDone) {
+  base::HistogramTester histogram_tester;
+
+  GURL url1{"https://www.example.com"};
+  GetPrimaryMainFrame().OnPreloadingHeuristicsModelDone(
+      /*url=*/url1, /*score=*/0.2);
+
+  GURL url2{"https://www.google.com"};
+  GetPrimaryMainFrame().OnPreloadingHeuristicsModelDone(
+      /*url=*/url2, /*score=*/0.9);
+
+  // Navigate to `url2`.
+  WebContents* web_contents =
+      WebContents::FromRenderFrameHost(&GetPrimaryMainFrame());
+  PreloadingDataImpl* preloading_data = static_cast<PreloadingDataImpl*>(
+      PreloadingData::GetOrCreateForWebContents(web_contents));
+  ASSERT_TRUE(preloading_data);
+  MockNavigationHandle navigation_handle{url2,
+                                         web_contents->GetPrimaryMainFrame()};
+  preloading_data->DidStartNavigation(&navigation_handle);
+
+  // Check UMA records.
+  histogram_tester.ExpectBucketCount(
+      "Preloading.Experimental.OnPreloadingHeuristicsMLModel.Negative",
+      /*100*0.2=*/20, 1);
+  histogram_tester.ExpectBucketCount(
+      "Preloading.Experimental.OnPreloadingHeuristicsMLModel.Negative",
+      /*100*0.9=*/90, 0);
+  histogram_tester.ExpectBucketCount(
+      "Preloading.Experimental.OnPreloadingHeuristicsMLModel.Positive",
+      /*100*0.2=*/20, 0);
+  histogram_tester.ExpectBucketCount(
+      "Preloading.Experimental.OnPreloadingHeuristicsMLModel.Positive",
+      /*100*0.9=*/90, 1);
 }
 
 }  // namespace

@@ -134,6 +134,7 @@
 <translation id="1881188606372070653">‏برای درخواست تغییر محتوا به‌دلایل حقوقی، به <ph name="BEGIN_LINK1" />صفحه «راهنمای حقوقی»<ph name="END_LINK1" /> بروید. ممکن است برخی اطلاعات سیستم و حساب به Google ارسال شود. از اطلاعاتی که به ما می‌دهید برای رسیدگی به مشکلات فنی و بهبود سرویس‌هایمان، مطابق با <ph name="BEGIN_LINK2" />خطمشی رازداری<ph name="END_LINK2" /> و <ph name="BEGIN_LINK3" />شرایط خدمات<ph name="END_LINK3" /> خود استفاده خواهیم کرد.</translation>
 <translation id="1885577615937958993">جلو بردن سریع رسانه</translation>
 <translation id="1887850431809612466">بازبینی سخت‌افزار</translation>
+<translation id="1897672602657312171">اگر میان‌بر حاوی کلید جستجو نباشد ممکن است با میان‌بر برخی برنامه‌ها تداخل پیدا کند. اگر می‌خواهید به استفاده از این میان‌بر ادامه دهید آن را دوباره فشار دهید، یا میان‌بری جدید حاوی کلید جستجو اختصاص دهید.</translation>
 <translation id="1904932688895783618">در اینجا منابع مفید دیگری ارائه شده است:</translation>
 <translation id="1905710495812624430">به حداکثر تعداد مجاز تلاش رسیده‌اید.</translation>
 <translation id="1908234395526491708">‏خطاهای درخواست UDP</translation>
@@ -231,12 +232,12 @@
 <translation id="2712812801627182647">کلید اصالت‌سنجی «امنیت لایه انتقال»</translation>
 <translation id="2713444072780614174">سفید</translation>
 <translation id="2717139507051041123">فعال کردن حالت رنگ تیره</translation>
+<translation id="2728460467788544679">پاک کردن سابقه همه چاپ‌ها</translation>
 <translation id="2740531572673183784">تأیید</translation>
 <translation id="2744221223678373668">اشتراک‌گذاری شده</translation>
 <translation id="2751739896257479635">‏اصالت‌سنجی مرحله ۲ EAP</translation>
 <translation id="2783010256799387990">موفق</translation>
 <translation id="2787435249130282949">روشن‌تر کردن صفحه‌کلید</translation>
-<translation id="2789486458103222910">تأیید</translation>
 <translation id="2805756323405976993">برنامه‌ها</translation>
 <translation id="28232023175184696">اتصال به اینترنت ممکن نیست. برای امتحان مجدد، کلیک کنید.</translation>
 <translation id="2859243502336719778">به‌روزرسانی بسیار مهم</translation>
@@ -248,6 +249,7 @@
 <translation id="2880569433548999039">محافظ صفحه جریان ابر</translation>
 <translation id="2926057806159140518">نام کاربری و گذرواژه‌تان را وارد کنید یا رمزینه پاسخ‌سریع را اسکن کنید</translation>
 <translation id="2940811910881150316">نمی‌توان دستگاه را آزمایش کرد. برای آزمایش کردن، در دستگاه را دوباره باز کنید.</translation>
+<translation id="2941112035454246133">کم</translation>
 <translation id="3008341117444806826">بازآوری</translation>
 <translation id="3009958530611748826">پوشه‌ای را برای ذخیره در آن انتخاب کنید</translation>
 <translation id="3017079585324758401">پس‌زمینه</translation>
@@ -278,7 +280,6 @@
 <translation id="3226405216343213872">درحال جستجوی اسکنرها</translation>
 <translation id="3226657629376379887">منوی کنش‌های طرح‌بندی</translation>
 <translation id="3246869037381808805">کارهای چاپ قدیمی‌تر از ۱ روز برداشته می‌شوند</translation>
-<translation id="3248223063252096240"><ph name="PRODUCT_NAME" /> انحصاری</translation>
 <translation id="3268178239013324452">انجام نشد - در باز است</translation>
 <translation id="3275729367986477355">تصویر چهره‌نما</translation>
 <translation id="3283504360622356314">{0,plural, =1{ویرایش فایل}one{ویرایش فایل}other{ویرایش فایل‌ها}}</translation>
@@ -368,6 +369,7 @@
 <translation id="3941014780699102620">حل کردن میزبان انجام نشد</translation>
 <translation id="3942420633017001071">تشخیص خطا</translation>
 <translation id="3954678691475912818">نوع دستگاه مشخص نیست.</translation>
+<translation id="3959413315969265597">‏APN فعال نشد. مطمئن شوید APN پیش‌فرضی اضافه شده باشد.</translation>
 <translation id="3966286471246132217">برای دریافت نتایج دقیق‌تر، تا زمان تکمیل شدن آزمایش، همه برنامه‌ها را ببندید.</translation>
 <translation id="3967822245660637423">بارگیری کامل شد</translation>
 <translation id="3969602104473960991">‏گذرواژه ChromeOS به‌روزرسانی شد</translation>
@@ -606,6 +608,7 @@
 <translation id="5703716265115423771">پایین آوردن صدا</translation>
 <translation id="5707900041990977207"><ph name="CURRENT_PAGE" /> از <ph name="TOTAL_PAGES" /></translation>
 <translation id="5733298426544876109">به‌روزرسانی <ph name="DEVICE_NAME" /></translation>
+<translation id="574392208103952083">متوسط</translation>
 <translation id="5757187557809630523">آهنگ بعدی</translation>
 <translation id="5760715441271661976">وضعیت درگاه</translation>
 <translation id="576835345334454681">افزایش روشنایی نمایشگر</translation>
@@ -621,7 +624,6 @@
 <translation id="5859603669299126575">آلبوم گالری هنری</translation>
 <translation id="5860033963881614850">خاموش</translation>
 <translation id="5860491529813859533">روشن کردن</translation>
-<translation id="5866840822086176774">بسیار قوی</translation>
 <translation id="5876385649737594562">برای انتخاب گزینه‌ها، این حالت را روشن کنید</translation>
 <translation id="588258955323874662">تمام صفحه</translation>
 <translation id="5895138241574237353">راه‌اندازی مجدد</translation>
@@ -639,7 +641,7 @@
 <translation id="5972388717451707488">به‌روزرسانی موتور</translation>
 <translation id="5984145644188835034">کاغذدیواری پیش‌فرض</translation>
 <translation id="6017514345406065928">سبز</translation>
-<translation id="6019566113895157499">میان‌برهای کلیدی</translation>
+<translation id="6019566113895157499">میان‌برهای مهم</translation>
 <translation id="6034694447310538551">فعال کردن بازنشانی خودکار ماهانه</translation>
 <translation id="6037291330010597344">تغذیه‌کننده سند اسکنر خالی است. اسناد را اضافه کنید و دوباره امتحان کنید.</translation>
 <translation id="6040143037577758943">بستن</translation>
@@ -705,7 +707,7 @@
 <translation id="6423239382391657905">‏باز کردن VPN</translation>
 <translation id="6439505561246192797">ضعیف (<ph name="SIGNAL_STRENGTH" />)</translation>
 <translation id="6447630859861661624">رفتن به تنظیمات حساب</translation>
-<translation id="6456394469623773452">عالی</translation>
+<translation id="6461047516875166066">بیشتر بگو</translation>
 <translation id="6463239094587744704">{PAGE_NUMBER,plural, =0{صفحه مجدداً اسکن شود؟}=1{{PAGE_NUMBER} صفحه مجدداً اسکن شود؟}one{{PAGE_NUMBER} صفحه مجدداً اسکن شود؟}other{{PAGE_NUMBER} صفحه مجدداً اسکن شود؟}}</translation>
 <translation id="6472207088655375767">OTP</translation>
 <translation id="6480327114083866287">تحت مدیریت <ph name="MANAGER" /></translation>
@@ -776,6 +778,7 @@
 <translation id="7046522406494308071">همه میان‌برها به حالت پیش‌فرض بازنشانی شود؟</translation>
 <translation id="7058278511608979688">پایان و ذخیره</translation>
 <translation id="7059230779847288458">درحال شارژ، <ph name="TIME_VALUE" /> تا شارژ کامل</translation>
+<translation id="7066538517128343186">کلید <ph name="KEY" /></translation>
 <translation id="7068619307603204412">آماده کردن دستگاه</translation>
 <translation id="708426984172631313">متوقف شده است</translation>
 <translation id="7086440545492620869"><ph name="VALUE" /><ph name="DISPLAY_NAME" /></translation>
@@ -917,6 +920,7 @@
 <translation id="8138405288920084977">LTEAdvanced</translation>
 <translation id="8143951647992294073">انتخاب <ph name="TOPIC_SOURCE" /> <ph name="TOPIC_SOURCE_DESC" /></translation>
 <translation id="8151185429379586178">ابزارهای برنامه‌نویس</translation>
+<translation id="8152370627892825"><ph name="DESCRIPTION" />، <ph name="ACCELERATOR_INFO" />.</translation>
 <translation id="8179976553408161302">ورود</translation>
 <translation id="8183974620058026102">پیوست</translation>
 <translation id="8206859287963243715">سلولی</translation>
@@ -929,12 +933,12 @@
 <translation id="8286154143153872371">لطفاً برای مشاهده کاغذدیواری، به شبکه متصل شوید و صفحه را بار کردن مجدد کنید.</translation>
 <translation id="8291967909914612644">کشور ارائه‌دهنده اصلی</translation>
 <translation id="8294431847097064396">منبع</translation>
-<translation id="8297006494302853456">ضعیف</translation>
 <translation id="8302368968391049045">‏دیواره آتش HTTPS</translation>
 <translation id="8312330582793120272">پخش رسانه</translation>
 <translation id="8318753676953949627">تصویری وجود ندارد</translation>
 <translation id="8329018942023753850">برنامه ماشین حساب</translation>
 <translation id="8336739000755212683">تغییر تصویر حساب دستگاه</translation>
+<translation id="8347126826554447157"><ph name="SHORCTCUT1" /> یا <ph name="SHORCTCUT2" /></translation>
 <translation id="8347227221149377169">کارهای چاپی</translation>
 <translation id="8351855506390808906">نگاشتن کلید نقطه لمسی</translation>
 <translation id="8352772353338965963">افزودن یک حساب برای ورود چندگانه به سیستم. کلیه حساب‌هایی که به سیستم وارد شده‌اند بدون گذرواژه قابل دسترسی هستند، بنابراین این قابلیت فقط باید با حساب‌های مورداعتماد استفاده شود.</translation>

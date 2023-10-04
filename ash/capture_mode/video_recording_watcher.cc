@@ -14,10 +14,12 @@
 #include "ash/capture_mode/capture_mode_controller.h"
 #include "ash/capture_mode/capture_mode_demo_tools_controller.h"
 #include "ash/capture_mode/capture_mode_metrics.h"
+#include "ash/capture_mode/capture_mode_util.h"
 #include "ash/capture_mode/recording_overlay_controller.h"
 #include "ash/constants/ash_features.h"
 #include "ash/shell.h"
 #include "ash/style/ash_color_id.h"
+#include "ash/style/color_util.h"
 #include "ash/wm/desks/desks_util.h"
 #include "ash/wm/mru_window_tracker.h"
 #include "ash/wm/tablet_mode/tablet_mode_controller.h"
@@ -45,6 +47,7 @@
 #include "ui/gfx/scoped_canvas.h"
 #include "ui/views/widget/widget.h"
 #include "ui/wm/core/coordinate_conversion.h"
+#include "ui/wm/core/window_util.h"
 #include "ui/wm/public/activation_client.h"
 
 namespace ash {
@@ -249,11 +252,12 @@ VideoRecordingWatcher::VideoRecordingWatcher(
 
   controller_->camera_controller()->OnRecordingStarted(active_behavior_);
 
-  if (features::AreCaptureModeDemoToolsEnabled() &&
-      controller_->enable_demo_tools()) {
+  if (controller_->enable_demo_tools()) {
     demo_tools_controller_ =
         std::make_unique<CaptureModeDemoToolsController>(this);
   }
+
+  Observe(ColorUtil::GetColorProviderSourceForWindow(current_root_));
 }
 
 VideoRecordingWatcher::~VideoRecordingWatcher() {
@@ -322,7 +326,8 @@ gfx::Rect VideoRecordingWatcher::GetCaptureSurfaceConfineBounds() const {
       return capture_region;
     }
     case CaptureModeSource::kWindow:
-      return gfx::Rect(window_being_recorded_->bounds().size());
+      return capture_mode_util::GetCaptureWindowConfineBounds(
+          window_being_recorded_);
   }
 }
 
@@ -438,6 +443,8 @@ void VideoRecordingWatcher::OnWindowRemovingFromRootWindow(
     return;
   }
 
+  Observe(ColorUtil::GetColorProviderSourceForWindow(current_root_));
+
   root_observer_ =
       std::make_unique<RecordedWindowRootObserver>(current_root_, this);
   controller_->OnRecordedWindowChangingRoot(window_being_recorded_, new_root);
@@ -451,7 +458,11 @@ void VideoRecordingWatcher::OnPaintLayer(const ui::PaintContext& context) {
 
   ui::PaintRecorder recorder(context, layer()->size());
   gfx::Canvas* canvas = recorder.canvas();
-  canvas->DrawColor(capture_mode::kDimmingShieldColor);
+
+  const auto* color_provider_source = GetColorProviderSource();
+  CHECK(color_provider_source);
+  canvas->DrawColor(color_provider_source->GetColorProvider()->GetColor(
+      capture_mode::kDimmingShieldColor));
 
   // We don't draw a region border around the recorded window. We just paint the
   // above shield as a backdrop.
@@ -606,6 +617,12 @@ void VideoRecordingWatcher::OnCursorCompositingStateChanged(bool enabled) {
           : GetCursorLocationInWindow(window_being_recorded_));
 }
 
+void VideoRecordingWatcher::OnColorProviderChanged() {
+  if (should_paint_layer_ && layer()) {
+    layer()->SchedulePaint(layer()->bounds());
+  }
+}
+
 bool VideoRecordingWatcher::IsWindowDimmedForTesting(
     aura::Window* window) const {
   return dimmers_.contains(window);
@@ -645,11 +662,13 @@ void VideoRecordingWatcher::OnRootHierarchyChanged(aura::Window* target) {
 }
 
 bool VideoRecordingWatcher::CalculateShouldPaintLayer() const {
-  if (recording_source_ == CaptureModeSource::kFullscreen)
+  if (recording_source_ == CaptureModeSource::kFullscreen) {
     return false;
+  }
 
-  if (recording_source_ == CaptureModeSource::kRegion)
+  if (recording_source_ == CaptureModeSource::kRegion) {
     return true;
+  }
 
   DCHECK_EQ(recording_source_, CaptureModeSource::kWindow);
   return window_being_recorded_->TargetVisibility() &&
@@ -746,9 +765,11 @@ void VideoRecordingWatcher::UpdateLayerStackingAndDimmers() {
     }
 
     // No need to dim windows that are below the window being recorded in
-    // z-order, or those on other displays, or other desks.
+    // z-order, or those on other displays, or other desks, or transient
+    // descendants of the window being recorded.
     if (did_find_recorded_window || window->GetRootWindow() != current_root_ ||
-        !AreWindowsOnSameDesk(window, window_being_recorded_)) {
+        !AreWindowsOnSameDesk(window, window_being_recorded_) ||
+        wm::HasTransientAncestor(window, window_being_recorded_)) {
       dimmers_.erase(window);
       continue;
     }
@@ -758,7 +779,7 @@ void VideoRecordingWatcher::UpdateLayerStackingAndDimmers() {
     auto& dimmer = dimmers_[window];
     if (!dimmer) {
       dimmer = std::make_unique<WindowDimmer>(window, /*animate=*/false, this);
-      dimmer->SetDimColor(kColorAshShieldAndBase40);
+      dimmer->SetDimColor(capture_mode::kDimmingShieldColor);
       dimmer->window()->Show();
     }
   }

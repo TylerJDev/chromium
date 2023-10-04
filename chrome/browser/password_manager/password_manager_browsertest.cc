@@ -30,6 +30,7 @@
 #include "chrome/browser/password_manager/password_store_factory.h"
 #include "chrome/browser/password_manager/passwords_navigation_observer.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/autofill/chrome_autofill_client.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_navigator_params.h"
@@ -1176,7 +1177,7 @@ autofill::FormData GetPlaceholderUsernameFormData(
   form_data.url = signin_form.url;
   // Username
   autofill::FormFieldData username_field;
-  username_field.form_control_type = "text";
+  username_field.form_control_type = autofill::FormControlType::kInputText;
   username_field.id_attribute = u"username_field";
   username_field.name = username_field.id_attribute;
   username_field.value = u"example@example.com";
@@ -1185,7 +1186,7 @@ autofill::FormData GetPlaceholderUsernameFormData(
   form_data.fields.push_back(username_field);
   // Password
   autofill::FormFieldData password_field;
-  password_field.form_control_type = "password";
+  password_field.form_control_type = autofill::FormControlType::kInputPassword;
   password_field.id_attribute = u"password_field";
   password_field.name = password_field.id_attribute;
   password_field.value = u"htmlPass";
@@ -1235,13 +1236,12 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
       password_manager::ContentPasswordManagerDriverFactory::FromWebContents(
           WebContents())
           ->GetDriverForFrame(WebContents()->GetPrimaryMainFrame());
-  const std::vector<const autofill::FormData*> forms = {&form_data};
   const base::flat_map<autofill::FieldGlobalId,
                        autofill::AutofillType::ServerPrediction>
       field_predictions = {
           {form_data.fields[0].global_id(), std::move(username_prediction)},
           {form_data.fields[1].global_id(), std::move(password_prediction)}};
-  driver->GetPasswordManager()->ProcessAutofillPredictions(driver, forms,
+  driver->GetPasswordManager()->ProcessAutofillPredictions(driver, form_data,
                                                            field_predictions);
 
   // Check original values before interaction
@@ -1299,14 +1299,10 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
       password_manager::ContentPasswordManagerDriverFactory::FromWebContents(
           WebContents())
           ->GetDriverForFrame(WebContents()->GetPrimaryMainFrame());
-  const std::vector<const autofill::FormData*> forms = {&form_data};
-  const base::flat_map<autofill::FieldGlobalId,
-                       autofill::AutofillType::ServerPrediction>
-      field_predictions = {
-          {form_data.fields[0].global_id(), std::move(username_prediction)},
-          {form_data.fields[1].global_id(), std::move(password_prediction)}};
-  driver->GetPasswordManager()->ProcessAutofillPredictions(driver, forms,
-                                                           field_predictions);
+  driver->GetPasswordManager()->ProcessAutofillPredictions(
+      driver, form_data,
+      {{form_data.fields[0].global_id(), std::move(username_prediction)},
+       {form_data.fields[1].global_id(), std::move(password_prediction)}});
 
   // Check original values before interaction
   CheckElementValue("username_field", "example@example.com");
@@ -2350,18 +2346,19 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
       "'iframe').contentDocument.getElementById('username_field')"
       ".getBoundingClientRect();",
       content::EXECUTE_SCRIPT_NO_USER_GESTURE));
-  int y = content::EvalJs(RenderFrameHost(),
-                          "usernameRect.top + usernameRect.bottom;",
-                          content::EXECUTE_SCRIPT_NO_USER_GESTURE)
-              .ExtractInt();
-  int x = content::EvalJs(RenderFrameHost(),
-                          "usernameRect.left + usernameRect.right;",
-                          content::EXECUTE_SCRIPT_NO_USER_GESTURE)
-              .ExtractInt();
+  int y =
+      content::EvalJs(RenderFrameHost(),
+                      "Math.floor(usernameRect.top + usernameRect.height / 2)",
+                      content::EXECUTE_SCRIPT_NO_USER_GESTURE)
+          .ExtractInt();
+  int x =
+      content::EvalJs(RenderFrameHost(),
+                      "Math.floor(usernameRect.left + usernameRect.width / 2)",
+                      content::EXECUTE_SCRIPT_NO_USER_GESTURE)
+          .ExtractInt();
 
-  content::SimulateMouseClickAt(WebContents(), 0,
-                                blink::WebMouseEvent::Button::kLeft,
-                                gfx::Point(x / 2, y / 2));
+  content::SimulateMouseClickAt(
+      WebContents(), 0, blink::WebMouseEvent::Button::kLeft, gfx::Point(x, y));
   // Verify username and password have been autofilled
   WaitForElementValue("iframe", "username_field", "temp");
   WaitForElementValue("iframe", "password_field", "pa55w0rd");
@@ -3975,6 +3972,7 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
   ASSERT_FALSE(chrome::FindBrowserWithWebContents(new_web_contents.get()));
 
   // Create ChromePasswordManagerClient for newly created web_contents.
+  autofill::ChromeAutofillClient::CreateForWebContents(new_web_contents.get());
   ChromePasswordManagerClient::CreateForWebContents(new_web_contents.get());
 
   ChromePasswordManagerClient* client =
@@ -4415,7 +4413,7 @@ class PasswordManagerPrerenderBrowserTest : public PasswordManagerBrowserTest {
   ~PasswordManagerPrerenderBrowserTest() override = default;
 
   void SetUp() override {
-    prerender_helper_.SetUp(embedded_test_server());
+    prerender_helper_.RegisterServerRequestMonitor(embedded_test_server());
     PasswordManagerBrowserTest::SetUp();
   }
 

@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">已切換至鏡像模式</translation>
 <translation id="2031987842108996681">紅色色版</translation>
 <translation id="2060505056492490888">「<ph name="DOT" />」未放在「<ph name="INVALIDDOMAIN" />」的正確位置。</translation>
+<translation id="2068711044993563745">最小值 (<ph name="MINIMUM" />) 必須小於最大值 (<ph name="MAXIMUM" />)。</translation>
 <translation id="2148716181193084225">今天</translation>
 <translation id="2226276347425096477">請將這段文字刪減至 <ph name="MAX_CHARACTERS" /> 個字元以下 (目前的字元數為 <ph name="CURRENT_LENGTH" /> 個)。</translation>
 <translation id="2247351761944213033"><ph name="YEAR" /> 年，第 <ph name="WEEKNUMBER" /> 週</translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">如果你要繼續執行，請勾選這個核取方塊。</translation>
 <translation id="2908441821576996758">請輸入以逗號分隔的電子郵件地址清單。</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">顯示口述影像選單</translation>
 <translation id="3075154866155599887">欄位內容不完整或日期無效，請輸入有效的值。</translation>
 <translation id="310520048233152454">請輸入網址。</translation>
 <translation id="3220661731597678625">目前步驟</translation>

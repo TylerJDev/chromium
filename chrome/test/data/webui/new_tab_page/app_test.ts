@@ -382,17 +382,6 @@ suite('NewTabPageAppTest', () => {
       assertTrue(mostVisited.hasAttribute('use-white-tile-icon_'));
     });
 
-    test('theme updates use title pill', async () => {
-      const theme = createTheme();
-      theme.mostVisited.useTitlePill = true;
-      callbackRouterRemote.setTheme(theme);
-      const mostVisited = $$(app, '#mostVisited');
-      assertTrue(!!mostVisited);
-      assertFalse(mostVisited.hasAttribute('use-title-pill_'));
-      await callbackRouterRemote.$.flushForTesting();
-      assertTrue(mostVisited.hasAttribute('use-title-pill_'));
-    });
-
     test('theme updates is dark', async () => {
       const theme = createTheme();
       theme.mostVisited.isDark = true;
@@ -656,7 +645,7 @@ suite('NewTabPageAppTest', () => {
       ['ntp-realbox', NtpElement.REALBOX],
       ['cr-most-visited', NtpElement.MOST_VISITED],
       ['ntp-middle-slot-promo', NtpElement.MIDDLE_SLOT_PROMO],
-      ['ntp-modules', NtpElement.MODULE],
+      ['#modules', NtpElement.MODULE],
       ['#customizeButton', NtpElement.CUSTOMIZE_BUTTON],
     ] as Array<[string, NtpElement]>)
         .forEach(([selector, element]) => {
@@ -779,6 +768,10 @@ suite('NewTabPageAppTest', () => {
       const modules = $$(app, 'ntp-modules-v2')!;
       assertTrue(!!modules);
       assertStyle(modules, 'display', 'none');
+    });
+
+    test('modules redesigned attribute applied', async () => {
+      assertTrue(app.hasAttribute('modules-redesigned-enabled_'));
     });
 
     test(`clicking records click`, () => {
@@ -926,7 +919,7 @@ suite('NewTabPageAppTest', () => {
       });
       test('modules can open customize dialog', async () => {
         // Act.
-        $$(app, 'ntp-modules')!.dispatchEvent(new Event('customize-module'));
+        $$(app, '#modules')!.dispatchEvent(new Event('customize-module'));
         app.$.customizeDialogIf.render();
 
         // Assert.
@@ -1034,7 +1027,7 @@ suite('NewTabPageAppTest', () => {
 
       test('modules can open side panel', async () => {
         // Act.
-        $$(app, 'ntp-modules')!.dispatchEvent(new Event('customize-module'));
+        $$(app, '#modules')!.dispatchEvent(new Event('customize-module'));
 
         // Assert.
         assertDeepEquals(

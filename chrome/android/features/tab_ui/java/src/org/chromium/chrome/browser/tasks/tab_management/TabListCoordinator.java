@@ -39,7 +39,6 @@ import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tasks.ReturnToChromeUtil;
 import org.chromium.chrome.browser.tasks.pseudotab.PseudoTab;
 import org.chromium.chrome.browser.tasks.tab_management.TabListModel.CardProperties.ModelType;
-import org.chromium.chrome.browser.tasks.tab_management.TabListRecyclerView.RecyclerViewPosition;
 import org.chromium.chrome.browser.tasks.tab_management.TabProperties.UiType;
 import org.chromium.chrome.tab_ui.R;
 import org.chromium.ui.base.ViewUtils;
@@ -257,13 +256,14 @@ public class TabListCoordinator
                 priceWelcomeMessageController, componentName, itemType);
 
         try (TraceEvent e = TraceEvent.scoped("TabListCoordinator.setupRecyclerView")) {
-            if (!attachToParent) {
-                mRecyclerView = (TabListRecyclerView) LayoutInflater.from(context).inflate(
-                        R.layout.tab_list_recycler_view_layout, parentView, false);
-            } else {
-                LayoutInflater.from(context).inflate(
-                        R.layout.tab_list_recycler_view_layout, parentView, true);
-                mRecyclerView = parentView.findViewById(R.id.tab_list_view);
+            // Ignore attachToParent initially. In some contexts multiple TabListCoordinators are
+            // created with the same parentView. Using attachToParent and subsequently trying to
+            // locate the View with findViewById could then resolve to the wrong view. Instead use
+            // LayoutInflater to return the inflated view and addView to circumvent the issue.
+            mRecyclerView = (TabListRecyclerView) LayoutInflater.from(context).inflate(
+                    R.layout.tab_list_recycler_view_layout, parentView, /*attachToParent=*/false);
+            if (attachToParent) {
+                parentView.addView(mRecyclerView);
             }
 
             if (mode == TabListMode.CAROUSEL) {
@@ -337,6 +337,12 @@ public class TabListCoordinator
     Rect getThumbnailLocationOfCurrentTab() {
         // TODO(crbug.com/964406): calculate the location before the real one is ready.
         return mThumbnailLocationOfCurrentTab;
+    }
+
+    @NonNull
+    Size getThumbnailSize() {
+        Size size = mMediator.getDefaultGridCardSize();
+        return TabUtils.deriveThumbnailSize(size, mContext);
     }
 
     @NonNull
@@ -490,7 +496,7 @@ public class TabListCoordinator
         Rect tabListRect = getRecyclerViewLocation();
         Rect parentRect = new Rect();
         mRootView.getGlobalVisibleRect(parentRect);
-        // Offset by CompositeViewHolder top offset and top toolbar height.
+        // Offset by CompositorViewHolder top offset and top toolbar height.
         tabListRect.offset(0,
                 -parentRect.top
                         - (int) mContext.getResources().getDimension(
@@ -546,7 +552,15 @@ public class TabListCoordinator
 
     private void registerLayoutChangeListener() {
         if (mListLayoutListener != null) {
-            assert !mLayoutListenerRegistered;
+            assert !mLayoutListenerRegistered
+                    || !ReturnToChromeUtil.isStartSurfaceRefactorEnabled(mContext);
+
+            // TODO(crbug/1478720): Early out if already registered. This is possible as this may
+            // be called repeatedly when Start Surface Refactor is disabled, and the transition
+            // animation to the Tab Switcher is skipped. Remove this if check once Start Surface
+            // Refactor is enabled everywhere.
+            if (mLayoutListenerRegistered) return;
+
             mLayoutListenerRegistered = true;
             mRecyclerView.addOnLayoutChangeListener(mListLayoutListener);
         }
@@ -554,6 +568,8 @@ public class TabListCoordinator
 
     private void unregisterLayoutChangeListener() {
         if (mListLayoutListener != null) {
+            if (!mLayoutListenerRegistered) return;
+
             mRecyclerView.removeOnLayoutChangeListener(mListLayoutListener);
             mLayoutListenerRegistered = false;
         }
@@ -636,10 +652,6 @@ public class TabListCoordinator
         return mRecyclerView.getResourceId();
     }
 
-    long getLastDirtyTime() {
-        return mRecyclerView.getLastDirtyTime();
-    }
-
     /**
      * Register a new view type for the component.
      * @see MVCListAdapter#registerType(int, MVCListAdapter.ViewBuilder,
@@ -695,5 +707,9 @@ public class TabListCoordinator
 
     void runAnimationOnNextLayout(Runnable runnable) {
         mRecyclerView.runAnimationOnNextLayout(runnable);
+    }
+
+    int getTabListModelSize() {
+        return mModel.size();
     }
 }

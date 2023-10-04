@@ -4,8 +4,12 @@
 
 import {constants} from '../../common/constants.js';
 import {CursorRange} from '../../common/cursors/range.js';
-import {Command} from '../common/command_store.js';
+import {Command} from '../common/command.js';
 
+/**
+ * Interface defining the methods of performing or modifying the performance of
+ * commands.
+ */
 export class CommandHandlerInterface {
   /**
    * Handles ChromeVox commands.

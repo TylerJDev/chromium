@@ -32,6 +32,7 @@ import org.chromium.chrome.browser.commerce.ShoppingFeatures;
 import org.chromium.chrome.browser.commerce.ShoppingServiceFactory;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.sync.SyncServiceFactory;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.browser.ui.native_page.BasicNativePage;
 import org.chromium.components.bookmarks.BookmarkId;
@@ -152,7 +153,7 @@ public class BookmarkManagerCoordinator
         mBookmarkToolbarCoordinator = new BookmarkToolbarCoordinator(context, mSelectableListLayout,
                 mSelectionDelegate, /*searchDelegate=*/this, dragReorderableRecyclerViewAdapter,
                 isDialogUi, bookmarkDelegateSupplier, mBookmarkModel, mBookmarkOpener,
-                mBookmarkUiPrefs, mModalDialogManager);
+                mBookmarkUiPrefs, mModalDialogManager, this::onEndSearch);
         mSelectableListLayout.configureWideDisplayStyle();
 
         LargeIconBridge largeIconBridge = new LargeIconBridge(mProfile);
@@ -161,13 +162,12 @@ public class BookmarkManagerCoordinator
         Resources res = context.getResources();
         final @BookmarkRowDisplayPref int displayPref =
                 mBookmarkUiPrefs.getBookmarkRowDisplayPref();
-        BookmarkImageFetcher bookmarkImageFetcher = new BookmarkImageFetcher(context,
-                mBookmarkModel,
-                ImageFetcherFactory.createImageFetcher(
-                        ImageFetcherConfig.DISK_CACHE_ONLY, mProfile.getProfileKey()),
-                largeIconBridge, BookmarkUtils.getRoundedIconGenerator(context, displayPref),
-                BookmarkUtils.getImageIconSize(res, displayPref),
-                BookmarkUtils.getFaviconDisplaySize(res, displayPref));
+        BookmarkImageFetcher bookmarkImageFetcher =
+                new BookmarkImageFetcher(context, mBookmarkModel, mImageFetcher, largeIconBridge,
+                        BookmarkUtils.getRoundedIconGenerator(context, displayPref),
+                        BookmarkUtils.getImageIconSize(res, displayPref),
+                        BookmarkUtils.getFaviconDisplaySize(res, displayPref),
+                        SyncServiceFactory.getForProfile(profile));
 
         BookmarkUndoController bookmarkUndoController =
                 new BookmarkUndoController(context, mBookmarkModel, snackbarManager);
@@ -222,8 +222,8 @@ public class BookmarkManagerCoordinator
         dragReorderableRecyclerViewAdapter.registerDraggableType(ViewType.IMPROVED_BOOKMARK_COMPACT,
                 this::buildAndInitCompactImprovedBookmarkRow, ImprovedBookmarkRowViewBinder::bind,
                 (viewHolder, itemTouchHelper) -> {}, mMediator.getDraggabilityProvider());
-        dragReorderableRecyclerViewAdapter.registerType(
-                ViewType.SEARCH_BOX, this::buildSearchBoxRow, BookmarkSearchBoxRowViewBinder::bind);
+        dragReorderableRecyclerViewAdapter.registerType(ViewType.SEARCH_BOX,
+                this::buildSearchBoxRow, BookmarkSearchBoxRowViewBinder.createViewBinder());
 
         RecordUserAction.record("MobileBookmarkManagerOpen");
         if (!isDialogUi) {

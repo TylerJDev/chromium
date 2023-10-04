@@ -17,7 +17,6 @@ typedef NS_ENUM(NSInteger, AutofillProfileDetailsSectionIdentifier) {
   AutofillProfileDetailsSectionIdentifierFields = kSectionIdentifierEnumZero,
   AutofillProfileDetailsSectionIdentifierErrorFooter,
   AutofillProfileDetailsSectionIdentifierFooter,
-  AutofillProfileDetailsSectionIdentifierMigrationToAccount
 };
 
 // Identifier for item types for autofill profile edit views.
@@ -27,7 +26,9 @@ typedef NS_ENUM(NSInteger, AutofillProfileDetailsItemType) {
   AutofillProfileDetailsItemTypeFullName,
   AutofillProfileDetailsItemTypeLine1,
   AutofillProfileDetailsItemTypeLine2,
+  AutofillProfileDetailsItemTypeDependentLocality,
   AutofillProfileDetailsItemTypeCity,
+  AutofillProfileDetailsItemTypeAdminLevel2,
   AutofillProfileDetailsItemTypeState,
   AutofillProfileDetailsItemTypeZip,
   AutofillProfileDetailsItemTypeCountry,

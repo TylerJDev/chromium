@@ -66,7 +66,8 @@ void AutofillKeyboardAccessoryAdapter::Hide() {
 
 bool AutofillKeyboardAccessoryAdapter::OverlapsWithPictureInPictureWindow()
     const {
-  // TODO(crbug.com/1395164): Find out if pip window can hide the keyboard.
+  // TODO(crbug.com/1477682): Hide the KA suggestion if it overlaps with
+  // picture-in-picture window.
   return false;
 }
 
@@ -119,18 +120,20 @@ AutofillKeyboardAccessoryAdapter::GetWeakPtr() {
   return weak_ptr_factory_.GetWeakPtr();
 }
 
-// AutofillPopupController implementation.
-
-void AutofillKeyboardAccessoryAdapter::AcceptSuggestion(int index) {
-  if (controller_) {
-    controller_->AcceptSuggestion(OffsetIndexFor(index));
-  }
+base::WeakPtr<AutofillPopupView>
+AutofillKeyboardAccessoryAdapter::CreateSubPopupView(
+    base::WeakPtr<AutofillPopupController> controller) {
+  NOTIMPLEMENTED() << "No sub-popups on Keyboard Accessory";
+  return nullptr;
 }
 
-void AutofillKeyboardAccessoryAdapter::AcceptSuggestionWithoutThreshold(
-    int index) {
+// AutofillPopupController implementation.
+
+void AutofillKeyboardAccessoryAdapter::AcceptSuggestion(
+    int index,
+    base::TimeTicks event_time) {
   if (controller_) {
-    controller_->AcceptSuggestionWithoutThreshold(OffsetIndexFor(index));
+    controller_->AcceptSuggestion(OffsetIndexFor(index), event_time);
   }
 }
 
@@ -180,6 +183,19 @@ bool AutofillKeyboardAccessoryAdapter::
   CHECK(controller_) << "Call ShouldIgnoreMouseObservedOutsideItemBoundsCheck "
                         "only from its owner!";
   return controller_->ShouldIgnoreMouseObservedOutsideItemBoundsCheck();
+}
+
+base::WeakPtr<AutofillPopupController>
+AutofillKeyboardAccessoryAdapter::OpenSubPopup(
+    const gfx::RectF& anchor_bounds,
+    std::vector<Suggestion> suggestions,
+    AutoselectFirstSuggestion autoselect_first_suggestion) {
+  NOTIMPLEMENTED() << "No sub-popups on Keyboard Accessory";
+  return nullptr;
+}
+
+void AutofillKeyboardAccessoryAdapter::HideSubPopup() {
+  NOTIMPLEMENTED() << "No sub-popups on Keyboard Accessory";
 }
 
 bool AutofillKeyboardAccessoryAdapter::GetRemovalConfirmationText(

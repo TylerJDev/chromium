@@ -5,19 +5,21 @@
 #include "chrome/browser/ui/views/autofill/popup/popup_cell_utils.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "base/feature_list.h"
 #include "build/branding_buildflags.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/autofill/autofill_popup_controller_utils.h"
 #include "chrome/browser/ui/autofill/autofill_popup_controller.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/views/autofill/popup/popup_base_view.h"
 #include "chrome/browser/ui/views/autofill/popup/popup_cell_view.h"
+#include "chrome/browser/ui/views/autofill/popup/popup_view_utils.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/chrome_typography.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
+#include "components/autofill/core/browser/ui/autofill_resource_utils.h"
 #include "components/autofill/core/browser/ui/suggestion.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
@@ -104,13 +106,6 @@ std::u16string GetIconAccessibleName(const std::string& icon_text) {
   return std::u16string();
 }
 
-std::unique_ptr<views::ImageView> ImageViewFromVectorIcon(
-    const gfx::VectorIcon& vector_icon,
-    int icon_size = kIconSize) {
-  return std::make_unique<views::ImageView>(
-      ui::ImageModel::FromVectorIcon(vector_icon, ui::kColorIcon, icon_size));
-}
-
 std::unique_ptr<views::ImageView> ImageViewFromImageSkia(
     const gfx::ImageSkia& image_skia) {
   if (image_skia.isNull()) {
@@ -145,6 +140,10 @@ std::unique_ptr<views::ImageView> GetIconImageViewByName(
 
   if (icon_str == "editIcon") {
     return ImageViewFromVectorIcon(vector_icons::kEditIcon, kIconSize);
+  }
+
+  if (icon_str == "locationIcon") {
+    return ImageViewFromVectorIcon(vector_icons::kLocationOnIcon, kIconSize);
   }
 
   if (icon_str == "deleteIcon") {
@@ -194,6 +193,14 @@ std::unique_ptr<views::ImageView> GetIconImageViewByName(
 #endif
   }
 
+  if (icon_str == "penSparkIcon") {
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+    return ImageViewFromVectorIcon(vector_icons::kPenSparkIcon, kIconSize);
+#else
+    return nullptr;
+#endif
+  }
+
   if (icon_str == "googlePasswordManager") {
     return ImageViewFromVectorIcon(GooglePasswordManagerVectorIcon(),
                                    kGooglePasswordManagerIconSize);
@@ -211,9 +218,7 @@ std::unique_ptr<views::ImageView> GetIconImageViewByName(
       *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(icon_id));
 }
 
-}  // namespace
-
-std::u16string GetVoiceOverStringFromSuggestion(const Suggestion& suggestion) {
+std::u16string GetSuggestionA11yCoreMessage(const Suggestion& suggestion) {
   if (suggestion.voice_over) {
     return *suggestion.voice_over;
   }
@@ -240,6 +245,31 @@ std::u16string GetVoiceOverStringFromSuggestion(const Suggestion& suggestion) {
   add_if_not_empty(suggestion.additional_label);
 
   return base::JoinString(text, u" ");
+}
+
+}  // namespace
+
+std::u16string GetVoiceOverStringFromSuggestion(const Suggestion& suggestion) {
+  std::vector<std::u16string> text({GetSuggestionA11yCoreMessage(suggestion)});
+
+  if (!suggestion.children.empty()) {
+    CHECK(IsExpandablePopupItemId(suggestion.popup_item_id));
+
+    if (suggestion.popup_item_id == PopupItemId::kAddressEntry) {
+      text.push_back(l10n_util::GetStringUTF16(
+          IDS_AUTOFILL_EXPANDABLE_SUGGESTION_FULL_ADDRESS_A11Y_ADDON));
+    }
+
+    std::u16string shortcut = l10n_util::GetStringUTF16(
+        base::i18n::IsRTL()
+            ? IDS_AUTOFILL_EXPANDABLE_SUGGESTION_EXPAND_SHORTCUT_RTL
+            : IDS_AUTOFILL_EXPANDABLE_SUGGESTION_EXPAND_SHORTCUT);
+
+    text.push_back(l10n_util::GetStringFUTF16(
+        IDS_AUTOFILL_EXPANDABLE_SUGGESTION_SUBMENU_HINT, shortcut));
+  }
+
+  return base::JoinString(text, u". ");
 }
 
 gfx::Insets GetMarginsForContentCell(bool has_control_element) {
@@ -554,6 +584,13 @@ void AddSuggestionStrategyContentCellChildren(
 
   // Prepare the callbacks to the controller.
   AddCallbacksToContentView(controller, line_number, *view);
+}
+
+std::unique_ptr<views::ImageView> ImageViewFromVectorIcon(
+    const gfx::VectorIcon& vector_icon,
+    int icon_size = kIconSize) {
+  return std::make_unique<views::ImageView>(
+      ui::ImageModel::FromVectorIcon(vector_icon, ui::kColorIcon, icon_size));
 }
 
 }  // namespace autofill::popup_cell_utils

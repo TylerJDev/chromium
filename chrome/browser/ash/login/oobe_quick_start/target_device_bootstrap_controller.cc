@@ -9,10 +9,8 @@
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/hash/hash.h"
 #include "base/notreached.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/uuid.h"
 #include "base/values.h"
 #include "chrome/browser/ash/login/oobe_quick_start/connectivity/fido_assertion_info.h"
 #include "chrome/browser/ash/login/oobe_quick_start/connectivity/qr_code.h"
@@ -21,6 +19,7 @@
 #include "chrome/browser/ash/login/oobe_quick_start/connectivity/target_device_connection_broker_factory.h"
 #include "chrome/browser/ash/login/oobe_quick_start/oobe_quick_start_pref_names.h"
 #include "chrome/browser/ash/login/oobe_quick_start/second_device_auth_broker.h"
+#include "chrome/browser/ash/nearby/quick_start_connectivity_service.h"
 #include "chrome/browser/browser_process.h"
 #include "chromeos/ash/components/quick_start/logging.h"
 #include "chromeos/ash/components/quick_start/quick_start_metrics.h"
@@ -54,13 +53,17 @@ TargetDeviceBootstrapController::TargetDeviceBootstrapController(
         accessibility_manager_wrapper,
     QuickStartConnectivityService* quick_start_connectivity_service)
     : auth_broker_(std::move(auth_broker)),
-      accessibility_manager_wrapper_(std::move(accessibility_manager_wrapper)) {
-  session_context_ = SessionContext();
+      accessibility_manager_wrapper_(std::move(accessibility_manager_wrapper)),
+      quick_start_connectivity_service_(quick_start_connectivity_service) {
   connection_broker_ = TargetDeviceConnectionBrokerFactory::Create(
-      session_context_, quick_start_connectivity_service);
+      session_context_, quick_start_connectivity_service_);
 }
 
-TargetDeviceBootstrapController::~TargetDeviceBootstrapController() = default;
+TargetDeviceBootstrapController::~TargetDeviceBootstrapController() {
+  StopAdvertising();
+  CloseOpenConnections();
+  quick_start_connectivity_service_->Cleanup();
+}
 
 TargetDeviceBootstrapController::Status::Status() = default;
 TargetDeviceBootstrapController::Status::~Status() = default;
@@ -103,8 +106,8 @@ void TargetDeviceBootstrapController::StartAdvertisingAndMaybeGetQRCode() {
   if (use_pin_authentication || session_context_.is_resume_after_update()) {
     status_.step = Step::ADVERTISING_WITHOUT_QR_CODE;
   } else {
-    auto qr_code = std::make_unique<QRCode>(
-        session_context_.random_session_id(), session_context_.shared_secret());
+    auto qr_code = std::make_unique<QRCode>(session_context_.advertising_id(),
+                                            session_context_.shared_secret());
     status_.step = Step::ADVERTISING_WITH_QR_CODE;
     status_.payload.emplace<QRCode::PixelData>(qr_code->pixel_data());
   }
@@ -123,12 +126,15 @@ void TargetDeviceBootstrapController::StopAdvertising() {
                      weak_ptr_factory_.GetWeakPtr()));
 }
 
-void TargetDeviceBootstrapController::MaybeCloseOpenConnections() {
+void TargetDeviceBootstrapController::CloseOpenConnections() {
   // Close any existing open connection.
   if (authenticated_connection_.MaybeValid()) {
     authenticated_connection_->Close(
         TargetDeviceConnectionBroker::ConnectionClosedReason::kUserAborted);
+    authenticated_connection_.reset();
   }
+
+  CleanupIfNeeded();
 }
 
 void TargetDeviceBootstrapController::PrepareForUpdate() {
@@ -137,7 +143,6 @@ void TargetDeviceBootstrapController::PrepareForUpdate() {
   }
 
   authenticated_connection_->NotifySourceOfUpdate(
-      session_id_,
       base::BindOnce(
           &TargetDeviceBootstrapController::OnNotifySourceOfUpdateResponse,
           weak_ptr_factory_.GetWeakPtr()));
@@ -160,15 +165,11 @@ void TargetDeviceBootstrapController::OnConnectionAuthenticated(
     base::WeakPtr<TargetDeviceConnectionBroker::AuthenticatedConnection>
         authenticated_connection) {
   constexpr Step kPossibleSteps[] = {Step::ADVERTISING_WITH_QR_CODE,
+                                     Step::ADVERTISING_WITHOUT_QR_CODE,
                                      Step::PIN_VERIFICATION};
   CHECK(base::Contains(kPossibleSteps, status_.step));
 
   authenticated_connection_ = authenticated_connection;
-
-  // Create session ID by generating UUID and then hashing.
-  const base::Uuid random_uuid = base::Uuid::GenerateRandomV4();
-  session_id_ = static_cast<int32_t>(
-      base::PersistentHash(random_uuid.AsLowercaseString()));
 
   status_.step = Step::CONNECTED;
   status_.payload.emplace<absl::monostate>();
@@ -179,6 +180,7 @@ void TargetDeviceBootstrapController::OnConnectionAuthenticated(
 void TargetDeviceBootstrapController::OnConnectionRejected() {
   status_.step = Step::ERROR;
   status_.payload = ErrorCode::CONNECTION_REJECTED;
+  CleanupIfNeeded();
   NotifyObservers();
 }
 
@@ -192,12 +194,13 @@ void TargetDeviceBootstrapController::OnConnectionClosed(
   status_.step = Step::ERROR;
   status_.payload = ErrorCode::CONNECTION_CLOSED;
   authenticated_connection_.reset();
+  CleanupIfNeeded();
   NotifyObservers();
 }
 
 std::string TargetDeviceBootstrapController::GetDiscoverableName() {
   std::string device_type = base::UTF16ToUTF8(ui::GetChromeOSDeviceName());
-  std::string code = connection_broker_->GetSessionIdDisplayCode();
+  std::string code = connection_broker_->GetAdvertisingIdDisplayCode();
   return device_type + " (" + code + ")";
 }
 
@@ -216,12 +219,14 @@ void TargetDeviceBootstrapController::OnStartAdvertisingResult(bool success) {
   }
   status_.step = Step::ERROR;
   status_.payload = ErrorCode::START_ADVERTISING_FAILED;
+  CleanupIfNeeded();
   NotifyObservers();
 }
 
 void TargetDeviceBootstrapController::OnStopAdvertising() {
   status_.step = Step::NONE;
   status_.payload.emplace<absl::monostate>();
+  CleanupIfNeeded();
   NotifyObservers();
 }
 
@@ -238,6 +243,7 @@ void TargetDeviceBootstrapController::OnNotifySourceOfUpdateResponse(
     base::Value::Dict info =
         authenticated_connection_->GetPrepareForUpdateInfo();
     prefs->SetDict(prefs::kResumeQuickStartAfterRebootInfo, std::move(info));
+    prefs->CommitPendingWrite();
   }
 
   authenticated_connection_->Close(
@@ -282,7 +288,7 @@ void TargetDeviceBootstrapController::AttemptWifiCredentialTransfer() {
   WaitForUserVerification(base::BindOnce(
       &TargetDeviceConnectionBroker::AuthenticatedConnection::
           RequestWifiCredentials,
-      authenticated_connection_, session_id_,
+      authenticated_connection_,
       base::BindOnce(
           &TargetDeviceBootstrapController::OnWifiCredentialsReceived,
           weak_ptr_factory_.GetWeakPtr())));
@@ -373,6 +379,13 @@ void TargetDeviceBootstrapController::OnFidoAssertionReceived(
   status_.step = Step::TRANSFERRED_GOOGLE_ACCOUNT_DETAILS;
   status_.payload.emplace<FidoAssertionInfo>(assertion.value());
   NotifyObservers();
+}
+
+void TargetDeviceBootstrapController::CleanupIfNeeded() {
+  constexpr Step kPossibleSteps[] = {Step::NONE, Step::ERROR};
+  if (base::Contains(kPossibleSteps, status_.step)) {
+    quick_start_connectivity_service_->Cleanup();
+  }
 }
 
 }  // namespace ash::quick_start

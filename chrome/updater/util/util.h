@@ -83,6 +83,12 @@ absl::optional<base::FilePath> GetUpdaterAppBundlePath(UpdaterScope scope);
 // For system installations:
 // /Library/Google/GoogleUpdater/88.0.4293.0/GoogleUpdater.app/Contents/
 //    MacOS/GoogleUpdater
+absl::optional<base::FilePath> GetUpdaterExecutablePath(
+    UpdaterScope scope,
+    const base::Version& version);
+
+// Simpler form of GetUpdaterExecutablePath for the currently running version
+// of the updater.
 absl::optional<base::FilePath> GetUpdaterExecutablePath(UpdaterScope scope);
 
 // Returns a relative path to the executable from GetVersionedInstallDirectory.
@@ -125,6 +131,9 @@ absl::optional<base::FilePath> GetLogFilePath(UpdaterScope scope);
 
 // Initializes logging for an executable.
 void InitLogging(UpdaterScope updater_scope);
+
+// Returns HTTP user-agent value.
+std::string GetUpdaterUserAgent();
 
 // Returns a new GURL by appending the given query parameter name and the
 // value. Unsafe characters in the name and the value are escaped like

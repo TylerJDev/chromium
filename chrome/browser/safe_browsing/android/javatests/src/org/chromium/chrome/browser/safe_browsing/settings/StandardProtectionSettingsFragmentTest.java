@@ -11,7 +11,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
+import org.chromium.build.BuildConfig;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.init.ChromeBrowserInitializer;
 import org.chromium.chrome.browser.preferences.Pref;
@@ -34,6 +36,7 @@ import org.chromium.content_public.browser.test.util.TestThreadUtils;
  * Tests for {@link StandardProtectionSettingsFragment}.
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
+@DoNotBatch(reason = "This test launches a Settings activity")
 // clang-format off
 public class StandardProtectionSettingsFragmentTest {
     // clang-format on
@@ -111,7 +114,8 @@ public class StandardProtectionSettingsFragmentTest {
     @Test
     @SmallTest
     @Feature({"SafeBrowsing"})
-    public void testSwitchPasswordLeakDetectionPreference() {
+    @DisableFeatures(ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION)
+    public void testSwitchPasswordLeakDetectionPreferenceOriginal() {
         mBrowserTestRule.addTestAccountThenSigninAndEnableSync();
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             SafeBrowsingBridge.setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
@@ -145,7 +149,46 @@ public class StandardProtectionSettingsFragmentTest {
     @Test
     @SmallTest
     @Feature({"SafeBrowsing"})
-    public void testPasswordLeakDetectionPreferenceEnabledForSignedOutUsers() {
+    @EnableFeatures(ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION)
+    public void testSwitchPasswordLeakDetectionPreference() {
+        mBrowserTestRule.addTestAccountThenSigninAndEnableSync();
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            SafeBrowsingBridge.setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+        });
+        launchSettingsActivity();
+
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            StandardProtectionSettingsFragment fragment = mTestRule.getFragment();
+            boolean is_password_leak_detection_enabled =
+                    getPrefService().getBoolean(Pref.PASSWORD_LEAK_DETECTION_ENABLED);
+            String checked_state_error_message =
+                    ASSERT_MESSAGE_PREFIX + LEAK_DETECTION + CHECKED_STATE;
+            String enabled_state_error_message =
+                    ASSERT_MESSAGE_PREFIX + LEAK_DETECTION + ENABLED_STATE;
+            String password_leak_detection_summary = fragment.getContext().getString(
+                    R.string.passwords_leak_detection_switch_summary);
+            Assert.assertEquals(checked_state_error_message, is_password_leak_detection_enabled,
+                    mPasswordLeakDetectionPreference.isChecked());
+            Assert.assertTrue(
+                    enabled_state_error_message, mPasswordLeakDetectionPreference.isEnabled());
+            Assert.assertEquals(
+                    password_leak_detection_summary, mPasswordLeakDetectionPreference.getSummary());
+
+            mPasswordLeakDetectionPreference.performClick();
+
+            Assert.assertEquals(checked_state_error_message, !is_password_leak_detection_enabled,
+                    mPasswordLeakDetectionPreference.isChecked());
+            Assert.assertEquals(enabled_state_error_message + FROM_NATIVE,
+                    !is_password_leak_detection_enabled,
+                    getPrefService().getBoolean(Pref.PASSWORD_LEAK_DETECTION_ENABLED));
+        });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @DisableFeatures(ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION)
+    public void testPasswordLeakDetectionPreferenceEnabledForSignedOutUsersOriginal() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             SafeBrowsingBridge.setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
         });
@@ -166,6 +209,43 @@ public class StandardProtectionSettingsFragmentTest {
                     "Leak detection summary should be null if the unauthenticated leak detection "
                             + "is enabled.",
                     mPasswordLeakDetectionPreference.getSummary());
+
+            mPasswordLeakDetectionPreference.performClick();
+
+            Assert.assertEquals(checked_state_error_message, !is_password_leak_detection_enabled,
+                    mPasswordLeakDetectionPreference.isChecked());
+            Assert.assertEquals(enabled_state_error_message + FROM_NATIVE,
+                    !is_password_leak_detection_enabled,
+                    getPrefService().getBoolean(Pref.PASSWORD_LEAK_DETECTION_ENABLED));
+        });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @EnableFeatures(ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION)
+    public void testPasswordLeakDetectionPreferenceEnabledForSignedOutUsers() {
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            SafeBrowsingBridge.setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+        });
+        launchSettingsActivity();
+
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            StandardProtectionSettingsFragment fragment = mTestRule.getFragment();
+            boolean is_password_leak_detection_enabled =
+                    getPrefService().getBoolean(Pref.PASSWORD_LEAK_DETECTION_ENABLED);
+            String checked_state_error_message =
+                    ASSERT_MESSAGE_PREFIX + LEAK_DETECTION + CHECKED_STATE;
+            String enabled_state_error_message =
+                    ASSERT_MESSAGE_PREFIX + LEAK_DETECTION + ENABLED_STATE;
+            String password_leak_detection_summary = fragment.getContext().getString(
+                    R.string.passwords_leak_detection_switch_summary);
+            Assert.assertEquals(checked_state_error_message, is_password_leak_detection_enabled,
+                    mPasswordLeakDetectionPreference.isChecked());
+            Assert.assertTrue(
+                    enabled_state_error_message, mPasswordLeakDetectionPreference.isEnabled());
+            Assert.assertEquals(
+                    password_leak_detection_summary, mPasswordLeakDetectionPreference.getSummary());
 
             mPasswordLeakDetectionPreference.performClick();
 
@@ -304,8 +384,10 @@ public class StandardProtectionSettingsFragmentTest {
     @Test
     @SmallTest
     @Feature({"SafeBrowsing"})
-    @DisableFeatures(ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION)
-    public void testDisabledFriendlierSafeBrowsingSettingsStandardProtection() {
+    @DisableFeatures({ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION,
+            ChromeFeatureList.HASH_PREFIX_REAL_TIME_LOOKUPS})
+    public void
+    testDisabledFriendlierSafeBrowsingSettingsStandardProtection() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             SafeBrowsingBridge.setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
         });
@@ -324,12 +406,41 @@ public class StandardProtectionSettingsFragmentTest {
                     R.string.safe_browsing_standard_protection_extended_reporting_title);
             String password_leak_detection_title =
                     fragment.getContext().getString(R.string.passwords_leak_detection_switch_title);
+            String bulletTwoSummary = fragment.getContext().getString(
+                    R.string.safe_browsing_standard_protection_bullet_two);
 
             Assert.assertEquals(standardProtectionSubtitle, mStandardProtectionSubtitle.getTitle());
             Assert.assertEquals(extended_reporting_title, mExtendedReportingPreference.getTitle());
             Assert.assertEquals(
                     password_leak_detection_title, mPasswordLeakDetectionPreference.getTitle());
             Assert.assertNull(mPasswordLeakDetectionPreference.getSummary());
+            Assert.assertEquals(bulletTwoSummary, mStandardProtectionBulletTwo.getSummary());
+        });
+    }
+
+    // TODO(crbug.com/1466292): Remove once friendlier safe browsing settings standard protection is
+    // launched.
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @EnableFeatures({ChromeFeatureList.HASH_PREFIX_REAL_TIME_LOOKUPS})
+    @DisableFeatures({ChromeFeatureList.FRIENDLIER_SAFE_BROWSING_SETTINGS_STANDARD_PROTECTION})
+    public void testDisabledFriendlierSafeBrowsingSettingsStandardProtectionWithProxy() {
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            SafeBrowsingBridge.setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+        });
+        launchSettingsActivity();
+
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            StandardProtectionSettingsFragment fragment = mTestRule.getFragment();
+            String bulletTwoSummary = fragment.getContext().getString(
+                    R.string.safe_browsing_standard_protection_bullet_two_proxy);
+            if (!BuildConfig.IS_CHROME_BRANDED) {
+                // HPRT is disabled on Chromium build.
+                bulletTwoSummary = fragment.getContext().getString(
+                        R.string.safe_browsing_standard_protection_bullet_two);
+            }
+            Assert.assertEquals(bulletTwoSummary, mStandardProtectionBulletTwo.getSummary());
         });
     }
 

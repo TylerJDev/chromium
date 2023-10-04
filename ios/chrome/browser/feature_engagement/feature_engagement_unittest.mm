@@ -24,13 +24,9 @@ const int kMinURLOpensRequiredForNewTabIPH = 2;
 // to be displayed.
 const int kMinURLOpensRequiredForHistoryOnOverflowMenuIPH = 2;
 
-// The maximum number of times the tab grid is used in a week that can allow the
-// tab grid IPH to be triggered.
-const int kMaxTabGridUsedForTabGridIPH = 2;
-
-// The maximum number of times the history on overflow menu is used in a week
-// that can allow the history IPH to be triggered.
-const int kMaxHistoryUsedForHistoryIPH = 2;
+// The maximum number of times the Password Manager widget promo can be
+// triggered.
+const int kMaxPasswordManagerWidgetPromoIPH = 3;
 
 }  // namespace
 
@@ -75,7 +71,7 @@ class FeatureEngagementTest : public PlatformTest {
                               "comparator:==0;window:7;storage:"
                               "7";
     params["event_used"] =
-        "name:new_tab_toolbar_item_used;comparator:==0;window:1;storage:1";
+        "name:new_tab_toolbar_item_used;comparator:==0;window:365;storage:365";
     params["session_rate"] = "==0";
     params["availability"] = "any";
     return params;
@@ -87,7 +83,7 @@ class FeatureEngagementTest : public PlatformTest {
                               "comparator:==0;window:7;storage:"
                               "7";
     params["event_used"] =
-        "name:tab_grid_toolbar_item_used;comparator:<2;window:7;storage:30";
+        "name:tab_grid_toolbar_item_used;comparator:==0;window:365;storage:365";
     params["session_rate"] = "==0";
     params["availability"] = "any";
     return params;
@@ -100,8 +96,20 @@ class FeatureEngagementTest : public PlatformTest {
     params["event_trigger"] = "name:history_on_overflow_menu_trigger;"
                               "comparator:==0;window:7;storage:"
                               "7";
+    params["event_used"] = "name:history_on_overflow_menu_used;comparator:==0;"
+                           "window:365;storage:365";
+    params["session_rate"] = "==0";
+    params["availability"] = "any";
+    return params;
+  }
+
+  std::map<std::string, std::string> IPHiOSShareParams() {
+    std::map<std::string, std::string> params;
+    params["event_trigger"] = "name:share_toolbar_item_trigger;"
+                              "comparator:==0;window:7;storage:"
+                              "7";
     params["event_used"] =
-        "name:history_on_overflow_menu_used;comparator:<2;window:30;storage:30";
+        "name:share_toolbar_item_used;comparator:==0;window:365;storage:365";
     params["session_rate"] = "==0";
     params["availability"] = "any";
     return params;
@@ -141,6 +149,19 @@ class FeatureEngagementTest : public PlatformTest {
         "name:default_site_view_shown;comparator:==0;window:720;storage:720";
     params["event_1"] =
         "name:desktop_version_requested;comparator:>=3;window:60;storage:60";
+    return params;
+  }
+
+  std::map<std::string, std::string> PasswordManagerWidgetPromoParams() {
+    std::map<std::string, std::string> params;
+    params["availability"] = "any";
+    params["session_rate"] = "any";
+    params["event_trigger"] = "name:password_manager_widget_promo_trigger;"
+                              "comparator:<3;window:360;storage:360";
+    params["event_used"] = "name:password_manager_widget_promo_used;comparator:"
+                           "==0;window:360;storage:360";
+    params["event_1"] = "name:password_manager_widget_promo_closed;comparator:="
+                        "=0;window:360;storage:360";
     return params;
   }
 
@@ -322,15 +343,11 @@ TEST_F(FeatureEngagementTest, TestTabGridToolbarItemIPHShouldShow) {
   tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
   run_loop_.Run();
 
-  // Ensure that tab grid has been tapped < `kMaxTabGridUsedForTabGridIPH` times
-  // in a week.
-  tracker->NotifyEvent(feature_engagement::events::kTabGridToolbarItemUsed);
-
   EXPECT_TRUE(tracker->ShouldTriggerHelpUI(
       feature_engagement::kIPHiOSTabGridToolbarItemFeature));
 }
 
-// Verifies that the Tab Grid IPH is not triggered.
+// Verifies that the Tab Grid IPH is not triggered due to being used already.
 TEST_F(FeatureEngagementTest, TestTabGridToolbarItemIPHShouldNotShow) {
   feature_engagement::test::ScopedIphFeatureList list;
   list.InitAndEnableFeaturesWithParameters(
@@ -343,10 +360,8 @@ TEST_F(FeatureEngagementTest, TestTabGridToolbarItemIPHShouldNotShow) {
   tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
   run_loop_.Run();
 
-  // Ensure the usage condition is not met.
-  for (int index = 0; index < kMaxTabGridUsedForTabGridIPH + 1; index++) {
-    tracker->NotifyEvent(feature_engagement::events::kTabGridToolbarItemUsed);
-  }
+  // Ensure that the tab grid item has been used to prevent triggering.
+  tracker->NotifyEvent(feature_engagement::events::kTabGridToolbarItemUsed);
 
   EXPECT_FALSE(tracker->ShouldTriggerHelpUI(
       feature_engagement::kIPHiOSTabGridToolbarItemFeature));
@@ -366,9 +381,6 @@ TEST_F(FeatureEngagementTest, TestHistoryOnOverflowMenuIPHShouldShow) {
   tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
   run_loop_.Run();
 
-  // Ensure that the usage condition is met.
-  tracker->NotifyEvent(feature_engagement::events::kHistoryOnOverflowMenuUsed);
-
   // Ensure that url event is met.
   for (int index = 0; index < kMinURLOpensRequiredForHistoryOnOverflowMenuIPH;
        index++) {
@@ -379,8 +391,7 @@ TEST_F(FeatureEngagementTest, TestHistoryOnOverflowMenuIPHShouldShow) {
       feature_engagement::kIPHiOSHistoryOnOverflowMenuFeature));
 }
 
-// Verifies that the History IPH is not triggered due to being used too many
-// times.
+// Verifies that the History IPH is not triggered due to being used already.
 TEST_F(FeatureEngagementTest,
        TestHistoryOnOverflowMenuIPHShouldNotShowDueToUsage) {
   feature_engagement::test::ScopedIphFeatureList list;
@@ -394,11 +405,9 @@ TEST_F(FeatureEngagementTest,
   tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
   run_loop_.Run();
 
-  // Ensure that the history has been used too many times to trigger the IPH.
-  for (int index = 0; index < kMaxHistoryUsedForHistoryIPH + 1; index++) {
-    tracker->NotifyEvent(
-        feature_engagement::events::kHistoryOnOverflowMenuUsed);
-  }
+  // Ensure that the history has been used to prevent triggering the IPH.
+  tracker->NotifyEvent(feature_engagement::events::kHistoryOnOverflowMenuUsed);
+
   // Ensure that the url event condition is met.
   for (int index = 0; index < kMinURLOpensRequiredForHistoryOnOverflowMenuIPH;
        index++) {
@@ -430,6 +439,44 @@ TEST_F(FeatureEngagementTest,
 
   EXPECT_FALSE(tracker->ShouldTriggerHelpUI(
       feature_engagement::kIPHiOSHistoryOnOverflowMenuFeature));
+}
+
+// Verifies that the Share IPH is triggered after the proper conditions
+// are met.
+TEST_F(FeatureEngagementTest, TestShareToolbarItemIPHShouldShow) {
+  feature_engagement::test::ScopedIphFeatureList list;
+  list.InitAndEnableFeaturesWithParameters(
+      {{feature_engagement::kIPHiOSShareToolbarItemFeature,
+        IPHiOSShareParams()}});
+
+  std::unique_ptr<feature_engagement::Tracker> tracker =
+      feature_engagement::CreateTestTracker();
+  // Make sure tracker is initialized.
+  tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
+  run_loop_.Run();
+
+  EXPECT_TRUE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSShareToolbarItemFeature));
+}
+
+// Verifies that the Share IPH is not triggered due to being used already.
+TEST_F(FeatureEngagementTest, TestShareToolbarItemIPHShouldNotShowDueToUsage) {
+  feature_engagement::test::ScopedIphFeatureList list;
+  list.InitAndEnableFeaturesWithParameters(
+      {{feature_engagement::kIPHiOSShareToolbarItemFeature,
+        IPHiOSShareParams()}});
+
+  std::unique_ptr<feature_engagement::Tracker> tracker =
+      feature_engagement::CreateTestTracker();
+  // Make sure tracker is initialized.
+  tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
+  run_loop_.Run();
+
+  // Ensure that the share has been used to prevent triggering the IPH.
+  tracker->NotifyEvent(feature_engagement::events::kShareToolbarItemUsed);
+
+  EXPECT_FALSE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSShareToolbarItemFeature));
 }
 
 // Verifies that the bottom toolbar tip triggers.
@@ -541,3 +588,81 @@ TEST_F(FeatureEngagementTest,
       feature_engagement::kIPHDefaultSiteViewFeature));
 }
 
+// Verifies that the Password Manager widget promo IPH can't be triggered again
+// after being triggered three times.
+TEST_F(FeatureEngagementTest, TestPasswordManagerPromoIPHReachedTriggerLimit) {
+  feature_engagement::test::ScopedIphFeatureList list;
+  list.InitAndEnableFeaturesWithParameters(
+      {{feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature,
+        PasswordManagerWidgetPromoParams()}});
+
+  std::unique_ptr<feature_engagement::Tracker> tracker =
+      feature_engagement::CreateTestTracker();
+  // Make sure tracker is initialized.
+  tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
+  run_loop_.Run();
+
+  // Ensure that the Password Manager widget promo has been triggered three
+  // times.
+  for (int index = 0; index < kMaxPasswordManagerWidgetPromoIPH; index++) {
+    tracker->NotifyEvent(
+        feature_engagement::events::kPasswordManagerWidgetPromoTriggered);
+  }
+
+  EXPECT_FALSE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature));
+}
+
+// Verifies that the Password Manager widget promo IPH is not triggered again
+// after the widget was used at least once.
+TEST_F(FeatureEngagementTest, TestPasswordManagerPromoIPHReachedUsedLimit) {
+  feature_engagement::test::ScopedIphFeatureList list;
+  list.InitAndEnableFeaturesWithParameters(
+      {{feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature,
+        PasswordManagerWidgetPromoParams()}});
+
+  std::unique_ptr<feature_engagement::Tracker> tracker =
+      feature_engagement::CreateTestTracker();
+  // Make sure tracker is initialized.
+  tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
+  run_loop_.Run();
+
+  EXPECT_TRUE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature));
+  tracker->Dismissed(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature);
+
+  // Interact with the Password Manager widget.
+  tracker->NotifyEvent(
+      feature_engagement::events::kPasswordManagerWidgetPromoUsed);
+
+  EXPECT_FALSE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature));
+}
+
+// Verifies that the Password Manager widget promo IPH is not triggered again
+// after the promo was closed by the user.
+TEST_F(FeatureEngagementTest, TestPasswordManagerPromoIPHWasClosed) {
+  feature_engagement::test::ScopedIphFeatureList list;
+  list.InitAndEnableFeaturesWithParameters(
+      {{feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature,
+        PasswordManagerWidgetPromoParams()}});
+
+  std::unique_ptr<feature_engagement::Tracker> tracker =
+      feature_engagement::CreateTestTracker();
+  // Make sure tracker is initialized.
+  tracker->AddOnInitializedCallback(BoolArgumentQuitClosure());
+  run_loop_.Run();
+
+  EXPECT_TRUE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature));
+  tracker->Dismissed(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature);
+
+  // Close the Password Manager widget promo.
+  tracker->NotifyEvent(
+      feature_engagement::events::kPasswordManagerWidgetPromoClosed);
+
+  EXPECT_FALSE(tracker->ShouldTriggerHelpUI(
+      feature_engagement::kIPHiOSPromoPasswordManagerWidgetFeature));
+}

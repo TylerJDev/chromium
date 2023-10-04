@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/allocator/partition_allocator/pointers/raw_ptr.h"
 #include "base/i18n/message_formatter.h"
+#include "base/memory/raw_ptr.h"
 #include "base/types/cxx23_to_underlying.h"
 #include "chrome/browser/ui/browser_dialogs.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
@@ -38,7 +38,7 @@ class SubAppsListView : public views::BoxLayoutView {
   views::BoxLayoutView* AddListLayout(views::ScrollView* scroll_view);
   void AddSubAppToList(views::BoxLayoutView* sub_app_list,
                        const std::u16string& sub_app_name,
-                       const std::map<SquareSizePx, SkBitmap>& icons);
+                       const std::map<web_app::SquareSizePx, SkBitmap>& icons);
 
   raw_ptr<ChromeLayoutProvider> layout_provider_ = nullptr;
 };
@@ -193,7 +193,7 @@ views::BoxLayoutView* SubAppsListView::AddListLayout(
 void SubAppsListView::AddSubAppToList(
     views::BoxLayoutView* sub_app_list,
     const std::u16string& sub_app_name,
-    const std::map<SquareSizePx, SkBitmap>& icons) {
+    const std::map<web_app::SquareSizePx, SkBitmap>& icons) {
   auto* box =
       sub_app_list->AddChildView(std::make_unique<views::BoxLayoutView>());
   box->SetOrientation(views::BoxLayout::Orientation::kHorizontal);

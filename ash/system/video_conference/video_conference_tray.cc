@@ -233,9 +233,8 @@ void VideoConferenceTrayButton::UpdateTooltip() {
 VideoConferenceTray::VideoConferenceTray(Shelf* shelf)
     : TrayBackgroundView(shelf,
                          TrayBackgroundViewCatalogName::kVideoConferenceTray) {
-  // If the user pressed the body of the tray, just toggle the bubble.
-  SetPressedCallback(base::BindRepeating(&VideoConferenceTray::ToggleBubble,
-                                         weak_ptr_factory_.GetWeakPtr()));
+  SetCallback(base::BindRepeating(&VideoConferenceTray::ToggleBubble,
+                                  weak_ptr_factory_.GetWeakPtr()));
 
   tray_container()->SetSpacingBetweenChildren(kTrayButtonsSpacing);
 
@@ -319,6 +318,12 @@ std::u16string VideoConferenceTray::GetAccessibleNameForBubble() {
 
 void VideoConferenceTray::HideBubbleWithView(
     const TrayBubbleView* bubble_view) {
+  if (bubble_ && bubble_->bubble_view() == bubble_view) {
+    CloseBubble();
+  }
+}
+
+void VideoConferenceTray::HideBubble(const TrayBubbleView* bubble_view) {
   if (bubble_ && bubble_->bubble_view() == bubble_view) {
     CloseBubble();
   }
@@ -413,9 +418,11 @@ void VideoConferenceTray::UpdateTrayAndIconsState() {
 
   camera_icon_->SetVisible(controller->GetHasCameraPermissions());
   camera_icon_->SetIsCapturing(controller->IsCapturingCamera());
+  camera_icon_->SetToggled(/*toggled=*/controller->GetCameraMuted());
 
   audio_icon_->SetVisible(controller->GetHasMicrophonePermissions());
   audio_icon_->SetIsCapturing(controller->IsCapturingMicrophone());
+  audio_icon_->SetToggled(/*toggled=*/controller->GetMicrophoneMuted());
 
   bool is_capturing_screen = controller->IsCapturingScreen();
   screen_share_icon_->SetVisible(is_capturing_screen);

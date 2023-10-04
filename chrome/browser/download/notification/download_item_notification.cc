@@ -37,10 +37,11 @@
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/web_applications/web_app_id_constants.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chromeos/constants/chromeos_features.h"
 #include "components/download/public/common/download_danger_type.h"
@@ -366,8 +367,20 @@ void DownloadItemNotification::Click(
     }
 
     if (command == DownloadCommands::REVIEW) {
-      item_->ReviewScanningVerdict(
-          GetBrowser()->tab_strip_model()->GetActiveWebContents());
+      content::WebContents* contents =
+          GetBrowser()->tab_strip_model()->GetActiveWebContents();
+
+      // If there is no currently active web contents, just show the user the
+      // downloads page so they get more context on the warned download needing
+      // to be reviewed.
+      // TODO(b/285119059): Expand this solution by having the review dialog
+      // also open immediately after the download page is available.
+      if (!contents) {
+        chrome::ShowDownloads(GetBrowser());
+        return;
+      }
+
+      item_->ReviewScanningVerdict(contents);
       in_review_ = true;
       Update();
     }
@@ -803,15 +816,14 @@ bool DownloadItemNotification::IsGalleryAppPdfEditNotificationEligible() const {
     }
   }
 
-  file_manager::file_tasks::TaskDescriptor task_descriptor;
-  if (!file_manager::file_tasks::GetDefaultTaskFromPrefs(
-          *prefs, "application/pdf", ".pdf", &task_descriptor)) {
+  auto task_descriptor = file_manager::file_tasks::GetDefaultTaskFromPrefs(
+      *prefs, "application/pdf", ".pdf");
+  if (!task_descriptor) {
     // GetDefaultTaskFromPrefs returns false if no default app is specified. If
     // no default app is specified, a pdf will be opened with Gallery app.
     return true;
   }
-
-  return task_descriptor.app_id == web_app::kMediaAppId;
+  return task_descriptor->app_id == web_app::kMediaAppId;
 #else
   return false;
 #endif

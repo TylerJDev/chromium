@@ -49,24 +49,25 @@ const char kGoogleServicesAccountId[] = "google.services.account_id";
 const char kGoogleServicesConsentedToSync[] =
     "google.services.consented_to_sync";
 
-// Similar to kGoogleServicesLastUsername, this is the corresponding version of
-// kGoogleServicesAccountId that is not cleared on signout.
+// Similar to kGoogleServicesLastSyncingUsername, this is the corresponding
+// version of kGoogleServicesAccountId that is not cleared on signout.
 // DEPRECATED: this preference is deprecated and is always empty. It will be
-// removed once all users are migrated to `kGoogleServicesLastGaiaId`.
-const char kGoogleServicesLastAccountIdDeprecated[] =
+// removed once all users are migrated to `kGoogleServicesLastSyncingGaiaId`.
+const char kGoogleServicesLastSyncingAccountIdDeprecated[] =
     "google.services.last_account_id";
 
-// Similar to `kGoogleServicesLastUsername` that is not cleared on signout. Note
-// this is always a Gaia ID, as opposed to `kGoogleServicesAccountId` which may
-// be an email.
-const char kGoogleServicesLastGaiaId[] = "google.services.last_gaia_id";
+// Similar to `kGoogleServicesLastSyncingUsername` that is not cleared on
+// signout. Note this is always a Gaia ID, as opposed to
+// `kGoogleServicesAccountId` which may be an email.
+const char kGoogleServicesLastSyncingGaiaId[] = "google.services.last_gaia_id";
 
 // String the identifies the last user that logged into sync and other
 // google services. This value is not cleared on signout.
 // This pref remains in order to pre-fill the sign in page when reconnecting a
 // profile, but programmatic checks to see if a given account is the same as the
-// last account should use `kGoogleServicesLastGaiaId` instead.
-const char kGoogleServicesLastUsername[] = "google.services.last_username";
+// last account should use `kGoogleServicesLastSyncingGaiaId` instead.
+const char kGoogleServicesLastSyncingUsername[] =
+    "google.services.last_username";
 
 // Device id scoped to single signin. This device id will be regenerated if user
 // signs out and signs back in. When refresh token is requested for this user it
@@ -109,5 +110,19 @@ const char kSigninAllowedOnNextStartup[] = "signin.allowed_on_next_startup";
 // newly created profile via signin interception.
 const char kSigninInterceptionIDPCookiesUrl[] =
     "signin.interception.idp_cookies.url";
+
+// Integer which indicates whether enterprise profile separation is enforced or
+// disabled.
+const char kProfileSeparationSettings[] = "profile_separation.settings";
+
+// Integer which indicates which options users have for their existing data when
+// creating a new profile via the enterprise profile separation flow.
+const char kProfileSeparationDataMigrationSettings[] =
+    "profile_separation.data_migration_settings";
+
+// List of domains that are not required to create a new profile after a content
+// area signin.
+const char kProfileSeparationDomainExceptionList[] =
+    "profile_separation.domain_exception_list";
 
 }  // namespace prefs

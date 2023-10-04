@@ -64,6 +64,12 @@ class SafetyHubHandler : public settings::SettingsPageUIHandler {
   FRIEND_TEST_ALL_PREFIXES(
       SafetyHubHandlerTest,
       SendNotificationPermissionReviewList_FeatureDisabled);
+  FRIEND_TEST_ALL_PREFIXES(SafetyHubHandlerTest, RevokeAllContentSettingTypes);
+  FRIEND_TEST_ALL_PREFIXES(SafetyHubHandlerParameterizedTest,
+                           PasswordCardState);
+  FRIEND_TEST_ALL_PREFIXES(SafetyHubHandlerTest, PasswordCardCheckTime);
+  FRIEND_TEST_ALL_PREFIXES(SafetyHubHandlerTest, VersionCardUpToDate);
+  FRIEND_TEST_ALL_PREFIXES(SafetyHubHandlerTest, VersionCardOutOfDate);
 
   // SettingsPageUIHandler implementation.
   void OnJavascriptAllowed() override;
@@ -99,6 +105,8 @@ class SafetyHubHandler : public settings::SettingsPageUIHandler {
 
   // Returns the list of revoked permissions that belongs to origins which
   // haven't been visited recently.
+  // TODO(crbug.com/1443466): Get list of revoked permissions from the unused
+  // site permission service instead.
   base::Value::List PopulateUnusedSitePermissionsData();
 
   // Sends the list of unused site permissions to review to the WebUI.
@@ -129,8 +137,20 @@ class SafetyHubHandler : public settings::SettingsPageUIHandler {
   void HandleUndoIgnoreOriginsForNotificationPermissionReview(
       const base::Value::List& args);
 
-  // Returns the Safe Browsing state.
-  void HandleGetSafeBrowsingState(const base::Value::List& args);
+  // Returns the data for Safe Browsing card.
+  void HandleGetSafeBrowsingCardData(const base::Value::List& args);
+
+  // Returns the data for the password card.
+  void HandleGetPasswordCardData(const base::Value::List& args);
+
+  // Returns the data for the version card.
+  void HandleGetVersionCardData(const base::Value::List& args);
+
+  // Returns true if Safety Hub has recommendations.
+  void HandleGetSafetyHubHasRecommendations(const base::Value::List& args);
+
+  // Returns the subheader for Safety Hub entry point in settings.
+  void HandleGetSafetyHubEntryPointSubheader(const base::Value::List& args);
 
   // Sends the list of notification permissions to review to the WebUI.
   void SendNotificationPermissionReviewList();

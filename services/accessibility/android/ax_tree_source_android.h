@@ -10,7 +10,6 @@
 #include <string>
 #include <vector>
 
-#include "base/allocator/partition_allocator/pointers/raw_ptr.h"
 #include "base/containers/flat_map.h"
 #include "base/memory/raw_ptr.h"
 #include "extensions/browser/api/automation_internal/automation_event_router.h"
@@ -31,7 +30,8 @@ namespace ax::android {
 class AXTreeSourceAndroidTest;
 
 using AXTreeAndroidSerializer =
-    ui::AXTreeSerializer<AccessibilityInfoDataWrapper*>;
+    ui::AXTreeSerializer<AccessibilityInfoDataWrapper*,
+                         std::vector<AccessibilityInfoDataWrapper*>>;
 
 // This class represents the accessibility tree from the focused ARC window.
 class AXTreeSourceAndroid
@@ -125,6 +125,9 @@ class AXTreeSourceAndroid
   AccessibilityInfoDataWrapper* GetFirstImportantAncestor(
       AccessibilityInfoDataWrapper* info_data) const;
 
+  AccessibilityInfoDataWrapper* GetFirstAccessibilityFocusableAncestor(
+      AccessibilityInfoDataWrapper* info_data) const;
+
   SerializationDelegate& serialization_delegate() const {
     return *serialization_delegate_.get();
   }
@@ -155,6 +158,9 @@ class AXTreeSourceAndroid
 
  private:
   friend class AXTreeSourceAndroidTest;
+
+  // Builds the map that stores relationships between nodes.
+  void BuildNodeMap(const mojom::AccessibilityEventData& event_data);
 
   // Actual implementation of NotifyAccessibilityEvent.
   void NotifyAccessibilityEventInternal(

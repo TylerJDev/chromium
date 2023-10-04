@@ -75,6 +75,22 @@ cx_diag::MemoryRoutineFinishedInfo UncheckedConvertPtr(
 
 }  // namespace unchecked
 
+cx_diag::ExceptionReason Convert(
+    crosapi::TelemetryExtensionException::Reason input) {
+  switch (input) {
+    case crosapi::TelemetryExtensionException::Reason::kUnmappedEnumField:
+      return cx_diag::ExceptionReason::kUnknown;
+    case crosapi::TelemetryExtensionException::Reason::
+        kMojoDisconnectWithoutReason:
+      return cx_diag::ExceptionReason::kUnknown;
+    case crosapi::TelemetryExtensionException::Reason::kUnexpected:
+      return cx_diag::ExceptionReason::kUnexpected;
+    case crosapi::TelemetryExtensionException::Reason::kUnsupported:
+      return cx_diag::ExceptionReason::kUnsupported;
+  }
+  NOTREACHED();
+}
+
 cx_diag::RoutineWaitingReason Convert(
     crosapi::TelemetryDiagnosticRoutineStateWaiting::Reason input) {
   switch (input) {
@@ -95,7 +111,7 @@ cx_diag::MemtesterTestItemEnum Convert(
     crosapi::TelemetryDiagnosticMemtesterTestItemEnum input) {
   switch (input) {
     case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::kUnmappedEnumField:
-      return cx_diag::MemtesterTestItemEnum::kNone;
+      return cx_diag::MemtesterTestItemEnum::kUnknown;
     case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::kUnknown:
       return cx_diag::MemtesterTestItemEnum::kUnknown;
     case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::kStuckAddress:
@@ -131,10 +147,10 @@ cx_diag::MemtesterTestItemEnum Convert(
       return cx_diag::MemtesterTestItemEnum::kWalkingOnes;
     case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::kWalkingZeroes:
       return cx_diag::MemtesterTestItemEnum::kWalkingZeroes;
-    case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::k8BitWrites:
-      return cx_diag::MemtesterTestItemEnum::kByteWrites;
-    case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::k16BitWrites:
-      return cx_diag::MemtesterTestItemEnum::kWordWrites;
+    case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::kEightBitWrites:
+      return cx_diag::MemtesterTestItemEnum::kEightBitWrites;
+    case crosapi::TelemetryDiagnosticMemtesterTestItemEnum::kSixteenBitWrites:
+      return cx_diag::MemtesterTestItemEnum::kSixteenBitWrites;
   }
   NOTREACHED_NORETURN();
 }

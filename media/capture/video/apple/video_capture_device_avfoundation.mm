@@ -100,15 +100,6 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
         [VideoCaptureDeviceAVFoundation FourCCToChromiumPixelFormat:fourcc];
     CMVideoDimensions dimensions =
         CMVideoFormatDescriptionGetDimensions(captureFormat.formatDescription);
-    Float64 maxFrameRate = 0;
-    bool matchesFrameRate = false;
-    for (AVFrameRateRange* frameRateRange in captureFormat
-             .videoSupportedFrameRateRanges) {
-      maxFrameRate = std::max(maxFrameRate, frameRateRange.maxFrameRate);
-      matchesFrameRate |=
-          frameRateRange.minFrameRate <= frame_rate + kFrameRateEpsilon &&
-          frame_rate - kFrameRateEpsilon <= frameRateRange.maxFrameRate;
-    }
 
     // If the pixel format is unsupported by our code, then it is not useful.
     if (pixelFormat == VideoPixelFormat::PIXEL_FORMAT_UNKNOWN) {
@@ -121,6 +112,15 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
       continue;
     }
 
+    Float64 maxFrameRate = 0;
+    bool matchesFrameRate = false;
+    for (AVFrameRateRange* frameRateRange in captureFormat
+             .videoSupportedFrameRateRanges) {
+      maxFrameRate = std::max(maxFrameRate, frameRateRange.maxFrameRate);
+      matchesFrameRate |=
+          frameRateRange.minFrameRate <= frame_rate + kFrameRateEpsilon &&
+          frame_rate - kFrameRateEpsilon <= frameRateRange.maxFrameRate;
+    }
     // Prefer a capture format that handles the requested framerate to one
     // that doesn't.
     if (bestCaptureFormat) {
@@ -309,7 +309,28 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
     // To avoid races with concurrent callbacks, grab the lock before stopping
     // capture and clearing all the variables.
     base::AutoLock lock(_lock);
+
+    // Cleanup AVCaptureSession
+    // 1. Stop the AVCaptureSession
     [self stopCapture];
+    // 2. Remove AVCaptureInputs and AVCaptureOutputs
+    for (AVCaptureInput* input in _captureSession.inputs) {
+      [_captureSession removeInput:input];
+    }
+    for (AVCaptureOutput* output in _captureSession.outputs) {
+      [_captureSession removeOutput:output];
+    }
+    // 3. Set the AVCaptureSession to nil to remove strong references
+    _captureSession = nil;
+
+    // Cleanup AVCaptureDevice
+    // 1. Unlock any configuration (if locked)
+    [_captureDevice unlockForConfiguration];
+    // 2. Remove observer
+    [_captureDevice removeObserver:self forKeyPath:@"portraitEffectActive"];
+    // 3. Release and deallocate the capture device
+    _captureDevice = nil;
+
     _frameReceiver = nullptr;
     _sampleBufferTransformer.reset();
     _mainThreadTaskRunner = nullptr;
@@ -1017,7 +1038,7 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
         kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
         media::GetSampleBufferSize(sampleBuffer), _rotation,
         kPixelBufferPoolSize);
-    base::ScopedCFTypeRef<CVPixelBufferRef> pixelBuffer =
+    base::apple::ScopedCFTypeRef<CVPixelBufferRef> pixelBuffer =
         _sampleBufferTransformer->Transform(sampleBuffer);
     if (!pixelBuffer) {
       LOG(ERROR) << "Failed to transform captured frame. Dropping frame.";
@@ -1025,15 +1046,16 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
     }
 
 #if BUILDFLAG(IS_MAC)
-    base::ScopedCFTypeRef<CVPixelBufferRef> final_pixel_buffer = pixelBuffer;
+    base::apple::ScopedCFTypeRef<CVPixelBufferRef> final_pixel_buffer =
+        pixelBuffer;
 #else
     // The rotated_pixelBuffer might not be the same size as the source
     // pixelBuffer as it gets rotated by rotation_angle_. In order to restore
     // the original size, rotated_pixelBuffer need to scale it to its original
     // size by transforming it.
-    base::ScopedCFTypeRef<CVPixelBufferRef> rotated_pixelBuffer =
+    base::apple::ScopedCFTypeRef<CVPixelBufferRef> rotated_pixelBuffer =
         _sampleBufferTransformer->Rotate(pixelBuffer);
-    base::ScopedCFTypeRef<CVPixelBufferRef> final_pixel_buffer =
+    base::apple::ScopedCFTypeRef<CVPixelBufferRef> final_pixel_buffer =
         _sampleBufferTransformer->Transform(rotated_pixelBuffer);
 
 #endif

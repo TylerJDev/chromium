@@ -173,9 +173,9 @@ class MockAshNotificationDragDropDelegate
       if (data->HasHtml()) {
         HandleHtmlData();
       } else {
-        base::FilePath file_path;
-        data->GetFilename(&file_path);
-        HandleFilePathData(file_path);
+        std::vector<ui::FileInfo> files;
+        data->GetFilenames(&files);
+        HandleFilePathData(files[0].path);
       }
     }
   }
@@ -183,43 +183,6 @@ class MockAshNotificationDragDropDelegate
   base::WeakPtrFactory<MockAshNotificationDragDropDelegate> weak_ptr_factory_{
       this};
 };
-
-void TestDisableExpandCollapseForNotificationView(
-    AshNotificationView* notification_view,
-    AshNotificationExpandButton* expand_button) {
-  bool old_expanded_state = notification_view->IsExpanded();
-
-  ASSERT_TRUE(expand_button->GetVisible());
-  ASSERT_FALSE(notification_view->disable_expand_collapse_for_test());
-
-  // Test the disable expand collapse behavior.
-  notification_view->SetExpandCollapseEnabled(/*enabled=*/false);
-
-  EXPECT_TRUE(notification_view->disable_expand_collapse_for_test());
-  EXPECT_EQ(
-      l10n_util::GetStringUTF16(IDS_ASH_NOTIFICATION_EXPAND_DISABLED_TOOLTIP),
-      expand_button->GetAccessibleName());
-
-  // Clicking the expand button should not change the expand state.
-  views::test::ButtonTestApi test_api(expand_button);
-  test_api.NotifyClick(ui::test::TestEvent());
-  EXPECT_EQ(old_expanded_state, notification_view->IsExpanded());
-
-  // Test the enable expand button behavior.
-  notification_view->SetExpandCollapseEnabled(/*enabled=*/true);
-
-  EXPECT_FALSE(notification_view->disable_expand_collapse_for_test());
-  EXPECT_EQ(l10n_util::GetStringUTF16(IDS_ASH_NOTIFICATION_EXPAND_TOOLTIP),
-            expand_button->GetAccessibleName());
-
-  // Clicking the expand button should change the expand state.
-  views::test::ButtonTestApi test_api2(expand_button);
-  test_api2.NotifyClick(ui::test::TestEvent());
-
-  EXPECT_NE(old_expanded_state, notification_view->IsExpanded());
-  EXPECT_EQ(l10n_util::GetStringUTF16(IDS_ASH_NOTIFICATION_COLLAPSE_TOOLTIP),
-            expand_button->GetAccessibleName());
-}
 
 }  // namespace
 
@@ -778,53 +741,6 @@ TEST_F(AshNotificationViewTest, ExpandButtonVisibility) {
   ToggleInlineSettings(notification_view());
   EXPECT_TRUE(GetContentRow(notification_view())->GetVisible());
   EXPECT_TRUE(GetExpandButton(notification_view())->GetVisible());
-}
-
-TEST_F(AshNotificationViewTest, DisableExpandCollapse) {
-  auto notification = CreateTestNotification();
-  notification_view()->UpdateWithNotification(*notification);
-
-  TestDisableExpandCollapseForNotificationView(
-      notification_view(), GetExpandButton(notification_view()));
-}
-
-TEST_F(AshNotificationViewTest, DisableExpandCollapseGroup) {
-  MakeNotificationGroupParent(notification_view(),
-                              /*group_child_num=*/2);
-
-  // Test clicking the expand button on both parent and child notification
-  // views.
-  TestDisableExpandCollapseForNotificationView(
-      notification_view(), GetExpandButton(notification_view()));
-
-  for (auto* child_notification_view :
-       GetChildNotifications(notification_view())) {
-    auto* ash_notification_view =
-        static_cast<AshNotificationView*>(child_notification_view);
-    TestDisableExpandCollapseForNotificationView(
-        ash_notification_view, GetExpandButton(ash_notification_view));
-  }
-
-  // The expand/collapse state for parent and children should be in sync.
-  notification_view()->SetExpandCollapseEnabled(false);
-  EXPECT_TRUE(notification_view()->disable_expand_collapse_for_test());
-
-  for (auto* child_notification_view :
-       GetChildNotifications(notification_view())) {
-    auto* ash_notification_view =
-        static_cast<AshNotificationView*>(child_notification_view);
-    EXPECT_TRUE(ash_notification_view->disable_expand_collapse_for_test());
-  }
-
-  notification_view()->SetExpandCollapseEnabled(true);
-  EXPECT_FALSE(notification_view()->disable_expand_collapse_for_test());
-
-  for (auto* child_notification_view :
-       GetChildNotifications(notification_view())) {
-    auto* ash_notification_view =
-        static_cast<AshNotificationView*>(child_notification_view);
-    EXPECT_FALSE(ash_notification_view->disable_expand_collapse_for_test());
-  }
 }
 
 TEST_F(AshNotificationViewTest, WarningLevelInSummaryText) {
@@ -1451,17 +1367,21 @@ class AshNotificationViewDragTestBase : public AshNotificationViewTestBase {
         }),
         run_loop.QuitClosure());
 
+    StartDragAt(start_point);
+    run_loop.Run();
+  }
+
+  // Starts drag at the specified location.
+  void StartDragAt(const gfx::Point& point_in_screen) {
     if (DoesUseGesture()) {
       // Press touch to trigger notification drag.
-      GetEventGenerator()->PressTouch(start_point);
+      GetEventGenerator()->PressTouch(point_in_screen);
     } else {
       // Press the mouse then move to trigger notification drag.
-      GetEventGenerator()->MoveMouseTo(start_point);
+      GetEventGenerator()->MoveMouseTo(point_in_screen);
       GetEventGenerator()->PressLeftButton();
       MoveDragByOneStep();
     }
-
-    run_loop.Run();
   }
 
   // Drags and drops `notification_view`. If `drag_to_widget` is true,
@@ -1968,6 +1888,52 @@ TEST_P(ScreenCaptureNotificationViewDragTest, Basics) {
   // Check the notification catalog name.
   tester.ExpectBucketCount("Ash.NotificationView.ImageDrag.Start",
                            ash::NotificationCatalogName::kScreenCapture, 1);
+}
+
+class DragAfterNotificationRemovalTest : public AshNotificationViewDragTestBase,
+                                         public testing::WithParamInterface<
+                                             /*use_revamp_feature=*/bool> {
+ private:
+  // AshNotificationViewDragTestBase:
+  bool DoesUseGesture() const override { return false; }
+  bool IsPopupNotification() const override { return true; }
+  bool DoesUseQsRevamp() const override { return GetParam(); }
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         DragAfterNotificationRemovalTest,
+                         /*use_revamp_feature=*/testing::Bool());
+
+// Verifies that removing a notification then dragging its corresponding view
+// shortly after removal works as expected.
+TEST_P(DragAfterNotificationRemovalTest, Basics) {
+  std::unique_ptr<Notification> notification = CreateTestNotification(
+      /*has_image=*/true, /*show_snooze_button=*/false, /*has_message=*/false,
+      message_center::NOTIFICATION_TYPE_SIMPLE,
+      absl::make_optional<base::FilePath>("dummy_file_path"));
+
+  // Wait until the notification popup shows.
+  MessagePopupAnimationWaiter(
+      GetPrimaryUnifiedSystemTray()->GetMessagePopupCollection())
+      .Wait();
+  EXPECT_FALSE(
+      message_center::MessageCenter::Get()->GetPopupNotifications().empty());
+
+  // Remove `notification` from the message center.
+  message_center::MessageCenter::Get()->RemoveNotification(notification->id(),
+                                                           /*by_user=*/true);
+  EXPECT_TRUE(
+      message_center::MessageCenter::Get()->GetPopupNotifications().empty());
+
+  // Drag the view corresponding to `notification`. Note that at this moment
+  // `notification_view` still exists due to the fade-out animation.
+  const AshNotificationView* const notification_view =
+      GetViewForNotificationId(notification->id());
+  ASSERT_TRUE(notification_view);
+  StartDragAt(GetDragAreaCenterInScreen(*notification_view));
+
+  // Drag should NOT start.
+  EXPECT_FALSE(notification_view->GetWidget()->dragged_view());
 }
 
 }  // namespace ash

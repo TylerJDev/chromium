@@ -63,6 +63,7 @@
 #include "content/browser/dom_storage/dom_storage_context_wrapper.h"
 #include "content/browser/dom_storage/session_storage_namespace_impl.h"
 #include "content/browser/process_lock.h"
+#include "content/browser/renderer_host/back_forward_cache_impl.h"
 #include "content/browser/renderer_host/debug_urls.h"
 #include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
@@ -120,12 +121,6 @@
 
 namespace content {
 namespace {
-
-// TODO(https://crbug.com/1439948): Remove this base::Feature kill switch once
-// the feature safely rolls out.
-BASE_FEATURE(kUpdateSessionHistoryIndexBeforeNavigationStateChanged,
-             "UpdateSessionHistoryIndexBeforeNavigationStateChanged",
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Invoked when entries have been pruned, or removed. For example, if the
 // current entries are [google, digg, yahoo], with the current entry google,
@@ -751,7 +746,8 @@ NavigationControllerImpl::NavigationControllerImpl(
       browser_context_(browser_context),
       delegate_(delegate),
       ssl_manager_(this),
-      get_timestamp_callback_(base::BindRepeating(&base::Time::Now)) {
+      get_timestamp_callback_(base::BindRepeating(&base::Time::Now)),
+      back_forward_cache_(browser_context) {
   DCHECK(browser_context_);
 }
 
@@ -1411,8 +1407,7 @@ bool NavigationControllerImpl::RendererDidNavigate(
   // NavigationEntry, by either creating a new object or reusing the previous
   // entry's one.
   scoped_refptr<BackForwardCacheMetrics> back_forward_cache_metrics;
-  if (navigation_request->frame_tree_node()->frame_tree().type() ==
-      FrameTree::Type::kPrimary) {
+  if (navigation_request->frame_tree_node()->frame_tree().is_primary()) {
     back_forward_cache_metrics = BackForwardCacheMetrics::
         CreateOrReuseBackForwardCacheMetricsForNavigation(
             GetLastCommittedEntry(), is_main_frame_navigation,
@@ -2217,10 +2212,7 @@ void NavigationControllerImpl::RendererDidNavigateToExistingEntry(
   // delegate sees the correct committed index when notified of navigation
   // state changes. (Otherwise CanGoBack may incorrectly return true, as in
   // https://crbug.com/1439948.)
-  if (base::FeatureList::IsEnabled(
-          kUpdateSessionHistoryIndexBeforeNavigationStateChanged)) {
-    last_committed_entry_index_ = GetIndexOfEntry(entry);
-  }
+  last_committed_entry_index_ = GetIndexOfEntry(entry);
 
   // We should also usually discard the pending entry if it corresponds to a
   // different navigation, since that one is now likely canceled.  In rare
@@ -2232,13 +2224,6 @@ void NavigationControllerImpl::RendererDidNavigateToExistingEntry(
   // actually change any other state, just kill the pointer.
   if (!keep_pending_entry)
     DiscardNonCommittedEntriesWithCommitDetails(commit_details);
-
-  if (!base::FeatureList::IsEnabled(
-          kUpdateSessionHistoryIndexBeforeNavigationStateChanged)) {
-    // Update the last committed index to reflect the committed entry.
-    // (This is legacy behavior, in case the kill-switch needs to be used.)
-    last_committed_entry_index_ = GetIndexOfEntry(entry);
-  }
 }
 
 void NavigationControllerImpl::RendererDidNavigateNewSubframe(
@@ -2567,7 +2552,7 @@ BackForwardCacheImpl& NavigationControllerImpl::GetBackForwardCache() {
 
 NavigationEntryScreenshotCache*
 NavigationControllerImpl::GetNavigationEntryScreenshotCache() {
-  CHECK_EQ(frame_tree_->type(), FrameTree::Type::kPrimary);
+  CHECK(frame_tree_->is_primary());
   if (!nav_entry_screenshot_cache_ && AreBackForwardTransitionsEnabled()) {
     nav_entry_screenshot_cache_ =
         std::make_unique<NavigationEntryScreenshotCache>(
@@ -2639,8 +2624,14 @@ void NavigationControllerImpl::NotifyUserActivation() {
   // When a user activation occurs, ensure that all adjacent entries for the
   // same document clear their skippable bit, so that the history manipulation
   // intervention does not apply to them.
-
+  const bool can_go_back = CanGoBack();
   SetSkippableForSameDocumentEntries(GetLastCommittedEntryIndex(), false);
+  // If the value of CanGoBack changes as a result of making some entries
+  // non-skippable, then we must let the delegate know to update its UI state.
+  // See https://crbug.com/1477784.
+  if (!can_go_back && CanGoBack()) {
+    delegate_->NotifyNavigationStateChangedFromController(INVALIDATE_TYPE_ALL);
+  }
 }
 
 bool NavigationControllerImpl::StartHistoryNavigationInNewSubframe(

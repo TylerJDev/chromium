@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">প্ৰতিবিম্বকৰণলৈ সলনি কৰা হ’ল</translation>
 <translation id="2031987842108996681">ৰঙা চেনেল</translation>
 <translation id="2060505056492490888">'<ph name="INVALIDDOMAIN" />'ৰ ভুল স্থানত '<ph name="DOT" />' ব্যৱহাৰ কৰা হৈছে।</translation>
+<translation id="2068711044993563745">ন্যূনতম মানটো (<ph name="MINIMUM" />) সৰ্বোচ্চ মানটোতকৈ (<ph name="MAXIMUM" />) কম হ’বই লাগিব।</translation>
 <translation id="2148716181193084225">আজি</translation>
 <translation id="2226276347425096477">অনুগ্ৰহ কৰি এই পাঠ <ph name="MAX_CHARACTERS" />টা বর্ণ বা তাতোকৈ কম সংখ্যক বর্ণৰ ভিতৰত সীমাবদ্ধ কৰক (বর্তমান আপুনি <ph name="CURRENT_LENGTH" />টা বর্ণ ব্যৱহাৰ কৰি আছে)।</translation>
 <translation id="2247351761944213033">সপ্তাহ <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">আপুনি যদি আগবাঢ়িব খোজে তেন্তে এই বাচকটোত চ্চেক চিহ্ন দিয়ক।</translation>
 <translation id="2908441821576996758">কমা-পৃথকীকৃত ইমেইল ঠিকনাৰ সূচী এখন দিয়ক।</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> এম.বি.</translation>
+<translation id="3053226512517284904">অডিঅ’ৰ বিৱৰণ দেখুৱাওক মেনু</translation>
 <translation id="3075154866155599887">অনুগ্ৰহ কৰি এক মান্য মান দিয়ক এই ক্ষেত্ৰখন অসম্পূৰ্ণ বা ইয়াত অমান্য তাৰিখ আছে।</translation>
 <translation id="310520048233152454">অনুগ্ৰহ কৰি এটা URL দিয়ক।</translation>
 <translation id="3220661731597678625">বৰ্তমানৰ পদক্ষেপ</translation>

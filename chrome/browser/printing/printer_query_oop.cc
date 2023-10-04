@@ -30,7 +30,7 @@ std::unique_ptr<PrintJobWorker> PrinterQueryOop::TransferContextToNewWorker(
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   // TODO(crbug.com/1414968)  Do extra setup on the worker as needed for
   // supporting OOP system print dialogs.
-  return CreatePrintJobWorker(print_job);
+  return CreatePrintJobWorkerOop(print_job);
 }
 
 #if BUILDFLAG(IS_WIN)
@@ -77,7 +77,7 @@ void PrinterQueryOop::OnDidUseDefaultSettings(
   } else {
     VLOG(1) << "Use default settings from service complete";
     result = mojom::ResultCode::kSuccess;
-    printing_context()->ApplyPrintSettings(print_settings->get_settings());
+    printing_context()->SetPrintSettings(print_settings->get_settings());
   }
 
   InvokeSettingsCallback(std::move(callback), result);
@@ -92,7 +92,7 @@ void PrinterQueryOop::OnDidAskUserForSettings(
   if (print_settings->is_settings()) {
     VLOG(1) << "Ask user for settings from service complete";
     result = mojom::ResultCode::kSuccess;
-    printing_context()->ApplyPrintSettings(print_settings->get_settings());
+    printing_context()->SetPrintSettings(print_settings->get_settings());
 
     // Use the same PrintBackendService for querying and printing, so that the
     // same device context can be used with both.
@@ -256,7 +256,7 @@ void PrinterQueryOop::OnDidUpdatePrintSettings(
   } else {
     VLOG(1) << "Update print settings via service complete for " << device_name;
     result = mojom::ResultCode::kSuccess;
-    printing_context()->ApplyPrintSettings(print_settings->get_settings());
+    printing_context()->SetPrintSettings(print_settings->get_settings());
 
     if (query_with_ui_client_id_.has_value()) {
       // Use the same PrintBackendService for querying and printing, so that the
@@ -357,7 +357,7 @@ void PrinterQueryOop::SendAskUserForSettings(uint32_t document_page_count,
 }
 #endif  // BUILDFLAG(ENABLE_OOP_BASIC_PRINT_DIALOG)
 
-std::unique_ptr<PrintJobWorkerOop> PrinterQueryOop::CreatePrintJobWorker(
+std::unique_ptr<PrintJobWorkerOop> PrinterQueryOop::CreatePrintJobWorkerOop(
     PrintJob* print_job) {
   return std::make_unique<PrintJobWorkerOop>(
       std::move(printing_context_delegate_), std::move(printing_context_),

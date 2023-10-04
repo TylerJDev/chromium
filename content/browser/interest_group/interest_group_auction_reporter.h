@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -46,6 +46,7 @@ namespace content {
 class AuctionWorkletManager;
 struct BiddingAndAuctionResponse;
 class BrowserContext;
+class HeaderDirectFromSellerSignals;
 class InterestGroupManagerImpl;
 class PrivateAggregationManager;
 
@@ -111,13 +112,11 @@ class CONTENT_EXPORT InterestGroupAuctionReporter {
 
     // AuctionConfig associated with the seller. For a component auction, this
     // is the nested AuctionConfig.
-    //
-    // TODO(mmenke):  Figure out how to make this survive the auction (perhaps
-    // pass ownership to the constructor).
-    raw_ptr<const blink::AuctionConfig, AcrossTasksDanglingUntriaged>
-        auction_config;
+    raw_ptr<const blink::AuctionConfig> auction_config;
 
     std::unique_ptr<SubresourceUrlBuilder> subresource_url_builder;
+    std::unique_ptr<HeaderDirectFromSellerSignals>
+        direct_from_seller_signals_header_ad_slot;
 
     // Bid fed as input to the seller. If this is the top level seller and the
     // bid came from a component auction, it's the (optionally) modified bid
@@ -180,6 +179,8 @@ class CONTENT_EXPORT InterestGroupAuctionReporter {
     // The metadata associated with the winning ad, to be made available to the
     // interest group in future auctions in the `prevWins` field.
     std::string ad_metadata;
+
+    bool provided_as_additional_bid = false;
   };
 
   // All passed in raw pointers, including those in *BidInfo fields must outlive

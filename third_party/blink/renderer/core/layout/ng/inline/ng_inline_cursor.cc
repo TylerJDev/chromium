@@ -12,7 +12,7 @@
 #include "third_party/blink/renderer/core/layout/geometry/writing_mode_converter.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
 #include "third_party/blink/renderer/core/layout/layout_text.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text_combine.h"
+#include "third_party/blink/renderer/core/layout/layout_text_combine.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_items.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item_span.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_physical_line_box_fragment.h"
@@ -169,6 +169,13 @@ void NGInlineCursor::SetRoot(const NGPhysicalBoxFragment& box_fragment,
 bool NGInlineCursor::TrySetRootFragmentItems() {
   DCHECK(root_block_flow_);
   DCHECK(!fragment_items_ || fragment_items_->Equals(items_));
+  if (UNLIKELY(!root_block_flow_->MayHaveFragmentItems())) {
+#if EXPENSIVE_DCHECKS_ARE_ON()
+    DCHECK(!root_block_flow_->PhysicalFragments().SlowHasFragmentItems());
+#endif
+    fragment_index_ = max_fragment_index_ + 1;
+    return false;
+  }
   for (; fragment_index_ <= max_fragment_index_; IncrementFragmentIndex()) {
     const NGPhysicalBoxFragment* fragment =
         root_block_flow_->GetPhysicalFragment(fragment_index_);
@@ -713,7 +720,7 @@ PositionWithAffinity NGInlineCursor::PositionForPointInInlineBox(
   DCHECK(container->Type() == NGFragmentItem::kLine ||
          container->Type() == NGFragmentItem::kBox);
   const auto* const text_combine =
-      DynamicTo<LayoutNGTextCombine>(container->GetLayoutObject());
+      DynamicTo<LayoutTextCombine>(container->GetLayoutObject());
   const PhysicalOffset point =
       UNLIKELY(text_combine) ? text_combine->AdjustOffsetForHitTest(point_in)
                              : point_in;

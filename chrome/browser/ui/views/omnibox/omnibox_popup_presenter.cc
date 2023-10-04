@@ -6,10 +6,6 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/run_loop.h"
-#include "base/task/thread_pool.h"
-#include "base/threading/platform_thread.h"
-#include "base/time/time.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/rounded_omnibox_results_frame.h"
@@ -25,7 +21,7 @@ OmniboxPopupPresenter::OmniboxPopupPresenter(LocationBarView* location_bar_view,
     : views::WebView(location_bar_view->profile()),
       location_bar_view_(location_bar_view),
       widget_(nullptr),
-      waited_for_handler_(false) {
+      requested_handler_(false) {
   set_owned_by_client();
 
   // Prepare for instantiation of a `RealboxHandler` that will connect with
@@ -63,21 +59,7 @@ void OmniboxPopupPresenter::Show() {
     widget_->SetContentsView(
         std::make_unique<RoundedOmniboxResultsFrame>(this, location_bar_view_));
     widget_->AddObserver(this);
-
-    // Ideally this would have no size until determined by web contents, but
-    // zero size causes problems on some platforms.
-    // TODO(crbug.com/1396174): Don't size dynamically. Set widget to maximum
-    //  possible popup size, and let the webui content render at the appropriate
-    //  size including decorations like rounded borders, frame shadows, etc.
-    //  Such holistic sizing and rendering is necessary to avoid latency & state
-    //  disconnects between renderer process and browser UI (Views). Blending
-    //  the two rendering engines results in flashes and jank because they're
-    //  updating and drawing in completely separate processes.
-    SetPreferredSize(gfx::Size(640, 480));
-    gfx::Rect content_rect = GetTargetBounds(GetPreferredSize().height());
-    widget_->SetBounds(content_rect);
-    EnableSizingFromWebContents(gfx::Size(content_rect.width(), 1),
-                                content_rect.size());
+    FrameSizeChanged(nullptr, gfx::Size(0, 0));
   }
 }
 
@@ -93,21 +75,43 @@ bool OmniboxPopupPresenter::IsShown() const {
 }
 
 RealboxHandler* OmniboxPopupPresenter::GetHandler() {
-  if (!waited_for_handler_) {
-    waited_for_handler_ = true;
-    WaitForHandler();
+  bool ready = IsHandlerReady();
+  if (!requested_handler_) {
+    // Only log on first access.
+    requested_handler_ = true;
+    base::UmaHistogramBoolean("Omnibox.WebUI.HandlerReadyOnFirstAccess", ready);
+  }
+  if (!ready) {
+    return nullptr;
   }
   OmniboxPopupUI* omnibox_popup_ui = static_cast<OmniboxPopupUI*>(
       GetWebContents()->GetWebUI()->GetController());
-  CHECK(IsHandlerReady());
   return omnibox_popup_ui->handler();
 }
 
+// TODO(crbug.com/1396174): This should also be called when LocationBarView
+//  size is changed.
 void OmniboxPopupPresenter::FrameSizeChanged(
     content::RenderFrameHost* render_frame_host,
     const gfx::Size& frame_size) {
   if (widget_) {
-    widget_->SetBounds(GetTargetBounds(frame_size.height()));
+    gfx::Rect widget_bounds = location_bar_view_->GetBoundsInScreen();
+    widget_bounds.Inset(
+        -RoundedOmniboxResultsFrame::GetLocationBarAlignmentInsets());
+
+    // The width is known, and is the basis for consistent web content rendering
+    // so width is specified exactly; then only height adjusts dynamically.
+    // TODO(crbug.com/1396174): Change max height according to max suggestion
+    //  count and calculated row height, or use a more general maximum value.
+    const int width = widget_bounds.width();
+    constexpr int kMaxHeight = 480;
+    EnableSizingFromWebContents(gfx::Size(width, 1),
+                                gfx::Size(width, kMaxHeight));
+
+    widget_bounds.set_height(widget_bounds.height() +
+                             std::min(kMaxHeight, frame_size.height()));
+    widget_bounds.Inset(-RoundedOmniboxResultsFrame::GetShadowInsets());
+    widget_->SetBounds(widget_bounds);
   }
 }
 
@@ -117,53 +121,6 @@ void OmniboxPopupPresenter::OnWidgetDestroyed(views::Widget* widget) {
   if (widget == widget_) {
     widget_ = nullptr;
   }
-}
-
-gfx::Rect OmniboxPopupPresenter::GetTargetBounds(int start_height) const {
-  int popup_height = start_height;
-
-  // Add enough space on the top and bottom so it looks like there is the same
-  // amount of space between the text and the popup border as there is in the
-  // interior between each row of text.
-  popup_height += RoundedOmniboxResultsFrame::GetNonResultSectionHeight();
-
-  // Add 8dp at the bottom for aesthetic reasons. https://crbug.com/1076646
-  // It's expected that this space is dead unclickable/unhighlightable space.
-  constexpr int kExtraBottomPadding = 8;
-  popup_height += kExtraBottomPadding;
-
-  // The rounded popup is always offset the same amount from the omnibox.
-  gfx::Rect content_rect = location_bar_view_->GetBoundsInScreen();
-  content_rect.Inset(
-      -RoundedOmniboxResultsFrame::GetLocationBarAlignmentInsets());
-  content_rect.set_height(popup_height);
-
-  // Finally, expand the widget to accommodate the custom-drawn shadows.
-  content_rect.Inset(-RoundedOmniboxResultsFrame::GetShadowInsets());
-  return content_rect;
-}
-
-void OmniboxPopupPresenter::WaitForHandler() {
-  bool ready = IsHandlerReady();
-  base::UmaHistogramBoolean("Omnibox.WebUI.HandlerReady", ready);
-  if (!ready) {
-    SCOPED_UMA_HISTOGRAM_TIMER("Omnibox.WebUI.HandlerWait");
-    base::RunLoop loop;
-    auto quit = loop.QuitClosure();
-    auto runner = base::ThreadPool::CreateTaskRunner(base::TaskTraits());
-    runner->PostTask(FROM_HERE,
-                     base::BindOnce(&OmniboxPopupPresenter::WaitInternal,
-                                    weak_ptr_factory_.GetWeakPtr(), &quit));
-    loop.Run();
-    CHECK(IsHandlerReady());
-  }
-}
-
-void OmniboxPopupPresenter::WaitInternal(base::RepeatingClosure* closure) {
-  while (!IsHandlerReady()) {
-    base::PlatformThread::Sleep(base::Milliseconds(1));
-  }
-  closure->Run();
 }
 
 bool OmniboxPopupPresenter::IsHandlerReady() {

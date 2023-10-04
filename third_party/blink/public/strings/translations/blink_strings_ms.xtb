@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Beralih kepada pencerminan</translation>
 <translation id="2031987842108996681">Saluran merah</translation>
 <translation id="2060505056492490888">'<ph name="DOT" />' digunakan pada kedudukan yang salah dalam '<ph name="INVALIDDOMAIN" />'.</translation>
+<translation id="2068711044993563745">Nilai minimum (<ph name="MINIMUM" />) perlu kurang daripada nilai maksimum (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Hari ini</translation>
 <translation id="2226276347425096477">Sila pendekkan teks ini menjadi <ph name="MAX_CHARACTERS" /> aksara atau kurang (anda kini menggunakan <ph name="CURRENT_LENGTH" /> aksara).</translation>
 <translation id="2247351761944213033">Minggu <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Sila tandakan kotak ini jika anda mahu teruskan.</translation>
 <translation id="2908441821576996758">Sila masukkan senarai alamat e-mel yang dipisahkan dengan koma.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">tunjukkan menu perihalan audio</translation>
 <translation id="3075154866155599887">Sila masukkan nilai yang sah. Medan tidak lengkap atau mengandungi tarikh yang tidak sah.</translation>
 <translation id="310520048233152454">Sila masukkan URL.</translation>
 <translation id="3220661731597678625">langkah semasa</translation>

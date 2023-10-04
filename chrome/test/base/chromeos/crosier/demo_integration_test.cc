@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <vector>
+
 #include "base/run_loop.h"
 #include "base/test/gtest_tags.h"
 #include "base/test/test_switches.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/test/base/chromeos/crosier/chromeos_integration_test_mixin.h"
+#include "chrome/test/base/chromeos/crosier/crosier_util.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "content/public/test/browser_test.h"
 #include "net/dns/mock_host_resolver.h"
@@ -94,7 +97,10 @@ class DemoIntegrationTest : public MixinBasedInProcessBrowserTest {
     // manager, but AttemptUserExit() uses session manager to kill the chrome
     // binary.
     // TODO(b/292067979): Find a better way to work around this issue.
-    for (Browser* browser : *BrowserList::GetInstance()) {
+    auto* browser_list = BrowserList::GetInstance();
+    // Copy the browser list to avoid mutating it during iteration.
+    std::vector<Browser*> browsers(browser_list->begin(), browser_list->end());
+    for (Browser* browser : browsers) {
       CloseBrowserSynchronously(browser);
     }
 
@@ -102,11 +108,23 @@ class DemoIntegrationTest : public MixinBasedInProcessBrowserTest {
   }
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
- private:
+ protected:
   ChromeOSIntegrationTestMixin chromeos_integration_test_mixin_{&mixin_host_};
 };
 
 IN_PROC_BROWSER_TEST_F(DemoIntegrationTest, NewTab) {
+  chrome_test_base_chromeos_crosier::TestInfo info;
+  info.set_description(R"(
+This test verifies Chrome can launch and open version page.
+Manually:
+  1 Launch Chrome
+  2 Go to chrome://version
+  3 Make sure the page can open successfully.)");
+  info.add_contacts("svenzheng@chromium.org");
+  info.add_contacts("jamescook@chromium.org");
+  info.set_team_email("crosier-team@google.com");
+  info.set_buganizer("1394295");
+  crosier_util::AddTestInfo(info);
   base::AddFeatureIdTagToTestResult(
       "screenplay-351d628b-e4a4-41c6-91e4-a4036ad12360");
 

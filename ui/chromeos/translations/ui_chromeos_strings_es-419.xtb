@@ -8,6 +8,7 @@
 <translation id="1056898198331236512">Advertencia</translation>
 <translation id="1060368002126861100">Para abrir archivos con <ph name="APP_NAME" />, primero debes moverlos a la carpeta de archivos de Windows.</translation>
 <translation id="1062407476771304334">Reemplazar</translation>
+<translation id="1119383441774809183">Mostrar mensajes de texto</translation>
 <translation id="1119447706177454957">Error interno</translation>
 <translation id="1120073797882051782">Hangul Romaja</translation>
 <translation id="112387589102719461">Inglés (EE.UU.) con teclado Programmer Dvorak</translation>
@@ -95,6 +96,7 @@
 <translation id="174937106936716857">Cantidad total de archivos</translation>
 <translation id="1755345808328621801">Este archivo está diseñado para PCs que utilizan software de Windows, por lo que no es compatible con tu dispositivo, el cual ejecuta ChromeOS. Busca una aplicación equivalente adecuada en Chrome Web Store.</translation>
 <translation id="1757915090001272240">Wide Latin</translation>
+<translation id="1761091787730831947">Compartir con <ph name="VM_NAME" /></translation>
 <translation id="1773212559869067373">Certificado de autenticación rechazado de forma local</translation>
 <translation id="1775381402323441512">Información del video</translation>
 <translation id="180035236176489073">Tienes que estar conectado para acceder a estos archivos.</translation>
@@ -170,6 +172,7 @@
 <translation id="23721837607121582">Descarga un perfil de dispositivo móvil, red <ph name="NETWORK_INDEX" /> de <ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" /></translation>
 <translation id="2377319039870049694">Cambiar a la vista de lista</translation>
 <translation id="2377590462528165447"><ph name="NUMBER_OF_ITEMS" /> carpetas compartidas con Linux</translation>
+<translation id="2379576081295865700">Comprobando el espacio de almacenamiento… Se encontró 1 elemento</translation>
 <translation id="2383454254762599978">Mover a la papelera</translation>
 <translation id="2387458720915042159">Tipo de conexión proxy</translation>
 <translation id="2389832672041313158">Birmano</translation>
@@ -211,6 +214,7 @@
 <translation id="2718540689505416944">Instalar la app con Linux</translation>
 <translation id="2719020180254996569">Red <ph name="NETWORK_INDEX" /> de <ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" />, <ph name="CONNECTION_STATUS" />, detalles</translation>
 <translation id="2724954091494693138">Turco con teclado Turco-F</translation>
+<translation id="2732288874651063549">Administrar la configuración para compartir con <ph name="VM_NAME" /></translation>
 <translation id="2732839045120506979">Vietnamita (VNI)</translation>
 <translation id="2735623501230989521">Permite que Parallels Desktop acceda a los archivos de la carpeta <ph name="FOLDER_NAME" />.</translation>
 <translation id="2764206540577097904">Usaste todo tu almacenamiento individual de Google Workspace.</translation>
@@ -275,6 +279,7 @@
 <translation id="3264582393905923483">Contexto</translation>
 <translation id="3272909651715601089">No se pudo abrir "<ph name="PATH" />"</translation>
 <translation id="3280431534455935878">Preparando la descarga</translation>
+<translation id="3280719573299097127">Estás en una red de uso medido. Se pausó la sincronización de archivos.</translation>
 <translation id="3280987981688031357">Disco de vinilo</translation>
 <translation id="3290356915286466215">No segura</translation>
 <translation id="3291218047831493686">Conéctate a esta red para cambiar la configuración del bloqueo de la SIM.</translation>
@@ -305,6 +310,7 @@
 <translation id="3509680540198371098">Red <ph name="NETWORK_INDEX" /> de <ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" />, <ph name="SECURITY_STATUS" />, <ph name="CONNECTION_STATUS" />, intensidad de la señal: <ph name="SIGNAL_STRENGTH" />%, detalles</translation>
 <translation id="3511705761158917664">Preparando la sincronización de <ph name="NUMBER_OF_ITEMS" /> elementos...</translation>
 <translation id="3522708245912499433">Portugués</translation>
+<translation id="3523225005467146490">Se compartió 1 carpeta con <ph name="VM_NAME" /></translation>
 <translation id="3524311639100184459">Precaución: Estos archivos son temporales y es posible que se borren automáticamente para liberar espacio en el disco.  <ph name="BEGIN_LINK" />Más información<ph name="END_LINK" /></translation>
 <translation id="3527085408025491307">Carpeta</translation>
 <translation id="3548125359243647069">Se ingresó el PIN de forma incorrecta demasiadas veces.</translation>
@@ -551,7 +557,6 @@
 <translation id="5283101102242354279">Activa una extensión en el modo Incógnito:</translation>
 <translation id="5286194356314741248">Examinando</translation>
 <translation id="5288441970121584418">Hamburguesa</translation>
-<translation id="5288481194217812690"><ph name="FILENAME" /></translation>
 <translation id="5293615890992542006">La política del administrador no permite mover este archivo</translation>
 <translation id="5305688511332277257">No hay certificados instalados</translation>
 <translation id="5317780077021120954">Guardar</translation>
@@ -628,6 +633,7 @@
 <translation id="5838451609423551646">Se quitó la selección de todas las entradas.</translation>
 <translation id="5838825566232597749">Internacional Workman (EE. UU.)</translation>
 <translation id="5845721951356578987">Enfermero</translation>
+<translation id="5858478190805449225">Modo Ahorro de batería activado. Vuelve a intentarlo cuando el modo Ahorro de batería esté desactivado.</translation>
 <translation id="5860491529813859533">Activar</translation>
 <translation id="5861477046012235702">Gamer</translation>
 <translation id="5864471791310927901">Falló la búsqueda de DHCP</translation>
@@ -662,6 +668,8 @@
 <translation id="6164412158936057769">Mariposas</translation>
 <translation id="6165508094623778733">Más información</translation>
 <translation id="6170470584681422115">Sándwich</translation>
+<translation id="6177854567773392726">Comprobando el espacio de almacenamiento… Se encontraron <ph name="ITEMS_FOUND" /> elementos</translation>
+<translation id="6181912134988520389">Otorga permiso a <ph name="VM_NAME" /> para que acceda a los archivos de tu unidad de Google Drive. Los cambios se sincronizarán con tus otros dispositivos.</translation>
 <translation id="6187719147498869044">Húngaro</translation>
 <translation id="6198252989419008588">Cambiar PIN</translation>
 <translation id="6199801702437275229">Esperando información sobre espacio...</translation>
@@ -765,6 +773,7 @@
 <translation id="6989942356279143254">Sueco</translation>
 <translation id="6990081529015358884">Te has quedado sin espacio.</translation>
 <translation id="6993826899923627728">Estos elementos están en la papelera</translation>
+<translation id="6996593023542748157">Comparte la carpeta con <ph name="VM_NAME" /></translation>
 <translation id="7008426324576352165">Tu organización requiere más almacenamiento para completar la carga.</translation>
 <translation id="7009985720488544166">La política del administrador no permite mover <ph name="COUNT" /> archivos</translation>
 <translation id="7012943028104619157"><ph name="ROOT_TITLE" /> (<ph name="ROOT_SUMMARY" />)</translation>
@@ -891,7 +900,6 @@
 <translation id="7911118814695487383">Linux</translation>
 <translation id="7920501309908018401">Los archivos de Mi unidad se sincronizarán automáticamente con tu Chromebook para que puedas acceder a ellos sin conexión a Internet.</translation>
 <translation id="7925247922861151263">Falló la verificación de AAA</translation>
-<translation id="7925686952655276919">No utilizar datos móviles para la sincronización</translation>
 <translation id="7928710562641958568">Expulsar dispositivo</translation>
 <translation id="7933875256234974853">Preparando la sincronización de los archivos de Drive…</translation>
 <translation id="7943385054491506837">Inglés (Estados Unidos; Colemak)</translation>
@@ -914,6 +922,7 @@
 <translation id="8087576439476816834">Descargar, <ph name="PROFILE_NAME" /></translation>
 <translation id="8106045200081704138">Compartidos conmigo</translation>
 <translation id="8116072619078571545">Agua helada</translation>
+<translation id="8120392982188717723">Permitir la sincronización en redes de uso medido</translation>
 <translation id="8124093710070495550">Problema de sincronización</translation>
 <translation id="8128733386027980860">Inglés (Reino Unido) con teclado Dvorak</translation>
 <translation id="8137331602592933310">"<ph name="FILENAME" />" se compartió contigo. No puedes eliminarlo porque no eres el propietario.</translation>
@@ -951,6 +960,7 @@
 <translation id="8335837413233998004">Bielorruso</translation>
 <translation id="8336153091935557858">Ayer a las <ph name="YESTERDAY_DAYTIME" /></translation>
 <translation id="8342318071240498787">Ya existe un archivo o un directorio con el mismo nombre.</translation>
+<translation id="83651606385705612">Otorga permiso a <ph name="VM_NAME" /> para que acceda a los archivos de la carpeta <ph name="FOLDER_NAME" /></translation>
 <translation id="8372369524088641025">Clave de WEP no válida</translation>
 <translation id="8372852072747894550">Griego</translation>
 <translation id="8386903983509584791">Finalizó la búsqueda</translation>
@@ -960,6 +970,7 @@
 <translation id="8408068190360279472">Red <ph name="NETWORK_TYPE" />, conectando</translation>
 <translation id="8425213833346101688">Cambiar</translation>
 <translation id="8428213095426709021">Configuración</translation>
+<translation id="8429998526804961548">Se compartieron <ph name="NUMBER_OF_ITEMS" /> carpetas con <ph name="VM_NAME" /></translation>
 <translation id="8431909052837336408">Cambiar el PIN de la tarjeta SIM</translation>
 <translation id="8437209419043462667">Inglés (Estados Unidos)</translation>
 <translation id="8452135315243592079">Falta la tarjeta SIM</translation>
@@ -1003,6 +1014,7 @@
 <translation id="8698877009525468705">Este archivo es confidencial y está sujeto a las restricciones de la política del administrador.</translation>
 <translation id="8712637175834984815">Entendido</translation>
 <translation id="8713112442029511308">Maltés</translation>
+<translation id="8714138378966541668">Bloqueada por el proveedor</translation>
 <translation id="8714406895390098252">Bicicleta</translation>
 <translation id="8719721339511222681">Se seleccionó <ph name="ENTRY_NAME" />.</translation>
 <translation id="872537912056138402">Croata</translation>
@@ -1040,6 +1052,7 @@
 <translation id="9038620279323455325">Ya existe un archivo con el nombre "<ph name="FILE_NAME" />". Elige otro.</translation>
 <translation id="9046895021617826162">No se pudo conectar</translation>
 <translation id="9065512565307033593">Si no puedes verificar tu identidad, se inhabilitará tu acceso a la red.</translation>
+<translation id="9083722265619106011">{0,plural, =1{1 advertencia.}other{<ph name="COUNT" /> advertencias.}}</translation>
 <translation id="908378762078012445">Ruso con teclado fonético AATSEEL</translation>
 <translation id="9086302186042011942">Sincronización</translation>
 <translation id="9099674669267916096">Cantidad de páginas</translation>

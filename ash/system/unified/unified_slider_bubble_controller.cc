@@ -57,7 +57,8 @@ void ConfigureSliderViewStyle(UnifiedSliderView* slider_view,
     // Toggle toast has only a button and label. Slider toast has a slider, a
     // button on the slider body, and possible trailing buttons.
     const bool is_toggle_toast =
-        slider_type == SliderType::SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE;
+        slider_type == SliderType::SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_ON ||
+        slider_type == SliderType::SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_OFF;
     auto* layout =
         slider_view->SetLayoutManager(std::make_unique<views::BoxLayout>(
             views::BoxLayout::Orientation::kHorizontal,
@@ -147,6 +148,9 @@ void UnifiedSliderBubbleController::OnMouseExitedView() {
   mouse_hovered_ = false;
 }
 
+void UnifiedSliderBubbleController::HideBubble(
+    const TrayBubbleView* bubble_view) {}
+
 void UnifiedSliderBubbleController::DisplayMicrophoneMuteToast() {
   // We will not display the microphone mute toast if no microphone is connected
   // to the device, or if the video conference controls tray is visible.
@@ -207,7 +211,10 @@ void UnifiedSliderBubbleController::OnKeyboardBrightnessChanged(
              cause == power_manager::
                           BacklightBrightnessChange_Cause_USER_TOGGLED_ON) {
     // User has explicitly toggled the KBL backlight.
-    ShowBubble(SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE);
+    ShowBubble((cause ==
+                power_manager::BacklightBrightnessChange_Cause_USER_TOGGLED_OFF)
+                   ? SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_OFF
+                   : SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_ON);
   }
 }
 
@@ -345,9 +352,13 @@ void UnifiedSliderBubbleController::CreateSliderController() {
           base::BindRepeating(&UnifiedSystemTray::ShowDisplayDetailedViewBubble,
                               base::Unretained(tray_)));
       return;
-    case SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE:
+    case SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_OFF:
       slider_controller_ = std::make_unique<KeyboardBacklightToggleController>(
-          tray_->model().get());
+          tray_->model().get(), /*toggled_on=*/false);
+      return;
+    case SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_ON:
+      slider_controller_ = std::make_unique<KeyboardBacklightToggleController>(
+          tray_->model().get(), /*toggled_on=*/true);
       return;
     case SLIDER_TYPE_KEYBOARD_BRIGHTNESS:
       slider_controller_ =
@@ -362,8 +373,8 @@ void UnifiedSliderBubbleController::CreateSliderController() {
 
 void UnifiedSliderBubbleController::StartAutoCloseTimer() {
   autoclose_.Stop();
-  autoclose_.Start(FROM_HERE, base::Seconds(kTrayPopupAutoCloseDelayInSeconds),
-                   this, &UnifiedSliderBubbleController::CloseBubble);
+  autoclose_.Start(FROM_HERE, kSecondaryBubbleDuration, this,
+                   &UnifiedSliderBubbleController::CloseBubble);
 }
 
 }  // namespace ash

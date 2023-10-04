@@ -45,6 +45,7 @@ class FormAssociated;
 class HTMLFormElement;
 class HTMLSelectListElement;
 class KeyboardEvent;
+class TextControlElement;
 class V8UnionStringLegacyNullToEmptyStringOrTrustedScript;
 
 enum TranslateAttributeMode {
@@ -158,6 +159,17 @@ class CORE_EXPORT HTMLElement : public Element {
 
   bool HasDirectionAuto() const;
 
+  static bool IsValidDirAttribute(const AtomicString& value);
+  static bool ElementAffectsDirectionality(const Node* node);
+  static bool ElementInheritsDirectionality(const Node* node);
+  static const TextControlElement* ElementIfAutoDirShouldUseValueOrNull(
+      const Element* element);
+  static TextControlElement* ElementIfAutoDirShouldUseValueOrNull(
+      Element* element) {
+    return const_cast<TextControlElement*>(ElementIfAutoDirShouldUseValueOrNull(
+        const_cast<const Element*>(element)));
+  }
+
   virtual bool IsHTMLBodyElement() const { return false; }
   // TODO(crbug.com/1123606): Remove this virtual method once the fenced frame
   // origin trial is over.
@@ -183,7 +195,6 @@ class CORE_EXPORT HTMLElement : public Element {
   static const AtomicString& EventNameForAttributeName(
       const QualifiedName& attr_name);
 
-  bool SupportsFocus() const override;
   bool IsDisabledFormControl() const override;
   bool MatchesEnabledPseudoClass() const override;
   bool MatchesReadOnlyPseudoClass() const override;
@@ -211,11 +222,12 @@ class CORE_EXPORT HTMLElement : public Element {
 
   static void AdjustCandidateDirectionalityForSlot(
       HeapHashSet<Member<Node>> candidate_set);
-  void UpdateDescendantHasDirAutoAttribute(bool has_dir_auto);
-  void UpdateDirectionalityAndDescendant(TextDirection direction);
   void UpdateDescendantDirectionality(TextDirection direction);
+  void UpdateDirectionalityAfterInputTypeChange(const AtomicString& old_value,
+                                                const AtomicString& new_value);
   void AdjustDirectionalityIfNeededAfterShadowRootChanged();
-  void ParserDidSetAttributes() override;
+  void AdjustDirectionAutoAfterRecalcAssignedNodes();
+  bool CalculateAndAdjustAutoDirectionality(Node* stay_within);
 
   V8UnionBooleanOrStringOrUnrestrictedDouble* hidden() const;
   void setHidden(const V8UnionBooleanOrStringOrUnrestrictedDouble*);
@@ -286,6 +298,8 @@ class CORE_EXPORT HTMLElement : public Element {
       InputDeviceCapabilities* source_capabilities) override;
 
  protected:
+  bool SupportsFocus() const override;
+
   enum AllowPercentage { kDontAllowPercentageValues, kAllowPercentageValues };
   enum AllowZero { kDontAllowZeroValues, kAllowZeroValues };
   void AddHTMLLengthToStyle(MutableCSSPropertyValueSet*,
@@ -328,7 +342,6 @@ class CORE_EXPORT HTMLElement : public Element {
   unsigned ParseBorderWidthAttribute(const AtomicString&) const;
 
   void ChildrenChanged(const ChildrenChange&) override;
-  bool CalculateAndAdjustAutoDirectionality(Node* stay_within);
 
   InsertionNotificationRequest InsertedInto(ContainerNode&) override;
   void RemovedFrom(ContainerNode& insertion_point) override;
@@ -350,13 +363,6 @@ class CORE_EXPORT HTMLElement : public Element {
   DocumentFragment* TextToFragment(const String&, ExceptionState&);
 
   void AdjustDirectionalityIfNeededAfterChildAttributeChanged(Element* child);
-  void AdjustDirectionalityIfNeededAfterChildrenChanged(
-      const ChildrenChange& change);
-
-  template <typename Traversal>
-  absl::optional<TextDirection> ResolveAutoDirectionality(
-      bool& is_deferred,
-      Node* stay_within) const;
 
   TranslateAttributeMode GetTranslateAttributeMode() const;
 

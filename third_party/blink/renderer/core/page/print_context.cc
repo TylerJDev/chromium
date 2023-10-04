@@ -26,12 +26,10 @@
 #include "third_party/blink/renderer/core/css/properties/computed_style_utils.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
-#include "third_party/blink/renderer/core/frame/page_scale_constraints_set.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_link.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
-#include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context.h"
 #include "ui/gfx/geometry/size_f.h"
@@ -104,8 +102,15 @@ gfx::Rect PrintContext::PageRect(wtf_size_t page_number) const {
     return gfx::Rect();
   }
   const LayoutView& layout_view = *frame_->GetDocument()->GetLayoutView();
+
+  if (!use_printing_layout_) {
+    // Remote frames end up here.
+    return ToPixelSnappedRect(layout_view.DocumentRect());
+  }
+
   const auto& fragments = layout_view.GetPhysicalFragment(0)->Children();
   CHECK_GE(fragments.size(), 1u);
+  DCHECK(fragments[0]->IsFragmentainerBox());
 
   // Make sure that the page number is within the range of pages that were laid
   // out. In cases of monolithic overflow (a large image sliced into multiple
@@ -154,6 +159,9 @@ void PrintContext::BeginPrintMode(const WebPrintParams& print_params) {
   DCHECK(settings);
   float maximum_shink_factor = settings->GetPrintingMaximumShrinkFactor();
 
+  LayoutView& layout_view = *frame_->GetDocument()->GetLayoutView();
+  layout_view.SetPageScaleFactor(1.0f / print_params.scale_factor);
+
   // This changes layout, so callers need to make sure that they don't paint to
   // screen while in printing mode.
   frame_->StartPrinting(print_params.default_page_description,
@@ -167,11 +175,6 @@ void PrintContext::EndPrintMode() {
   is_printing_ = false;
   if (IsFrameValid()) {
     frame_->EndPrinting();
-
-    // Printing changes the viewport and content size which may result in
-    // changing the page scale factor. Call SetNeedsReset() so that we reset
-    // back to the initial page scale factor when we exit printing mode.
-    frame_->GetPage()->GetPageScaleConstraintsSet().SetNeedsReset(true);
   }
   linked_destinations_.clear();
   linked_destinations_valid_ = false;
@@ -252,8 +255,7 @@ String PrintContext::PageProperty(LocalFrame* frame,
   // want to collect @page rules and figure out what declarations apply on a
   // given page (that may or may not exist).
   print_context->BeginPrintMode(WebPrintParams(gfx::SizeF(800, 1000)));
-  scoped_refptr<const ComputedStyle> style =
-      document->StyleForPage(page_number);
+  const ComputedStyle* style = document->StyleForPage(page_number);
 
   // Implement formatters for properties we care about.
   if (!strcmp(property_name, "margin-left")) {
@@ -294,7 +296,7 @@ String PrintContext::PageSizeAndMarginsInPixels(LocalFrame* frame,
 
   // Named pages aren't supported here, because this function may be called
   // without laying out first.
-  scoped_refptr<const ComputedStyle> style = frame->GetDocument()->StyleForPage(
+  const ComputedStyle* style = frame->GetDocument()->StyleForPage(
       page_number, /* page_name */ AtomicString());
   frame->GetDocument()->GetPageDescription(*style, &description);
 

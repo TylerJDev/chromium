@@ -197,7 +197,8 @@ bool KeyboardEventManager::HandleAccessKey(const WebKeyboardEvent& evt) {
   if (!elem)
     return false;
   elem->Focus(FocusParams(SelectionBehaviorOnFocus::kReset,
-                          mojom::blink::FocusType::kAccessKey, nullptr));
+                          mojom::blink::FocusType::kAccessKey, nullptr,
+                          FocusOptions::Create(), FocusTrigger::kUserGesture));
   elem->AccessKeyAction(SimulatedClickCreationScope::kFromUserAgent);
   return true;
 }
@@ -375,7 +376,7 @@ WebInputEventResult KeyboardEventManager::KeyEvent(
       if (initial_key_event.text[0] == 0) {
         return WebInputEventResult::kNotHandled;
       }
-      U_FALLTHROUGH;
+      [[fallthrough]];
     }
     case WebInputEvent::Type::kChar: {
       WebKeyboardEvent char_event = initial_key_event;

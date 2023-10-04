@@ -11,6 +11,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/native_value_traits_impl.h"
 #include "third_party/blink/renderer/platform/bindings/dom_data_store.h"
 #include "third_party/blink/renderer/platform/bindings/v8_binding.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_deque.h"
 #include "v8/include/v8.h"
 
 namespace blink {
@@ -383,33 +384,25 @@ struct ToV8Traits<MaybeShared<T>> {
 namespace bindings {
 
 // Helper function for IDLSequence
-template <typename ElementIDLType, typename VectorType>
-inline v8::MaybeLocal<v8::Value> ToV8HelperSequence(ScriptState* script_state,
-                                                    const VectorType& vector) {
-  v8::Isolate* isolate = script_state->GetIsolate();
-  v8::Local<v8::Array> array;
-  {
-    v8::Context::Scope context_scope(script_state->GetContext());
-    array = v8::Array::New(isolate, base::checked_cast<int>(vector.size()));
-  }
-  v8::Local<v8::Context> context = script_state->GetContext();
-  uint32_t index = 0;
-  typename VectorType::const_iterator end = vector.end();
-  for (typename VectorType::const_iterator iter = vector.begin(); iter != end;
-       ++iter) {
+template <typename ElementIDLType, typename ContainerType>
+inline v8::MaybeLocal<v8::Value> ToV8HelperSequence(
+    ScriptState* script_state,
+    const ContainerType& vector) {
+  Vector<v8::Local<v8::Value>> converted_vector;
+  converted_vector.ReserveInitialCapacity(vector.size());
+  typename ContainerType::const_iterator end = vector.end();
+  wtf_size_t i = 0;
+  for (typename ContainerType::const_iterator iter = vector.begin();
+       iter != end; ++iter, ++i) {
     v8::Local<v8::Value> v8_value;
     if (!ToV8Traits<ElementIDLType>::ToV8(script_state, *iter)
              .ToLocal(&v8_value)) {
-      return v8::MaybeLocal<v8::Value>();
-    }
-    bool is_property_created;
-    if (!array->CreateDataProperty(context, index++, v8_value)
-             .To(&is_property_created) ||
-        !is_property_created) {
       return v8::Local<v8::Value>();
     }
+    converted_vector.push_back(std::move(v8_value));
   }
-  return array;
+  return v8::Array::New(script_state->GetIsolate(), converted_vector.data(),
+                        base::checked_cast<int>(converted_vector.size()));
 }
 
 // Helper function for IDLSequence in the case using reinterpret_cast
@@ -546,6 +539,19 @@ struct ToV8Traits<
     DCHECK(value);
     return bindings::ToV8HelperSequenceWithMemberUpcast<ScriptWrappable>(
         script_state, value);
+  }
+
+  [[nodiscard]] static v8::MaybeLocal<v8::Value> ToV8(
+      ScriptState* script_state,
+      const HeapDeque<Member<T>>& value) {
+    return bindings::ToV8HelperSequence<ScriptWrappable>(script_state, value);
+  }
+
+  [[nodiscard]] static v8::MaybeLocal<v8::Value> ToV8(
+      ScriptState* script_state,
+      const HeapDeque<Member<T>>* value) {
+    DCHECK(value);
+    return bindings::ToV8HelperSequence<ScriptWrappable>(script_state, *value);
   }
 };
 

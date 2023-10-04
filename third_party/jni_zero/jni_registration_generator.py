@@ -130,7 +130,7 @@ def _Generate(options, native_sources, java_sources):
             srcjar,
             f'{short_gen_jni_class.full_name_with_slashes}.java',
             data=CreateProxyJavaFromDict(options, gen_jni_class, combined_dict))
-        # org/chromium/base/natives/GEN_JNI.java
+        # org/jni_zero/GEN_JNI.java
         zip_helpers.add_to_zip_hermetic(
             srcjar,
             f'{full_gen_jni_class.full_name_with_slashes}.java',
@@ -140,7 +140,7 @@ def _Generate(options, native_sources, java_sources):
                                          stub_methods=stub_methods_string,
                                          forwarding=True))
       else:
-        # org/chromium/base/natives/GEN_JNI.java
+        # org/jni_zero/GEN_JNI.java
         zip_helpers.add_to_zip_hermetic(
             srcjar,
             f'{full_gen_jni_class.full_name_with_slashes}.java',
@@ -173,8 +173,9 @@ the corresponding generate_jni().
 To bypass this check, you can add stubs to Java with add_stubs_for_missing_jni.
 Excess Java files below:
 '''
-    warning_message += ', '.join(dict_by_path)
     sys.stderr.write(warning_message)
+    sys.stderr.write(', '.join(dict_by_path))
+    sys.stderr.write('\n')
   if not options.remove_uncalled_methods and native_only:
     failed = True
     warning_message = '''Failed JNI assertion!
@@ -183,8 +184,9 @@ do not include in our final dex.
 To bypass this check, delete these extra JNI methods with remove_uncalled_jni.
 Unneeded Java files below:
 '''
-    warning_message += str(native_only)
     sys.stderr.write(warning_message)
+    sys.stderr.write(str(native_only))
+    sys.stderr.write('\n')
   if failed:
     sys.exit(1)
   return list(dict_by_path.values())
@@ -567,7 +569,7 @@ JNI_GENERATOR_EXPORT ${RETURN} ${STUB_NAME}(
         jni_generator.GetRegistrationFunctionName(self.fully_qualified_class)
     }
     register_body = template.substitute(value)
-    self._SetDictValue('REGISTER_NON_NATIVES', register_body)
+    self._SetDictValue('REGISTER_NATIVES', register_body)
 
   def _AddJNINativeMethodsArrays(self):
     """Returns the implementation of the array of native methods."""

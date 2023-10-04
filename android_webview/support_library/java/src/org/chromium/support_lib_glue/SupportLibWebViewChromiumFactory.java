@@ -12,6 +12,7 @@ import android.webkit.WebView;
 import androidx.annotation.IntDef;
 
 import com.android.webview.chromium.CallbackConverter;
+import com.android.webview.chromium.ProfileStore;
 import com.android.webview.chromium.SharedStatics;
 import com.android.webview.chromium.SharedTracingControllerAdapter;
 import com.android.webview.chromium.WebViewChromiumAwInit;
@@ -90,6 +91,9 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
                     Features.WEB_MESSAGE_ARRAY_BUFFER,
                     Features.REQUESTED_WITH_HEADER_ALLOW_LIST,
                     Features.IMAGE_DRAG_DROP,
+                    Features.USER_AGENT_METADATA,
+                    Features.MULTI_PROFILE,
+                    Features.ATTRIBUTION_BEHAVIOR,
                     // Add new features above. New features must include `+ Features.DEV_SUFFIX`
                     // when they're initially added (this can be removed in a future CL). The final
                     // feature should have a trailing comma for cleaner diffs.
@@ -171,6 +175,28 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
             ApiCall.SERVICE_WORKER_SETTINGS_GET_REQUESTED_WITH_HEADER_ORIGIN_ALLOWLIST,
             ApiCall.GET_IMAGE_DRAG_DROP_IMPLEMENTATION,
             ApiCall.JS_REPLY_POST_MESSAGE_WITH_PAYLOAD,
+            ApiCall.WEB_SETTINGS_SET_USER_AGENT_METADATA,
+            ApiCall.WEB_SETTINGS_GET_USER_AGENT_METADATA,
+            ApiCall.SERVICE_WORKER_CLIENT_SHOULD_INTERCEPT_REQUEST,
+            ApiCall.WEB_SETTINGS_SET_ALGORITHMIC_DARKENING_ALLOWED,
+            ApiCall.WEB_SETTINGS_IS_ALGORITHMIC_DARKENING_ALLOWED,
+            ApiCall.CREATE_WEB_MESSAGE_CHANNEL,
+            ApiCall.CREATE_WEBVIEW,
+            ApiCall.GET_STATICS,
+            ApiCall.GET_PROFILE_STORE,
+            ApiCall.GET_OR_CREATE_PROFILE,
+            ApiCall.GET_PROFILE,
+            ApiCall.GET_ALL_PROFILE_NAMES,
+            ApiCall.DELETE_PROFILE,
+            ApiCall.GET_PROFILE_NAME,
+            ApiCall.GET_PROFILE_COOKIE_MANAGER,
+            ApiCall.GET_PROFILE_WEB_STORAGE,
+            ApiCall.GET_PROFILE_GEO_LOCATION_PERMISSIONS,
+            ApiCall.GET_PROFILE_SERVICE_WORKER_CONTROLLER,
+            ApiCall.SET_WEBVIEW_PROFILE,
+            ApiCall.GET_WEBVIEW_PROFILE,
+            ApiCall.SET_ATTRIBUTION_BEHAVIOR,
+            ApiCall.GET_ATTRIBUTION_BEHAVIOR,
             // Add new constants above. The final constant should have a trailing comma for cleaner
             // diffs.
             ApiCall.COUNT, // Added to suppress WrongConstant in #recordApiCall
@@ -256,8 +282,31 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
         @Deprecated
         int RESTRICT_SENSITIVE_WEB_CONTENT = 73;
         int JS_REPLY_POST_MESSAGE_WITH_PAYLOAD = 74;
+        int WEB_SETTINGS_SET_USER_AGENT_METADATA = 75;
+        int WEB_SETTINGS_GET_USER_AGENT_METADATA = 76;
+        int SERVICE_WORKER_CLIENT_SHOULD_INTERCEPT_REQUEST = 77;
+        int WEB_SETTINGS_SET_ALGORITHMIC_DARKENING_ALLOWED = 78;
+        int WEB_SETTINGS_IS_ALGORITHMIC_DARKENING_ALLOWED = 79;
+        int CREATE_WEB_MESSAGE_CHANNEL = 80;
+        int CREATE_WEBVIEW = 81;
+        int GET_STATICS = 82;
+        int GET_PROFILE_STORE = 83;
+        int GET_OR_CREATE_PROFILE = 84;
+        int GET_PROFILE = 85;
+        int GET_ALL_PROFILE_NAMES = 86;
+        int DELETE_PROFILE = 87;
+        int GET_PROFILE_NAME = 88;
+        int GET_PROFILE_COOKIE_MANAGER = 89;
+        int GET_PROFILE_WEB_STORAGE = 90;
+        int GET_PROFILE_GEO_LOCATION_PERMISSIONS = 91;
+        int GET_PROFILE_SERVICE_WORKER_CONTROLLER = 92;
+
+        int SET_WEBVIEW_PROFILE = 93;
+        int GET_WEBVIEW_PROFILE = 94;
+        int SET_ATTRIBUTION_BEHAVIOR = 95;
+        int GET_ATTRIBUTION_BEHAVIOR = 96;
         // Remember to update AndroidXWebkitApiCall in enums.xml when adding new values here
-        int COUNT = 75;
+        int COUNT = 97;
     }
     // clang-format on
 
@@ -272,6 +321,7 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
     private InvocationHandler mTracingController;
     private InvocationHandler mProxyController;
     private InvocationHandler mDropDataProvider;
+    private InvocationHandler mProfileStore;
 
     public SupportLibWebViewChromiumFactory() {
         mCompatConverterAdapter = BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
@@ -281,8 +331,11 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
 
     @Override
     public /* WebViewProvider */ InvocationHandler createWebView(WebView webView) {
-        return BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
-                new SupportLibWebViewChromium(webView));
+        try (TraceEvent event = TraceEvent.scoped("WebView.APICall.AndroidX.CREATE_WEBVIEW")) {
+            recordApiCall(ApiCall.CREATE_WEBVIEW);
+            return BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
+                    new SupportLibWebViewChromium(webView));
+        }
     }
 
     @Override
@@ -357,14 +410,17 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
 
     @Override
     public InvocationHandler getStatics() {
-        synchronized (mAwInit.getLock()) {
-            if (mStatics == null) {
-                mStatics = BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
-                        new StaticsAdapter(
-                                WebkitToSharedGlueConverter.getGlobalAwInit().getStatics()));
+        try (TraceEvent event = TraceEvent.scoped("WebView.APICall.AndroidX.GET_STATICS")) {
+            recordApiCall(ApiCall.GET_STATICS);
+            synchronized (mAwInit.getLock()) {
+                if (mStatics == null) {
+                    mStatics = BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
+                            new StaticsAdapter(
+                                    WebkitToSharedGlueConverter.getGlobalAwInit().getStatics()));
+                }
             }
+            return mStatics;
         }
-        return mStatics;
     }
 
     @Override
@@ -382,7 +438,7 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
                     mServiceWorkerController =
                             BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
                                     new SupportLibServiceWorkerControllerAdapter(
-                                            mAwInit.getServiceWorkerController()));
+                                            mAwInit.getDefaultServiceWorkerController()));
                 }
             }
             return mServiceWorkerController;
@@ -434,6 +490,20 @@ class SupportLibWebViewChromiumFactory implements WebViewProviderFactoryBoundary
                 }
             }
             return mDropDataProvider;
+        }
+    }
+
+    @Override
+    public InvocationHandler getProfileStore() {
+        try (TraceEvent event = TraceEvent.scoped("WebView.APICall.AndroidX.GET_PROFILE_STORE")) {
+            recordApiCall(ApiCall.GET_PROFILE_STORE);
+            synchronized (mAwInit.getLock()) {
+                if (mProfileStore == null) {
+                    mProfileStore = BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
+                            new SupportLibProfileStore(ProfileStore.getInstance()));
+                }
+            }
+            return mProfileStore;
         }
     }
 }

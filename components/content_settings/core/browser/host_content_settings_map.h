@@ -131,8 +131,9 @@ class HostContentSettingsMap : public content_settings::Observer,
   // assigned to it.
   //
   // This may be called on any thread.
-  ContentSetting GetDefaultContentSetting(ContentSettingsType content_type,
-                                          std::string* provider_id) const;
+  ContentSetting GetDefaultContentSetting(
+      ContentSettingsType content_type,
+      std::string* provider_id = nullptr) const;
 
   // Returns a single |ContentSetting| which applies to the given URLs.  Note
   // that certain internal schemes are allowlisted. For |CONTENT_TYPE_COOKIES|,
@@ -167,10 +168,11 @@ class HostContentSettingsMap : public content_settings::Observer,
   // set to |SETTING_SOURCE_NONE|. The pattern fields of |info| are set to empty
   // patterns.
   // May be called on any thread.
-  base::Value GetWebsiteSetting(const GURL& primary_url,
-                                const GURL& secondary_url,
-                                ContentSettingsType content_type,
-                                content_settings::SettingInfo* info) const;
+  base::Value GetWebsiteSetting(
+      const GURL& primary_url,
+      const GURL& secondary_url,
+      ContentSettingsType content_type,
+      content_settings::SettingInfo* info = nullptr) const;
 
   // For a given content type, returns all patterns with a non-default setting,
   // mapped to their actual settings, in the precedence order of the rules.
@@ -180,6 +182,10 @@ class HostContentSettingsMap : public content_settings::Observer,
   // incognito inheritance behavior is applied. If the returned settings are not
   // used immediately the validity of each entry should be checked using
   // IsExpired().
+  //
+  // The intended purpose of this method is to display a list of settings in the
+  // settings UI. It should not be used to evaluate whether settings are
+  // enabled. Use GetWebsiteSetting for that.
   //
   // This may be called on any thread.
   ContentSettingsForOneType GetSettingsForOneType(

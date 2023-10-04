@@ -17,7 +17,39 @@ namespace password_manager {
 // The maximum time between the user typed in a text field and subsequent
 // submission of the password form, such that the typed value is considered to
 // be a possible username.
+// TODO: crbug.com/1470586 - Remove and keep only
+// `kPossibleUsernameExtendedExpirationTimeout` once
+// `kUsernameFirstFlowWithIntermediateValues` is launched.
 constexpr auto kPossibleUsernameExpirationTimeout = base::Minutes(1);
+
+// An extended version of `kPossibleUsernameExpirationTimeout` that allows
+// having intermediate fields (e.g. OTPs, captchas) between typing in a single
+// username field and subsequent submission of the password form. Used when
+// `kUsernameFirstFlowWithIntermediateValues` is enabled.
+constexpr auto kPossibleUsernameExtendedExpirationTimeout = base::Minutes(5);
+
+// Contains information to uniquely identify the field that is considered to be
+// username in Username First Flow.
+struct PossibleUsernameFieldIdentifier {
+  // Id of the `PasswordManagerDriver` which corresponds to the frame of this
+  // field. When paired with the `renderer_id`, this pair uniquely identifies a
+  // field globally.
+  int driver_id;
+
+  // Id of the field within the frame.
+  autofill::FieldRendererId renderer_id;
+
+  friend bool operator<(const PossibleUsernameFieldIdentifier& lhs,
+                        const PossibleUsernameFieldIdentifier& rhs) {
+    return std::make_pair(lhs.driver_id, lhs.renderer_id) <
+           std::make_pair(rhs.driver_id, rhs.renderer_id);
+  }
+
+  friend bool operator==(const PossibleUsernameFieldIdentifier& lhs,
+                         const PossibleUsernameFieldIdentifier& rhs) {
+    return lhs.driver_id == rhs.driver_id && lhs.renderer_id == rhs.renderer_id;
+  }
+};
 
 // Contains information that the user typed in a text field. It might be the
 // username during username first flow.
@@ -33,13 +65,16 @@ struct PossibleUsernameData {
   ~PossibleUsernameData();
 
   std::string signon_realm;
+
+  // Id of the field within the frame.
   autofill::FieldRendererId renderer_id;
 
   std::u16string value;
   base::Time last_change;
 
-  // Id of PasswordManagerDriver which corresponds to the frame of this field.
-  // Paired with the |renderer_id|, this identifies a field globally.
+  // Id of the `PasswordManagerDriver` which corresponds to the frame of this
+  // field. When paired with the `renderer_id`, this pair uniquely identifies a
+  // field globally.
   int driver_id;
 
   // Whether the autocomplete attribute is present and equals to
@@ -60,6 +95,11 @@ struct PossibleUsernameData {
   // Returns whether the field identified by |renderer_id| has a
   // single username prediction stored in |form_predictions|.
   bool HasSingleUsernameServerPrediction() const;
+
+  // Returns whether the field identified by |renderer_id| has a
+  // single username prediction stored in |form_predictions| that is an
+  // override.
+  bool HasSingleUsernameOverride() const;
 
   // Returns whether the field identified by |renderer_id| has
   // any server prediction stored in |form_predictions|.

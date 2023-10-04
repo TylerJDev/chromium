@@ -18,7 +18,6 @@ import org.junit.runner.RunWith;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -91,11 +90,7 @@ public class RecentlyClosedBridgeTest {
         mTabModel = mTabModelSelector.getModel(false);
         TabModelFilter filter =
                 mTabModelSelector.getTabModelFilterProvider().getTabModelFilter(false);
-        if (filter instanceof TabGroupModelFilter) {
-            mTabGroupModelFilter = (TabGroupModelFilter) filter;
-        } else {
-            mTabGroupModelFilter = null;
-        }
+        mTabGroupModelFilter = (TabGroupModelFilter) filter;
         final Tab tab = mActivity.getActivityTab();
         ChromeTabUtils.waitForInteractable(tab);
     }
@@ -582,7 +577,6 @@ public class RecentlyClosedBridgeTest {
      */
     @Test
     @LargeTest
-    @DisabledTest(message = "https://crbug.com/1403661")
     public void testOpenRecentlyClosedEntry_Group_FromGroupClosure_WithRestart() {
         if (mTabGroupModelFilter == null) return;
 
@@ -939,7 +933,7 @@ public class RecentlyClosedBridgeTest {
             TabState state = TabStateExtractor.from(tab);
             mActivity.getCurrentTabModel().closeTab(tab);
             frozen[0] = mActivity.getCurrentTabCreator().createFrozenTab(
-                    state, null, tab.getId(), tab.isIncognito(), 1);
+                    state, tab.getId(), tab.isIncognito(), 1);
         });
         return frozen[0];
     }

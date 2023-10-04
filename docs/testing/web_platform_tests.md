@@ -208,22 +208,23 @@ For maintainers:
 
 ### New failure notifications
 
-Test owners can elect to have the importer automatically file bugs against a
-component when imported changes introduce failures. This includes new tests that
-fail in Chromium, as well as new failures introduced to an existing test. To
-opt-in to this functionality, create an `DIR_METADATA` file in the appropriate
-`external/wpt/` subdirectory that contains at least `wpt.notify` and
-`monorail.component` fields. For example, `external/wpt/css/css-grid/DIR_METADATA`
-looks like:
+The importer automatically file bugs against a component when imported changes
+introduce failures as long as test owners did not choose to opt-out the failure
+notification mechanism. This includes new tests that fail in Chromium, as well
+as new failures introduced to an existing test. Test owners are encouraged to
+create an `DIR_METADATA` file in the appropriate `external/wpt/` subdirectory
+that contains at least the `monorail.component` and `buganizer_public.component_id`
+fields, which the importer will use to file bugs.
+For example, `external/wpt/css/css-grid/DIR_METADATA` looks like:
 
 ```
 monorail {
   component: "Blink>Layout>Grid"
 }
-team_email: "layout-dev@chromium.org"
-wpt {
-  notify: YES
+buganizer_public {
+  component_id: 1415957
 }
+team_email: "layout-dev@chromium.org"
 ```
 
 When tests under `external/wpt/css/css-grid/` newly fail in a WPT import, the
@@ -236,8 +237,20 @@ The importer will also copy `layout-dev@chromium.org` (the `team_email`) and any
 Failing tests are grouped according to the most specific `DIR_METADATA` that
 they roll up to.
 
-Note that we are considering making the notifications opt-out instead of
-opt-in: see https://crbug.com/1454853
+To opt-out of this notification, add `wpt.notify` field set to `NO` to the
+corresponding `DIR_METADATA`.
+For example, the following `DIR_METADATA` will suppress notification from tests
+under the located directory:
+
+```
+monorail {
+  component: "Blink>Layout>Grid"
+}
+team_email: "layout-dev@chromium.org"
+wpt {
+  notify: NO
+}
+```
 
 ### Skipped tests (and how to re-enable them)
 

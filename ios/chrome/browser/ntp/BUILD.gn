@@ -51,10 +51,9 @@ source_set("features") {
   ]
   deps = [
     "//base",
-    "//components/variations/service",
+    "//components/country_codes",
     "//components/version_info:channel",
     "//ios/chrome/app:background_mode_buildflags",
-    "//ios/chrome/browser/shared/model/application_context",
     "//ios/chrome/browser/shared/public/features:system_flags",
     "//ios/chrome/common",
   ]
@@ -79,9 +78,9 @@ source_set("set_up_list") {
     "//components/prefs/ios",
     "//components/sync/base",
     "//components/sync/service",
-    "//ios/chrome/browser/default_browser:utils",
+    "//ios/chrome/browser/default_browser/model:utils",
     "//ios/chrome/browser/signin",
-    "//ios/chrome/browser/sync",
+    "//ios/chrome/browser/sync/model",
   ]
 }
 
@@ -130,8 +129,8 @@ source_set("unit_tests") {
     "//components/prefs",
     "//components/strings",
     "//components/sync_preferences:test_support",
-    "//ios/chrome/browser/default_browser:test_support",
-    "//ios/chrome/browser/default_browser:utils",
+    "//ios/chrome/browser/default_browser/model:test_support",
+    "//ios/chrome/browser/default_browser/model:utils",
     "//ios/chrome/browser/favicon:favicon",
     "//ios/chrome/browser/ntp",
     "//ios/chrome/browser/policy:policy_util",
@@ -146,7 +145,7 @@ source_set("unit_tests") {
     "//ios/chrome/browser/signin:fake_system_identity",
     "//ios/chrome/browser/signin:fake_system_identity_manager",
     "//ios/chrome/browser/signin:test_support",
-    "//ios/chrome/browser/sync",
+    "//ios/chrome/browser/sync/model",
     "//ios/chrome/test:test_support",
     "//ios/web/public/test:test",
     "//ios/web/public/test/fakes",

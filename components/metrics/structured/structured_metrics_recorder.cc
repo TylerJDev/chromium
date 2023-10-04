@@ -46,13 +46,13 @@ int StructuredMetricsRecorder::kMaxEventsPerUpload = 100;
 char StructuredMetricsRecorder::kUnsentLogsPath[] = "structured_metrics/events";
 
 StructuredMetricsRecorder::StructuredMetricsRecorder(
-    raw_ptr<metrics::MetricsProvider> system_profile_provider)
+    metrics::MetricsProvider* system_profile_provider)
     : StructuredMetricsRecorder(base::Milliseconds(kSaveDelayMs),
                                 system_profile_provider) {}
 
 StructuredMetricsRecorder::StructuredMetricsRecorder(
     base::TimeDelta write_delay,
-    raw_ptr<metrics::MetricsProvider> system_profile_provider)
+    metrics::MetricsProvider* system_profile_provider)
     : write_delay_(write_delay),
       system_profile_provider_(system_profile_provider) {
   DCHECK(system_profile_provider_);
@@ -128,24 +128,11 @@ void StructuredMetricsRecorder::InitializeKeyDataProvider(
   key_data_provider_ = std::move(key_data_provider);
 
   key_data_provider_->InitializeDeviceKey(
-      base::BindOnce(&StructuredMetricsRecorder::OnDeviceKeyDataInitialized,
+      base::BindOnce(&StructuredMetricsRecorder::OnKeyDataInitialized,
                      weak_factory_.GetWeakPtr()));
-
-  external_metrics_ = std::make_unique<ExternalMetrics>(
-      base::FilePath(kExternalMetricsDir),
-      base::Minutes(kExternalMetricsIntervalMins),
-      base::BindRepeating(
-          &StructuredMetricsRecorder::OnExternalMetricsCollected,
-          weak_factory_.GetWeakPtr()));
 }
 
-void StructuredMetricsRecorder::OnDeviceKeyDataInitialized() {
-  DCHECK(base::CurrentUIThread::IsSet());
-
-  UpdateAndCheckInitState();
-}
-
-void StructuredMetricsRecorder::OnProfileKeyDataInitialized() {
+void StructuredMetricsRecorder::OnKeyDataInitialized() {
   DCHECK(base::CurrentUIThread::IsSet());
 
   UpdateAndCheckInitState();
@@ -227,7 +214,7 @@ void StructuredMetricsRecorder::OnProfileAdded(
 
   key_data_provider_->InitializeProfileKey(
       profile_path,
-      base::BindOnce(&StructuredMetricsRecorder::OnProfileKeyDataInitialized,
+      base::BindOnce(&StructuredMetricsRecorder::OnKeyDataInitialized,
                      weak_factory_.GetWeakPtr()));
 
   events_ = std::make_unique<PersistentProto<EventsProto>>(
@@ -236,6 +223,13 @@ void StructuredMetricsRecorder::OnProfileAdded(
                      weak_factory_.GetWeakPtr()),
       base::BindRepeating(&StructuredMetricsRecorder::OnWrite,
                           weak_factory_.GetWeakPtr()));
+
+  external_metrics_ = std::make_unique<ExternalMetrics>(
+      base::FilePath(kExternalMetricsDir),
+      base::Minutes(kExternalMetricsIntervalMins),
+      base::BindRepeating(
+          &StructuredMetricsRecorder::OnExternalMetricsCollected,
+          weak_factory_.GetWeakPtr()));
 
   if (recording_enabled_) {
     external_metrics_->EnableRecording();
@@ -271,6 +265,7 @@ void StructuredMetricsRecorder::OnEventRecord(const Event& event) {
   RecordEvent(event);
 
   events_->QueueWrite();
+  test_callback_on_record_.Run();
 }
 
 absl::optional<int> StructuredMetricsRecorder::LastKeyRotation(
@@ -343,7 +338,11 @@ void StructuredMetricsRecorder::ProvideSystemProfile(
 }
 
 void StructuredMetricsRecorder::WriteNowForTest() {
-  events_->StartWrite();
+  // The event proto may not be initialized yet. Check that the proto is ready
+  // before attempting to write.
+  if (can_provide_metrics()) {
+    events_->StartWrite();
+  }
 }
 
 void StructuredMetricsRecorder::SetExternalMetricsDirForTest(
@@ -435,6 +434,13 @@ void StructuredMetricsRecorder::RecordEvent(const Event& event) {
         event.recorded_time_since_boot().InMilliseconds());
     event_sequence_metadata->set_event_unique_id(
         base::HashMetricName(event.event_sequence_metadata().event_unique_id));
+
+    int days_since_rotation =
+        profile_key_data->LastKeyRotation(project_validator->project_hash())
+            .value_or(0);
+    event_sequence_metadata->set_client_id_rotation_weeks(days_since_rotation /
+                                                          7);
+
     event_proto->set_device_project_id(
         device_key_data->Id(project_validator->project_hash(),
                             project_validator->key_rotation_period()));
@@ -552,6 +558,8 @@ void StructuredMetricsRecorder::RecordEvent(const Event& event) {
 
   // Log size information about the event.
   LogEventSerializedSizeBytes(event_proto->ByteSizeLong());
+
+  Recorder::GetInstance()->OnEventRecorded(event_proto);
 }
 
 void StructuredMetricsRecorder::HashUnhashedEventsAndPersist() {
@@ -607,6 +615,11 @@ void StructuredMetricsRecorder::UpdateAndCheckInitState() {
     HashUnhashedEventsAndPersist();
     std::move(on_ready_callback_).Run();
   }
+}
+
+void StructuredMetricsRecorder::SetEventRecordCallbackForTest(
+    base::RepeatingClosure callback) {
+  test_callback_on_record_ = std::move(callback);
 }
 
 }  // namespace metrics::structured

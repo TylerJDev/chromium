@@ -19,6 +19,7 @@ import {focusWithoutInk} from 'chrome://resources/js/focus_without_ink.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {castExists} from '../assert_extras.js';
+import {isRevampWayfindingEnabled} from '../common/load_time_booleans.js';
 import {DeepLinkingMixin} from '../deep_linking_mixin.js';
 import {Setting} from '../mojom-webui/setting.mojom-webui.js';
 import {RouteObserverMixin} from '../route_observer_mixin.js';
@@ -27,16 +28,18 @@ import {Route, Router, routes} from '../router.js';
 import {AndroidAppsBrowserProxyImpl, AndroidAppsInfo} from './android_apps_browser_proxy.js';
 import {getTemplate} from './android_apps_subpage.html.js';
 
-interface SettingsAndroidAppsSubpageElement {
+export interface SettingsAndroidAppsSubpageElement {
   $: {
     confirmDisableDialog: CrDialogElement,
   };
 }
 
+const GOOGLE_PLAY_STORE_URL = 'https://play.google.com/store/';
+
 const SettingsAndroidAppsSubpageElementBase =
     DeepLinkingMixin(RouteObserverMixin(PrefsMixin(I18nMixin(PolymerElement))));
 
-class SettingsAndroidAppsSubpageElement extends
+export class SettingsAndroidAppsSubpageElement extends
     SettingsAndroidAppsSubpageElementBase {
   static get is() {
     return 'settings-android-apps-subpage' as const;
@@ -80,6 +83,14 @@ class SettingsAndroidAppsSubpageElement extends
           Setting.kRemovePlayStore,
         ]),
       },
+
+      isRevampWayfindingEnabled_: {
+        type: Boolean,
+        value() {
+          return isRevampWayfindingEnabled();
+        },
+        readOnly: true,
+      },
     };
   }
 
@@ -87,8 +98,9 @@ class SettingsAndroidAppsSubpageElement extends
   isArcVmManageUsbAvailable: boolean;
   private dialogBody_: string;
   private playStoreEnabled_: boolean;
+  private isRevampWayfindingEnabled_: boolean;
 
-  override currentRouteChanged(route: Route) {
+  override currentRouteChanged(route: Route): void {
     // Does not apply to this page.
     if (route !== routes.ANDROID_APPS_DETAILS) {
       return;
@@ -97,7 +109,7 @@ class SettingsAndroidAppsSubpageElement extends
     this.attemptDeepLink();
   }
 
-  private onPlayStoreEnabledChanged_(enabled: boolean) {
+  private onPlayStoreEnabledChanged_(enabled: boolean): void {
     if (!enabled &&
         Router.getInstance().currentRoute === routes.ANDROID_APPS_DETAILS) {
       Router.getInstance().navigateToPreviousRoute();
@@ -151,6 +163,17 @@ class SettingsAndroidAppsSubpageElement extends
   private onSharedUsbDevicesClick_(): void {
     Router.getInstance().navigateTo(
         routes.ANDROID_APPS_DETAILS_ARC_VM_SHARED_USB_DEVICES);
+  }
+
+  private getGuestOsSharedUsbDevicesSublabel_(): string|null {
+    return this.isRevampWayfindingEnabled_ ?
+        this.i18n('guestOsSharedUsbDevicesDescription') :
+        null;
+  }
+
+  private onOpenGooglePlayClick_(): void {
+    AndroidAppsBrowserProxyImpl.getInstance().openGooglePlayStore(
+        GOOGLE_PLAY_STORE_URL);
   }
 }
 

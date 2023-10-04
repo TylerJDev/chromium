@@ -5,6 +5,10 @@
 #ifndef CHROME_BROWSER_METRICS_STRUCTURED_KEY_DATA_PROVIDER_ASH_H_
 #define CHROME_BROWSER_METRICS_STRUCTURED_KEY_DATA_PROVIDER_ASH_H_
 
+#include <memory>
+
+#include "base/files/file_path.h"
+#include "base/time/time.h"
 #include "components/metrics/structured/key_data_provider.h"
 
 namespace metrics::structured {
@@ -18,8 +22,9 @@ namespace metrics::structured {
 // subsequent calls will no-op.
 class KeyDataProviderAsh : public KeyDataProvider {
  public:
-  KeyDataProviderAsh(const base::FilePath& device_key_path, int write_delay_ms);
   KeyDataProviderAsh();
+  KeyDataProviderAsh(const base::FilePath& device_key_path,
+                     base::TimeDelta write_delay);
   ~KeyDataProviderAsh() override;
 
   // KeyDataProvider:
@@ -34,7 +39,7 @@ class KeyDataProviderAsh : public KeyDataProvider {
 
  private:
   const base::FilePath device_key_path_;
-  int write_delay_ms_;
+  const base::TimeDelta write_delay_;
 
   std::unique_ptr<KeyData> device_key_;
   std::unique_ptr<KeyData> profile_key_;

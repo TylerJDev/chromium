@@ -41,7 +41,7 @@ constexpr VerificationStatus kObserved = VerificationStatus::kObserved;
 namespace {
 
 std::u16string GetSuggestionLabel(AutofillProfile* profile) {
-  std::vector<AutofillProfile*> profiles;
+  std::vector<const AutofillProfile*> profiles;
   profiles.push_back(profile);
   std::vector<std::u16string> labels;
   AutofillProfile::CreateDifferentiatingLabels(profiles, "en-US", &labels);
@@ -55,9 +55,9 @@ void SetupTestProfile(AutofillProfile& profile) {
                        "Hollywood", "CA", "91601", "US", "12345678910");
 }
 
-std::vector<AutofillProfile*> ToRawPointerVector(
+std::vector<const AutofillProfile*> ToRawPointerVector(
     const std::vector<std::unique_ptr<AutofillProfile>>& list) {
-  std::vector<AutofillProfile*> result;
+  std::vector<const AutofillProfile*> result;
   for (const auto& item : list)
     result.push_back(item.get());
   return result;
@@ -153,7 +153,7 @@ TEST(AutofillProfileTest, PreviewSummaryString) {
   test::SetProfileInfo(&profile7a, "Marion", "Mitchell", "Morrison",
                        "marion@me.xyz", "Fox", "123 Zoo St.", "unit 5",
                        "Hollywood", "CA", "91601", "US", "16505678910");
-  std::vector<AutofillProfile*> profiles;
+  std::vector<const AutofillProfile*> profiles;
   profiles.push_back(&profile7);
   profiles.push_back(&profile7a);
   std::vector<std::u16string> labels;
@@ -744,22 +744,38 @@ TEST(AutofillProfileTest, IsSubsetOfForFieldSet_DifferentLastNames) {
       profile2.IsSubsetOfForFieldSet(comparator, profile1, {NAME_LAST}));
 }
 
-TEST(AutofillProfileTest,
-     IsSubsetOfForFieldSet_DifferentStreetAddressesIgnored) {
+TEST(AutofillProfileTest, IsSubsetOfForFieldSet_DifferentStreetAddresses) {
   AutofillProfile profile1;
-  test::SetProfileInfo(&profile1, "Genevieve", "", "Fox", "", "", "274 Main St",
-                       "", "", "", "", "US", "");
+  profile1.SetRawInfo(ADDRESS_HOME_COUNTRY, u"US");
+  profile1.SetRawInfo(ADDRESS_HOME_STREET_ADDRESS, u"274 Main St");
 
   AutofillProfile profile2;
-  test::SetProfileInfo(&profile2, "Genevieve", "", "Fox", "", "",
-                       "274 Main Street", "", "", "", "", "US", "");
+  profile2.SetRawInfo(ADDRESS_HOME_COUNTRY, u"US");
+  profile2.SetRawInfo(ADDRESS_HOME_STREET_ADDRESS, u"275 Main Street");
 
   const AutofillProfileComparator comparator("en-US");
-
-  EXPECT_TRUE(profile1.IsSubsetOfForFieldSet(
-      comparator, profile2, {NAME_FULL, ADDRESS_HOME_STREET_ADDRESS}));
-  EXPECT_TRUE(profile2.IsSubsetOfForFieldSet(
-      comparator, profile1, {NAME_FULL, ADDRESS_HOME_STREET_ADDRESS}));
+  {
+    // The two profiles have different streets, since the default behavior is to
+    // ignore streets, they are considered equal.
+    base::test::ScopedFeatureList scoped_feature_list;
+    scoped_feature_list.InitAndDisableFeature(
+        features::kAutofillUseAddressRewriterInProfileSubsetComparison);
+    EXPECT_TRUE(profile1.IsSubsetOfForFieldSet(comparator, profile2,
+                                               {ADDRESS_HOME_STREET_ADDRESS}));
+    EXPECT_TRUE(profile2.IsSubsetOfForFieldSet(comparator, profile1,
+                                               {ADDRESS_HOME_STREET_ADDRESS}));
+  }
+  {
+    // When we start considering streets in subset comparison, the two profiles
+    // won't be considered equal anymore, since the differences in street
+    // addresses are more than just formatting differences.
+    base::test::ScopedFeatureList scoped_feature_list(
+        features::kAutofillUseAddressRewriterInProfileSubsetComparison);
+    EXPECT_FALSE(profile1.IsSubsetOfForFieldSet(comparator, profile2,
+                                                {ADDRESS_HOME_STREET_ADDRESS}));
+    EXPECT_FALSE(profile2.IsSubsetOfForFieldSet(comparator, profile1,
+                                                {ADDRESS_HOME_STREET_ADDRESS}));
+  }
 }
 
 TEST(AutofillProfileTest, IsSubsetOfForFieldSet_DifferentNonStreetAddresses) {
@@ -1239,6 +1255,12 @@ TEST(AutofillProfileTest, Compare) {
 // For each structured profile tokens, test the comparison operator for both the
 // value and the status.
 TEST(AutofillProfileTest, Compare_StructuredTypes) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {autofill::features::kAutofillEnableSupportForLandmark,
+       autofill::features::kAutofillEnableSupportForBetweenStreets,
+       autofill::features::kAutofillEnableSupportForAdminLevel2},
+      {});
   // Those types do store a verification status.
   ServerFieldTypeSet structured_types{
       NAME_FULL,
@@ -1259,8 +1281,6 @@ TEST(AutofillProfileTest, Compare_StructuredTypes) {
       ADDRESS_HOME_BETWEEN_STREETS,
       ADDRESS_HOME_HOUSE_NUMBER,
       ADDRESS_HOME_STREET_NAME,
-      ADDRESS_HOME_DEPENDENT_STREET_NAME,
-      ADDRESS_HOME_PREMISE_NAME,
       ADDRESS_HOME_SUBPREMISE,
   };
 
@@ -1284,7 +1304,7 @@ TEST(AutofillProfileTest, Compare_StructuredTypes) {
                  << AutofillType(type).ToString());
 
     SCOPED_TRACE(testing::Message()
-                 << "Verify the corrext result for identical values");
+                 << "Verify the correct result for identical values");
     profile1.SetRawInfoWithVerificationStatus(type, value1, status1);
     profile2.SetRawInfoWithVerificationStatus(type, value1, status1);
     EXPECT_EQ(profile1.Compare(profile2), 0);
@@ -1363,6 +1383,8 @@ TEST(AutofillProfileTest, SetRawInfoDoesntTrimWhitespace) {
 }
 
 TEST(AutofillProfileTest, SetRawInfoWorksForLandmark) {
+  base::test::ScopedFeatureList feature_list(
+      features::kAutofillEnableSupportForLandmark);
   AutofillProfile profile;
 
   profile.SetRawInfo(ADDRESS_HOME_LANDMARK, u"Red tree");
@@ -1370,6 +1392,8 @@ TEST(AutofillProfileTest, SetRawInfoWorksForLandmark) {
 }
 
 TEST(AutofillProfileTest, SetRawInfoWorksForBetweenStreets) {
+  base::test::ScopedFeatureList feature_list(
+      features::kAutofillEnableSupportForBetweenStreets);
   AutofillProfile profile;
 
   profile.SetRawInfo(ADDRESS_HOME_BETWEEN_STREETS, u"Between streets example");
@@ -1381,45 +1405,6 @@ TEST(AutofillProfileTest, SetInfoTrimsWhitespace) {
   AutofillProfile profile;
   profile.SetInfo(EMAIL_ADDRESS, u"\tuser@example.com    ", "en-US");
   EXPECT_EQ(u"user@example.com", profile.GetRawInfo(EMAIL_ADDRESS));
-}
-
-TEST(AutofillProfileTest, FullAddress) {
-  AutofillProfile profile;
-  test::SetProfileInfo(&profile, "Marion", "Mitchell", "Morrison",
-                       "marion@me.xyz", "Fox", "123 Zoo St.", "unit 5",
-                       "Hollywood", "CA", "91601", "US", "12345678910");
-
-  AutofillType full_address(HtmlFieldType::kFullAddress, HtmlFieldMode::kNone);
-  std::u16string formatted_address(
-      u"Marion Mitchell Morrison\n"
-      u"Fox\n"
-      u"123 Zoo St.\n"
-      u"unit 5\n"
-      u"Hollywood, CA 91601");
-  EXPECT_EQ(formatted_address, profile.GetInfo(full_address, "en-US"));
-  // This should fail and leave the profile unchanged.
-  EXPECT_FALSE(profile.SetInfo(full_address, u"foobar", "en-US"));
-  EXPECT_EQ(formatted_address, profile.GetInfo(full_address, "en-US"));
-
-  // Some things can be missing...
-  profile.SetInfo(ADDRESS_HOME_LINE2, std::u16string(), "en-US");
-  profile.SetInfo(EMAIL_ADDRESS, std::u16string(), "en-US");
-  EXPECT_EQ(
-      u"Marion Mitchell Morrison\n"
-      u"Fox\n"
-      u"123 Zoo St.\n"
-      u"Hollywood, CA 91601",
-      profile.GetInfo(full_address, "en-US"));
-
-  // ...but nothing comes out if a required field is missing.
-  profile.SetInfo(ADDRESS_HOME_STATE, std::u16string(), "en-US");
-  EXPECT_TRUE(profile.GetInfo(full_address, "en-US").empty());
-
-  // Restore the state but remove country. This should also fail.
-  profile.SetInfo(ADDRESS_HOME_STATE, u"CA", "en-US");
-  EXPECT_FALSE(profile.GetInfo(full_address, "en-US").empty());
-  profile.SetInfo(ADDRESS_HOME_COUNTRY, std::u16string(), "en-US");
-  EXPECT_TRUE(profile.GetInfo(full_address, "en-US").empty());
 }
 
 TEST(AutofillProfileTest, SaveAdditionalInfo_Name_AddingNameFull) {
@@ -1730,23 +1715,22 @@ TEST(AutofillProfileTest, GetNonEmptyRawTypes) {
                        "johnwayne@me.xyz", nullptr, "123 Zoo St.", nullptr,
                        "Hollywood", "CA", "91601", "US", "14155678910");
 
-  std::vector<ServerFieldType> expected_raw_types{
-      NAME_FIRST,
-      NAME_LAST,
-      NAME_FULL,
-      EMAIL_ADDRESS,
-      PHONE_HOME_WHOLE_NUMBER,
-      ADDRESS_HOME_ADDRESS,
-      ADDRESS_HOME_LINE1,
-      ADDRESS_HOME_CITY,
-      ADDRESS_HOME_STATE,
-      ADDRESS_HOME_ZIP,
-      ADDRESS_HOME_COUNTRY,
-      ADDRESS_HOME_STREET_ADDRESS,
-      ADDRESS_HOME_STREET_NAME,
-      ADDRESS_HOME_STREET_AND_DEPENDENT_STREET_NAME,
-      ADDRESS_HOME_HOUSE_NUMBER,
-      NAME_LAST_SECOND};
+  std::vector<ServerFieldType> expected_raw_types{NAME_FIRST,
+                                                  NAME_LAST,
+                                                  NAME_FULL,
+                                                  EMAIL_ADDRESS,
+                                                  PHONE_HOME_WHOLE_NUMBER,
+                                                  ADDRESS_HOME_ADDRESS,
+                                                  ADDRESS_HOME_LINE1,
+                                                  ADDRESS_HOME_CITY,
+                                                  ADDRESS_HOME_STATE,
+                                                  ADDRESS_HOME_ZIP,
+                                                  ADDRESS_HOME_COUNTRY,
+                                                  ADDRESS_HOME_STREET_ADDRESS,
+                                                  ADDRESS_HOME_STREET_NAME,
+                                                  ADDRESS_HOME_STREET_LOCATION,
+                                                  ADDRESS_HOME_HOUSE_NUMBER,
+                                                  NAME_LAST_SECOND};
 
   ServerFieldTypeSet non_empty_raw_types;
   profile.GetNonEmptyRawTypes(&non_empty_raw_types);
@@ -1757,10 +1741,8 @@ TEST(AutofillProfileTest, GetNonEmptyRawTypes) {
 
 enum Expectation { GREATER, LESS };
 struct ProfileRankingTestCase {
-  const std::string guid_a;
   const int use_count_a;
   const base::Time use_date_a;
-  const std::string guid_b;
   const int use_count_b;
   const base::Time use_date_b;
   Expectation expectation;
@@ -1781,12 +1763,10 @@ TEST_P(ProfileRankingTest, HasGreaterRankingThan) {
   auto test_case = GetParam();
 
   AutofillProfile profile1 = test::GetFullProfile();
-  profile1.set_guid(test_case.guid_a);
   profile1.set_use_count(test_case.use_count_a);
   profile1.set_use_date(test_case.use_date_a);
 
   AutofillProfile profile2 = test::GetFullProfile();
-  profile2.set_guid(test_case.guid_b);
   profile2.set_use_count(test_case.use_count_b);
   profile2.set_use_date(test_case.use_date_b);
 
@@ -1800,31 +1780,24 @@ INSTANTIATE_TEST_SUITE_P(
     AutofillProfileTest,
     ProfileRankingTest,
     testing::Values(
-        // Same ranking score, profile1 has a smaller GUID (tie breaker).
-        ProfileRankingTestCase{"guid_a", 8, current, "guid_b", 8, current,
-                               LESS},
         // Same days since last use, profile1 has a bigger use count.
-        ProfileRankingTestCase{"guid_a", 10, current, "guid_b", 8, current,
-                               GREATER},
+        ProfileRankingTestCase{10, current, 8, current, GREATER},
         // Same days since last use, profile1 has a smaller use count.
-        ProfileRankingTestCase{"guid_a", 8, current, "guid_b", 10, current,
-                               LESS},
+        ProfileRankingTestCase{8, current, 10, current, LESS},
         // Same days since last use, profile1 has larger use count.
-        ProfileRankingTestCase{"guid_a", 8, current, "guid_b", 8,
-                               current - base::Days(1), GREATER},
+        ProfileRankingTestCase{8, current, 8, current - base::Days(1), GREATER},
         // Same use count, profile1 has smaller days since last use.
-        ProfileRankingTestCase{"guid_a", 8, current - base::Days(1), "guid_b",
-                               8, current, LESS},
+        ProfileRankingTestCase{8, current - base::Days(1), 8, current, LESS},
         // Special case: occasional profiles. A profile with relatively low
         // usage and used recently (profile2) should not rank higher than a more
         // used profile that has been unused for a short amount of time
         // (profile1).
-        ProfileRankingTestCase{"guid_a", 300, current - base::Days(5), "guid_b",
-                               10, current - base::Days(1), GREATER},
+        ProfileRankingTestCase{300, current - base::Days(5), 10,
+                               current - base::Days(1), GREATER},
         // Special case: moving. A new profile used frequently (profile2) should
         // rank higher than a profile with more usage that has not been used for
         // a while (profile1).
-        ProfileRankingTestCase{"guid_a", 90, current - base::Days(20), "guid_b",
-                               10, current - base::Days(5), LESS}));
+        ProfileRankingTestCase{90, current - base::Days(20), 10,
+                               current - base::Days(5), LESS}));
 
 }  // namespace autofill

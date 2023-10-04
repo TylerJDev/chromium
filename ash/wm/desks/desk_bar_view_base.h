@@ -17,7 +17,6 @@
 #include "ash/wm/desks/scroll_arrow_button.h"
 #include "ash/wm/desks/zero_state_button.h"
 #include "ash/wm/overview/overview_grid.h"
-#include "base/allocator/partition_allocator/pointers/raw_ptr.h"
 #include "base/memory/raw_ptr.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/events/event.h"
@@ -80,12 +79,8 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
 
   aura::Window* root() const { return root_; }
 
-  bool is_bounds_animation_on_going() const {
-    return is_bounds_animation_on_going_;
-  }
-  void set_is_bounds_animation_on_going(bool value) {
-    is_bounds_animation_on_going_ = value;
-  }
+  bool pause_layout() const { return pause_layout_; }
+  void set_pause_layout(bool value) { pause_layout_ = value; }
 
   const gfx::Point& last_dragged_item_screen_location() const {
     return last_dragged_item_screen_location_;
@@ -96,6 +91,8 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
   OverviewGrid* overview_grid() const { return overview_grid_.get(); }
 
   const std::vector<DeskMiniView*>& mini_views() const { return mini_views_; }
+
+  views::View* background_view() { return background_view_; }
 
   const views::View* scroll_view_contents() const {
     return scroll_view_contents_;
@@ -215,8 +212,8 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
 
   // Udate the visibility of the `default_desk_button_` on the desk bar's
   // state.
-  // TODO(conniekxu): Remove `UpdateDeskButtonsVisibility`, replace it with this
-  // function, and rename this function by removing the prefix CrOSNext.
+  // TODO(b/291622042): Remove `UpdateDeskButtonsVisibility`, replace it with
+  // this function, and rename this function by removing the suffix `CrOSNext`.
   void UpdateDeskButtonsVisibilityCrOSNext();
 
   // Update the visibility of the saved desk library button based on whether
@@ -226,8 +223,8 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
 
   // Update the visibility of the saved desk library button based on whether
   // the saved desk feature is enabled and the user has any saved desks.
-  // TODO(conniekxu): Remove `UpdateLibraryButtonVisibility`, replace it with
-  // this function, and rename this function by removing the prefix CrOSNext.
+  // TODO(b/291622042): Remove `UpdateLibraryButtonVisibility`, replace it with
+  // this function, and rename this function by removing the suffix `CrOSNext`.
   void UpdateLibraryButtonVisibilityCrOSNext();
 
   // Called to update state of `button` and apply the scale animation to the
@@ -334,6 +331,13 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
   // done with its animation or when `desk_activation_timer_` fires.
   void OnUiUpdateDone();
 
+  // Gets full available bounds for the desk bar widget.
+  virtual gfx::Rect GetAvailableBounds() const = 0;
+
+  // Updates bar widget and bar view bounds as preferred. This is needed for
+  // dynamic width for the bar.
+  virtual void UpdateBarBounds();
+
  protected:
   friend class DeskBarScrollViewLayout;
   friend class DesksTestApi;
@@ -346,6 +350,10 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
   // This offset is used to calculate the amount by which the mini_views should
   // be moved when performing the mini_view creation or deletion animations.
   int GetFirstMiniViewXOffset() const;
+
+  // Returns the descendant views of the desk bar which animate on desk addition
+  // or removal, mapped to their current X screen coordinates.
+  base::flat_map<views::View*, int> GetAnimatableViewsCurrentXMap() const;
 
   // Determine the new index of the dragged desk at the position of
   // `location_in_screen`.
@@ -388,22 +396,15 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
   // is ended.
   bool MaybeScrollByDraggedDesk();
 
-  // Get full available bounds for the desk bar view and the scroll view.
-  // Information is retrieved from the widget as it comes with the full
-  // available bounds at initialization time and remains unchanged. Please refer
-  // to the charts at `DeskBarController::GetDeskBarWidgetBounds()`.
-  gfx::Rect GetAvailableBounds() const;
-
   const Type type_ = Type::kOverview;
 
   State state_ = State::kZero;
 
-  // True if the `DeskBarBoundsAnimation` is started and hasn't finished yet.
-  // It will be used to hold `Layout` until the bounds animation is completed.
+  // True if it needs to hold `Layout` until the bounds animation is completed.
   // `Layout` is expensive and will be called on bounds changes, which means it
   // will be called lots of times during the bounds changes animation. This is
   // done to eliminate the unnecessary `Layout` calls during the animation.
-  bool is_bounds_animation_on_going_ = false;
+  bool pause_layout_ = false;
 
   // Mini view whose preview is being dragged.
   raw_ptr<DeskMiniView, ExperimentalAsh> drag_view_ = nullptr;
@@ -427,6 +428,11 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
 
   // The views representing desks mini_views. They're owned by views hierarchy.
   std::vector<DeskMiniView*> mini_views_;
+
+  // The view representing the desk bar background view. It's owned by views
+  // hierarchy. It exists only in the shelf desk bar as it's needed for
+  // animation.
+  raw_ptr<views::View> background_view_ = nullptr;
 
   // Put the contents in a `ScrollView` to support scrollable desks.
   raw_ptr<views::ScrollView, ExperimentalAsh> scroll_view_ = nullptr;
@@ -452,7 +458,7 @@ class ASH_EXPORT DeskBarViewBase : public views::View,
 
   // Buttons for the CrOS Next updated UI. They're added behind the feature flag
   // Jellyroll.
-  // TODO(conniekxu): After CrOS Next is launched, replace
+  // TODO(b/291622042): After CrOS Next is launched, replace
   // `zero_state_default_desk_button_`, `zero_state_default_desk_button_`,
   // `expanded_state_new_desk_button_`, `zero_state_library_button_` and
   // `expanded_state_library_button_` with the buttons below.

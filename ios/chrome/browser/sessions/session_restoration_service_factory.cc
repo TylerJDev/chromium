@@ -9,6 +9,10 @@
 #include "ios/chrome/browser/shared/model/browser_state/browser_state_otr_helper.h"
 #include "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 
+// To get access to web::features::kEnableSessionSerializationOptimizations.
+// TODO(crbug.com/1383087): remove once the feature is fully launched.
+#import "ios/web/common/features.h"
+
 // static
 SessionRestorationService* SessionRestorationServiceFactory::GetForBrowserState(
     ChromeBrowserState* browser_state) {
@@ -33,13 +37,11 @@ SessionRestorationServiceFactory::~SessionRestorationServiceFactory() = default;
 std::unique_ptr<KeyedService>
 SessionRestorationServiceFactory::BuildServiceInstanceFor(
     web::BrowserState* context) const {
+  DCHECK(web::features::UseSessionSerializationOptimizations());
   return std::make_unique<SessionRestorationServiceImpl>();
 }
 
 web::BrowserState* SessionRestorationServiceFactory::GetBrowserStateToUse(
     web::BrowserState* context) const {
-  // The service is responsible for both saving the session for both regular
-  // and off-the-record BrowserState (this allow scheduling all the I/O ops
-  // on the same sequence).
-  return GetBrowserStateRedirectedInIncognito(context);
+  return GetBrowserStateOwnInstanceInIncognito(context);
 }

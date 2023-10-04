@@ -104,11 +104,6 @@ const char kDisableBackgroundTimerThrottling[] =
 // Disables the BackForwardCache feature.
 const char kDisableBackForwardCache[] = "disable-back-forward-cache";
 
-// Disables BackForwardCache for the pages with "Cache-Control: no-store"
-// header.
-const char kDisableBackForwardCacheForCacheControlNoStorePage[] =
-    "disable-back-forward-cache-for-cache-control-no-store-page";
-
 // Disable one or more Blink runtime-enabled features.
 // Use names from runtime_enabled_features.json5, separated by commas.
 // Applied after kEnableBlinkFeatures, and after other flags that change these
@@ -266,9 +261,6 @@ const char kDisableSpeechAPI[]              = "disable-speech-api";
 
 // Disables the speech synthesis part of Web Speech API.
 const char kDisableSpeechSynthesisAPI[]     = "disable-speech-synthesis-api";
-
-// Disables adding the test certs in the network process.
-const char kDisableTestCerts[]              = "disable-test-root-certs";
 
 // Disable multithreaded GPU compositing of web content.
 const char kDisableThreadedCompositing[]    = "disable-threaded-compositing";
@@ -983,14 +975,6 @@ const char kRemoteDebuggingSocketName[]     = "remote-debugging-socket-name";
 // Block ChildProcessMain thread of the renderer's ChildProcessService until a
 // Java debugger is attached.
 const char kRendererWaitForJavaDebugger[] = "renderer-wait-for-java-debugger";
-
-// Provides user-level memory pressure signal parameters for renderer processes.
-// The parameters are a pair of base::TimeDelta(). The first one is
-// inert interval and the second one is minimum interval.
-// If any valid parameters are specified, the renderer processes know that
-// the browser process enabled user-level memory pressure signal feature.
-const char kUserLevelMemoryPressureSignalParams[] =
-    "user-level-memory-pressure-signal-params";
 
 // Disables debug crash dumps for OOPR.
 const char kDisableOoprDebugCrashDump[] = "disable-oopr-debug-crash-dump";

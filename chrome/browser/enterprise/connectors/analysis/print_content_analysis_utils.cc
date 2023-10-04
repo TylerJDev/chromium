@@ -129,10 +129,14 @@ void PrintIfAllowedByPolicy(scoped_refptr<base::RefCountedMemory> print_data,
   scanning_data->printer_name = std::move(printer_name);
 
   // Hide the preview dialog so it doesn't cover the content analysis dialog
-  // showing the status of the scanning.
-  // TODO(b/281087582): May need to be handled differently when the scan
-  // takes place in the cloud instead of locally.
-  std::move(hide_preview).Run();
+  // showing the status of the scanning. Since that scanning dialog only appears
+  // when the policy is set to be blocking, don't run `hide_preview` for other
+  // policy configurations to avoid races between the dialog being hidden vs
+  // destroyed.
+  if (scanning_data->settings.block_until_verdict ==
+      BlockUntilVerdict::kBlock) {
+    std::move(hide_preview).Run();
+  }
 
   PrintIfAllowedByPolicy(print_data, web_contents, std::move(*scanning_data),
                          std::move(on_verdict));
@@ -192,6 +196,23 @@ absl::optional<ContentAnalysisDelegate::Data> GetPrintAnalysisData(
     // leading to a scan, so logging the print type metric here will apply it to
     // every print content analysis workflow.
     RecordPrintType(context, scanning_data);
+
+    switch (context) {
+#if BUILDFLAG(IS_MAC)
+      case PrintScanningContext::kOpenPdfInPreview:
+#endif  // BUILDFLAG(IS_MAC)
+      case PrintScanningContext::kNormalPrintAfterPreview:
+      case PrintScanningContext::kBeforePreview:
+      case PrintScanningContext::kNormalPrintBeforePrintDocument:
+        scanning_data.reason = ContentAnalysisRequest::PRINT_PREVIEW_PRINT;
+        break;
+
+      case PrintScanningContext::kBeforeSystemDialog:
+      case PrintScanningContext::kSystemPrintAfterPreview:
+      case PrintScanningContext::kSystemPrintBeforePrintDocument:
+        scanning_data.reason = ContentAnalysisRequest::SYSTEM_DIALOG_PRINT;
+        break;
+    }
 
     return scanning_data;
   }

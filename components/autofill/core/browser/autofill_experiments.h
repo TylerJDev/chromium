@@ -7,9 +7,8 @@
 
 #include <string>
 
-#include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/sync_utils.h"
+#include "components/autofill/core/browser/metrics/autofill_metrics.h"
 
 class PrefService;
 
@@ -29,11 +28,12 @@ class PersonalDataManager;
 // Returns true if uploading credit cards to Wallet servers is enabled. This
 // requires the appropriate flags and user settings to be true and the user to
 // be a member of a supported domain.
-bool IsCreditCardUploadEnabled(const syncer::SyncService* sync_service,
-                               const std::string& user_email,
-                               const std::string& user_country,
-                               const AutofillSyncSigninState sync_state,
-                               LogManager* log_manager);
+bool IsCreditCardUploadEnabled(
+    const syncer::SyncService* sync_service,
+    const std::string& user_email,
+    const std::string& user_country,
+    AutofillMetrics::PaymentsSigninState signin_state_for_metrics,
+    LogManager* log_manager);
 
 // Returns true if autofill local card migration flow is enabled.
 bool IsCreditCardMigrationEnabled(PersonalDataManager* personal_data_manager,
@@ -63,7 +63,7 @@ bool ShouldShowIbanOnSettingsPage(const std::string& user_country_code,
 // Returns true if we can use device authentication to authenticate the user.
 // We currently only support biometric authentication for the same.
 bool IsDeviceAuthAvailable(
-    scoped_refptr<device_reauth::DeviceAuthenticator> device_authenticator);
+    device_reauth::DeviceAuthenticator* device_authenticator);
 
 }  // namespace autofill
 

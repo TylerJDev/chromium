@@ -6,10 +6,12 @@ import {TestRunner} from 'test_runner';
 import {SourcesTestRunner} from 'sources_test_runner';
 import {ConsoleTestRunner} from 'console_test_runner';
 
+import * as Common from 'devtools/core/common/common.js';
+import * as SourcesModule from 'devtools/panels/sources/sources.js';
+
 (async function() {
   TestRunner.addResult(`Test that link to snippet works.\n`);
 
-  await TestRunner.loadLegacyModule('sources');
   await TestRunner.loadLegacyModule('console');
   await TestRunner.showPanel('console');
 
@@ -84,6 +86,6 @@ console.error(null)`)
   }
 
   function runSelectedSnippet() {
-    Sources.SourcesPanel.instance().runSnippet();
+    SourcesModule.SourcesPanel.SourcesPanel.instance().runSnippet();
   }
 })();

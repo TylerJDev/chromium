@@ -138,11 +138,13 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
 
   WebAutofillState GetAutofillState() const { return autofill_state_; }
   bool IsAutofilled() const {
-    return autofill_state_ != WebAutofillState::kNotFilled;
+    return autofill_state_ == WebAutofillState::kAutofilled;
+  }
+  bool IsPreviewed() const {
+    return autofill_state_ == WebAutofillState::kPreviewed;
   }
   bool HighlightAutofilled() const {
-    return autofill_state_ == WebAutofillState::kAutofilled &&
-           !PreventHighlightingOfAutofilledFields();
+    return IsAutofilled() && !PreventHighlightingOfAutofilledFields();
   }
   void SetAutofillState(WebAutofillState = WebAutofillState::kAutofilled);
   void SetPreventHighlightingOfAutofilledFields(bool prevent_highlighting);
@@ -178,6 +180,10 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
 
   int32_t GetAxId() const;
 
+  void SetInteractedSinceLastFormSubmit(bool);
+  bool MatchesUserInvalidPseudo();
+  bool MatchesUserValidPseudo();
+
  protected:
   HTMLFormControlElement(const QualifiedName& tag_name, Document&);
 
@@ -211,6 +217,8 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
   bool prevent_highlighting_of_autofilled_fields_ : 1;
 
   bool blocks_form_submission_ : 1;
+
+  bool interacted_since_last_form_submit_ : 1;
 };
 
 template <>

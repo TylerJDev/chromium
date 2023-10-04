@@ -5,9 +5,10 @@
 import {TestRunner} from 'test_runner';
 import {ElementsTestRunner} from 'elements_test_runner';
 
+import * as SDK from 'devtools/core/sdk/sdk.js';
+
 (async function() {
   TestRunner.addResult(`Verifies that cancelling property value editing doesn't affect undo stack.\n`);
-  await TestRunner.loadLegacyModule('elements');
   await TestRunner.showPanel('elements');
   await TestRunner.loadHTML(`
       <style>
@@ -54,7 +55,7 @@ import {ElementsTestRunner} from 'elements_test_runner';
 
     async function undoStyles(next) {
       await ElementsTestRunner.dumpSelectedElementStyles(true, false, true);
-      SDK.domModelUndoStack.undo();
+      SDK.DOMModel.DOMModelUndoStack.instance().undo();
       ElementsTestRunner.waitForStyles('inspected', next, true);
     },
 

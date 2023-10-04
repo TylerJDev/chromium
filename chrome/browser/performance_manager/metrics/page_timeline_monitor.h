@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,7 @@
 #include "components/performance_manager/public/graph/graph.h"
 #include "components/performance_manager/public/graph/graph_registered.h"
 #include "components/performance_manager/public/graph/page_node.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace performance_manager::metrics {
 
@@ -124,6 +125,24 @@ class PageTimelineMonitor : public PageNode::ObserverDefaultImpl,
 
   bool ShouldCollectSlice() const;
 
+  // Check if the CPU metrics are still above the threshold after a delay.
+  void CheckDelayedCPUInterventionMetrics();
+
+  // Log CPU intervention metrics with the provided suffix.
+  void LogCPUInterventionMetrics(
+      const std::vector<std::pair<const PageNode*, double>> page_cpu_usage,
+      const base::TimeTicks now,
+      const std::string& suffix);
+
+  // Calculate per-PageNode CPU usage and return the results as a vector.
+  std::vector<std::pair<const PageNode*, double>> CalculatePageCPUUsage();
+
+  // If this is called, CollectSlice() and CollectPageResourceUsage() will not
+  // be called on a timer. Tests can call them manually.
+  void SetTriggerCollectionManuallyForTesting();
+
+  // If this is called, the given callback will be called instead of
+  // ShouldCollectSlice().
   void SetShouldCollectSliceCallbackForTesting(base::RepeatingCallback<bool()>);
 
   // CHECK's that `page_node` and `info` are in the right state to be
@@ -140,6 +159,17 @@ class PageTimelineMonitor : public PageNode::ObserverDefaultImpl,
 
   // Timer which is used to trigger CollectSlice(), which records the UKM.
   base::RepeatingTimer collect_slice_timer_;
+
+  // Timer which is used to trigger CollectPageResourceUsage().
+  base::RepeatingTimer collect_page_resource_usage_timer_;
+
+  // Timer which handles logging high CPU after a potential delay.
+  base::OneShotTimer log_cpu_on_delay_timer_;
+
+  // Keeps track of whether the browser has exceeded the CPU threshold.
+  absl::optional<base::TimeTicks> time_of_last_cpu_threshold_exceeded_ =
+      absl::nullopt;
+
   // Pointer to this process' graph.
   raw_ptr<Graph> graph_ = nullptr;
 

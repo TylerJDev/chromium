@@ -33,7 +33,9 @@
 #include "chrome/browser/web_applications/web_contents/web_app_data_retriever.h"
 #include "chrome/browser/web_applications/web_contents/web_app_url_loader.h"
 #include "components/webapps/browser/installable/installable_logging.h"
+#include "components/webapps/browser/installable/installable_manager.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/reload_type.h"
 #include "content/public/browser/storage_partition_config.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -53,6 +55,19 @@ bool IsUrlLoadingResultSuccess(WebAppUrlLoader::Result result) {
 }
 
 }  // namespace
+
+// static
+std::unique_ptr<content::WebContents>
+IsolatedWebAppInstallCommandHelper::CreateIsolatedWebAppWebContents(
+    Profile& profile) {
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContents::Create(content::WebContents::CreateParams(
+          /*context=*/&profile));
+
+  webapps::InstallableManager::CreateForWebContents(web_contents.get());
+
+  return web_contents;
+}
 
 // static
 std::unique_ptr<IsolatedWebAppResponseReaderFactory>
@@ -169,8 +184,21 @@ void IsolatedWebAppInstallCommandHelper::LoadInstallUrl(
 
   GURL install_page_url =
       url_info_.origin().GetURL().Resolve(kGeneratedInstallPagePath);
+
+  content::NavigationController::LoadURLParams load_params(install_page_url);
+  load_params.transition_type = ui::PAGE_TRANSITION_GENERATED;
+  // It is important to bypass a potentially registered Service Worker for two
+  // reasons:
+  // 1. `IsolatedWebAppPendingInstallInfo` is attached to a `WebContents` and
+  //    retrieved inside `IsolatedWebAppURLLoaderFactory` based on a frame tree
+  //    node id. There is no frame tree node id for requests that are
+  //    intercepted by Service Workers.
+  // 2. We want to make sure that a Service Worker cannot tamper with the
+  //    install page.
+  load_params.reload_type = content::ReloadType::BYPASSING_CACHE;
+
   url_loader.LoadUrl(
-      install_page_url, &web_contents,
+      std::move(load_params), &web_contents,
       WebAppUrlLoader::UrlComparison::kIgnoreQueryParamsAndRef,
       base::BindOnce(&IsolatedWebAppInstallCommandHelper::OnLoadInstallUrl,
                      weak_factory_.GetWeakPtr(), std::move(callback)));

@@ -108,7 +108,8 @@ class FakeURLLoaderFactory final : public URLLoaderFactory {
       scoped_refptr<base::SingleThreadTaskRunner>,
       scoped_refptr<base::SingleThreadTaskRunner>,
       mojo::PendingRemote<mojom::blink::KeepAliveHandle>,
-      BackForwardCacheLoaderHelper*) override {
+      BackForwardCacheLoaderHelper*,
+      Vector<std::unique_ptr<URLLoaderThrottle>> throttles) override {
     return std::make_unique<FakeURLLoader>();
   }
 };
@@ -129,6 +130,11 @@ class FakeWebServiceWorkerFetchContext final
     return nullptr;
   }
   void WillSendRequest(WebURLRequest&) override {}
+  WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
+      const WebURLRequest& request) override {
+    return {};
+  }
+
   mojom::ControllerServiceWorkerMode GetControllerServiceWorkerMode()
       const override {
     return mojom::ControllerServiceWorkerMode::kNoController;
@@ -195,12 +201,26 @@ class MockServiceWorkerContextClient final
     mojo::PendingAssociatedRemote<mojom::blink::ServiceWorkerObject>
         service_worker_object;
 
+    mojo::PendingAssociatedRemote<mojom::blink::AssociatedInterfaceProvider>
+        associated_interfaces_remote_from_browser;
+    auto associated_interfaces_recevier_from_browser =
+        associated_interfaces_remote_from_browser
+            .InitWithNewEndpointAndPassReceiver();
+
+    mojo::PendingAssociatedRemote<mojom::blink::AssociatedInterfaceProvider>
+        associated_interfaces_remote_to_browser;
+    auto associated_interfaces_recevier_to_browser =
+        associated_interfaces_remote_to_browser
+            .InitWithNewEndpointAndPassReceiver();
+
     // Simulates calling blink.mojom.ServiceWorker.InitializeGlobalScope() to
     // unblock the service worker script evaluation.
     mojo::Remote<mojom::blink::ServiceWorker> service_worker;
     proxy->BindServiceWorker(service_worker.BindNewPipeAndPassReceiver());
     service_worker->InitializeGlobalScope(
         std::move(host_remote),
+        std::move(associated_interfaces_remote_from_browser),
+        std::move(associated_interfaces_recevier_to_browser),
         mojom::blink::ServiceWorkerRegistrationObjectInfo::New(
             2 /* registration_id */, KURL("https://example.com"),
             mojom::blink::ServiceWorkerUpdateViaCache::kImports,
@@ -219,6 +239,8 @@ class MockServiceWorkerContextClient final
 
     // To make the other side callable.
     host_receiver.EnableUnassociatedUsage();
+    associated_interfaces_recevier_from_browser.EnableUnassociatedUsage();
+    associated_interfaces_remote_to_browser.EnableUnassociatedUsage();
     registration_object_host_receiver.EnableUnassociatedUsage();
     service_worker_object_host_receiver.EnableUnassociatedUsage();
   }

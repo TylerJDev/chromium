@@ -2,30 +2,46 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <memory>
+#include "base/metrics/statistics_recorder.h"
+#include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/history/history_service_factory.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
 #include "chrome/browser/segmentation_platform/ukm_data_manager_test_utils.h"
 #include "chrome/browser/segmentation_platform/ukm_database_client.h"
-#include "chrome/browser/ui/browser.h"
-#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/chrome_test_utils.h"
 #include "components/metrics_services_manager/metrics_services_manager.h"
+#include "components/optimization_guide/core/model_info.h"
+#include "components/optimization_guide/core/test_model_info_builder.h"
+#include "components/optimization_guide/proto/models.pb.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_observer.h"
 #include "components/prefs/pref_service.h"
 #include "components/segmentation_platform/embedder/default_model/optimization_target_segmentation_dummy.h"
 #include "components/segmentation_platform/internal/constants.h"
 #include "components/segmentation_platform/internal/database/client_result_prefs.h"
+#include "components/segmentation_platform/internal/database/ukm_database.h"
 #include "components/segmentation_platform/internal/execution/mock_model_provider.h"
+#include "components/segmentation_platform/internal/metadata/metadata_writer.h"
+#include "components/segmentation_platform/internal/segmentation_platform_service_impl.h"
 #include "components/segmentation_platform/internal/stats.h"
+#include "components/segmentation_platform/internal/ukm_data_manager.h"
 #include "components/segmentation_platform/public/config.h"
 #include "components/segmentation_platform/public/constants.h"
 #include "components/segmentation_platform/public/features.h"
 #include "components/segmentation_platform/public/model_provider.h"
+#include "components/segmentation_platform/public/proto/aggregation.pb.h"
+#include "components/segmentation_platform/public/proto/model_metadata.pb.h"
+#include "components/segmentation_platform/public/proto/segmentation_platform.pb.h"
+#include "components/segmentation_platform/public/result.h"
 #include "components/segmentation_platform/public/segment_selection_result.h"
 #include "components/segmentation_platform/public/segmentation_platform_service.h"
 #include "components/ukm/ukm_service.h"
@@ -54,7 +70,7 @@ constexpr char kFeatureProcessingHistogram[] =
 
 constexpr char kSqlFeatureQuery[] = "SELECT COUNT(*) from metrics";
 
-class SegmentationPlatformTest : public InProcessBrowserTest {
+class SegmentationPlatformTest : public PlatformBrowserTest {
  public:
   SegmentationPlatformTest() {
     // Low Engagement Segment is used to test segmentation service without multi
@@ -79,37 +95,8 @@ class SegmentationPlatformTest : public InProcessBrowserTest {
     command_line->AppendSwitch("segmentation-platform-refresh-results");
   }
 
-  bool HasResultPref(base::StringPiece segmentation_key) {
-    const base::Value::Dict& dictionary =
-        browser()->profile()->GetPrefs()->GetDict(kSegmentationResultPref);
-    return !!dictionary.FindByDottedPath(segmentation_key);
-  }
-
-  void OnResultPrefUpdated() {
-    if (!wait_for_pref_callback_.is_null() &&
-        HasResultPref(kChromeLowUserEngagementSegmentationKey)) {
-      std::move(wait_for_pref_callback_).Run();
-    }
-  }
-
-  void WaitForPrefUpdate() {
-    if (HasResultPref(kChromeLowUserEngagementSegmentationKey))
-      return;
-
-    base::RunLoop wait_for_pref;
-    wait_for_pref_callback_ = wait_for_pref.QuitClosure();
-    pref_registrar_.Init(browser()->profile()->GetPrefs());
-    pref_registrar_.Add(
-        kSegmentationResultPref,
-        base::BindRepeating(&SegmentationPlatformTest::OnResultPrefUpdated,
-                            weak_ptr_factory_.GetWeakPtr()));
-    wait_for_pref.Run();
-
-    pref_registrar_.RemoveAll();
-  }
-
   bool HasClientResultPref(const std::string& segmentation_key) {
-    PrefService* pref_service = browser()->profile()->GetPrefs();
+    PrefService* pref_service = chrome_test_utils::GetProfile(this)->GetPrefs();
     std::unique_ptr<ClientResultPrefs> result_prefs_ =
         std::make_unique<ClientResultPrefs>(pref_service);
     return result_prefs_->ReadClientResultFromPrefs(segmentation_key)
@@ -130,7 +117,7 @@ class SegmentationPlatformTest : public InProcessBrowserTest {
 
     base::RunLoop wait_for_pref;
     wait_for_pref_callback_ = wait_for_pref.QuitClosure();
-    pref_registrar_.Init(browser()->profile()->GetPrefs());
+    pref_registrar_.Init(chrome_test_utils::GetProfile(this)->GetPrefs());
     pref_registrar_.Add(
         kSegmentationClientResultPrefs,
         base::BindRepeating(
@@ -143,33 +130,32 @@ class SegmentationPlatformTest : public InProcessBrowserTest {
 
   void WaitForPlatformInit() {
     base::RunLoop wait_for_init;
-    SegmentationPlatformService* service = segmentation_platform::
-        SegmentationPlatformServiceFactory::GetForProfile(browser()->profile());
+    SegmentationPlatformService* service =
+        segmentation_platform::SegmentationPlatformServiceFactory::
+            GetForProfile(chrome_test_utils::GetProfile(this));
     while (!service->IsPlatformInitialized()) {
       wait_for_init.RunUntilIdle();
     }
   }
 
-  void ExpectSegmentSelectionResult(const std::string& segmentation_key,
-                                    bool result_expected) {
-    SegmentationPlatformService* service = segmentation_platform::
-        SegmentationPlatformServiceFactory::GetForProfile(browser()->profile());
-    base::RunLoop wait_for_segment;
-    service->GetSelectedSegment(
-        segmentation_key, base::BindOnce(
-                              [](bool result_expected, base::OnceClosure quit,
-                                 const SegmentSelectionResult& result) {
-                                EXPECT_EQ(result_expected, result.is_ready);
-                                std::move(quit).Run();
-                              },
-                              result_expected, wait_for_segment.QuitClosure()));
-    wait_for_segment.Run();
+  void WaitForSegmentInfoDatabaseUpdate(
+      SegmentId segment_id,
+      const base::HistogramTester& histogram_tester) {
+    std::string database_update_histogram =
+        "SegmentationPlatform.SegmentInfoDatabase.ProtoDBUpdateResult." +
+        SegmentIdToHistogramVariant(segment_id);
+    // Wait for model update to be written to disk.
+    WaitForHistogram(database_update_histogram, histogram_tester);
+    int success_count =
+        histogram_tester.GetBucketCount(database_update_histogram, 1);
+    ASSERT_GE(success_count, 1);
   }
 
   void ExpectClassificationResult(const std::string& segmentation_key,
                                   PredictionStatus expected_prediction_status) {
-    SegmentationPlatformService* service = segmentation_platform::
-        SegmentationPlatformServiceFactory::GetForProfile(browser()->profile());
+    SegmentationPlatformService* service =
+        segmentation_platform::SegmentationPlatformServiceFactory::
+            GetForProfile(chrome_test_utils::GetProfile(this));
     PredictionOptions options;
     options.on_demand_execution = false;
     base::RunLoop wait_for_segment;
@@ -192,6 +178,63 @@ class SegmentationPlatformTest : public InProcessBrowserTest {
 
   base::HistogramTester& histogram_tester() { return histogram_tester_; }
 
+  std::unique_ptr<optimization_guide::ModelInfo>
+  CreateOptimizationGuideModelInfo(
+      absl::optional<proto::SegmentationModelMetadata>
+          segmentation_model_metadata) {
+    auto model_info_builder = optimization_guide::TestModelInfoBuilder();
+    if (segmentation_model_metadata.has_value()) {
+      std::string serialized_metadata;
+      segmentation_model_metadata.value().SerializeToString(
+          &serialized_metadata);
+      optimization_guide::proto::Any any_proto;
+      auto any = absl::make_optional(any_proto);
+      any->set_value(serialized_metadata);
+      any->set_type_url(
+          "type.googleapis.com/"
+          "segmentation_platform.proto.SegmentationModelMetadata");
+      model_info_builder.SetModelMetadata(any);
+    }
+    return model_info_builder.Build();
+  }
+
+  proto::SegmentationModelMetadata GetSegmentationModelMetadataWithSignals() {
+    std::array<MetadataWriter::UMAFeature, 5> uma_features = {
+        MetadataWriter::UMAFeature::FromUserAction("Action.Foo", 7),
+        MetadataWriter::UMAFeature::FromUserAction("Action.Bar", 7),
+        MetadataWriter::UMAFeature::FromUserAction("Action.Baz", 7),
+        MetadataWriter::UMAFeature::FromValueHistogram("Histogram.Foo", 7,
+                                                       proto::Aggregation::SUM),
+        MetadataWriter::UMAFeature::FromValueHistogram("Histogram.Bar", 7,
+                                                       proto::Aggregation::SUM),
+    };
+
+    proto::SegmentationModelMetadata search_user_metadata;
+    MetadataWriter writer = MetadataWriter(&search_user_metadata);
+    writer.SetSegmentationMetadataConfig(proto::TimeUnit::DAY, 1, 7, 7, 7);
+    writer.AddUmaFeatures(uma_features.begin(), uma_features.size());
+
+    return search_user_metadata;
+  }
+
+  void WaitForHistogram(const std::string& histogram_name,
+                        const base::HistogramTester& histogram_tester) {
+    // Continue if histogram was already recorded.
+    if (histogram_tester.GetAllSamples(histogram_name).size() > 0) {
+      return;
+    }
+
+    // Else, wait until the histogram is recorded.
+    base::RunLoop run_loop;
+    auto histogram_observer = std::make_unique<
+        base::StatisticsRecorder::ScopedHistogramSampleObserver>(
+        histogram_name,
+        base::BindLambdaForTesting(
+            [&](const char* histogram_name, uint64_t name_hash,
+                base::HistogramBase::Sample sample) { run_loop.Quit(); }));
+    run_loop.Run();
+  }
+
  protected:
   base::HistogramTester histogram_tester_;
   base::test::ScopedFeatureList feature_list_;
@@ -200,25 +243,24 @@ class SegmentationPlatformTest : public InProcessBrowserTest {
   base::WeakPtrFactory<SegmentationPlatformTest> weak_ptr_factory_{this};
 };
 
-IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest, RunDefaultModel) {
-  WaitForPlatformInit();
-  WaitForPrefUpdate();
-
-  // Result is available from previous session's selection.
-  ExpectSegmentSelectionResult(kChromeLowUserEngagementSegmentationKey,
-                               /*result_expected=*/true);
-
-  // This session runs default model and updates again.
-  WaitForPrefUpdate();
-}
+// https://crbug.com/1257820 -- Tests using "PRE_" don't work on Android.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_PRE_CachedClassificationModel \
+  DISABLED_PRE_CachedClassificationModel
+#define MAYBE_CachedClassificationModel DISABLED_CachedClassificationModel
+#else
+#define MAYBE_PRE_CachedClassificationModel PRE_CachedClassificationModel
+#define MAYBE_CachedClassificationModel CachedClassificationModel
+#endif
 
 IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest,
-                       PRE_CachedClassificationModel) {
+                       MAYBE_PRE_CachedClassificationModel) {
   WaitForPlatformInit();
   WaitForClientResultPrefUpdate();
 }
 
-IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest, CachedClassificationModel) {
+IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest,
+                       MAYBE_CachedClassificationModel) {
   WaitForPlatformInit();
   // Result is available from previous session's prefs.
   ExpectClassificationResult(
@@ -242,12 +284,199 @@ IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest, RunCachedModelsOnly) {
       stats::FeatureProcessingError::kSuccess, 0);
 }
 
+IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest,
+                       ReceiveModelUpdateFromOptimizationGuide) {
+  WaitForPlatformInit();
+
+  auto user_actions_tracked_before_model = histogram_tester().GetTotalSum(
+      "SegmentationPlatform.Signals.ListeningCount.UserAction");
+  auto value_histograms_tracked_before_model = histogram_tester().GetTotalSum(
+      "SegmentationPlatform.Signals.ListeningCount.HistogramValue");
+
+  base::HistogramTester histogram_tester_1;
+  // Create a model metadata with 5 signals, 3 user actions and 2 histograms.
+  proto::SegmentationModelMetadata search_user_metadata =
+      GetSegmentationModelMetadataWithSignals();
+  OptimizationGuideKeyedServiceFactory::GetForProfile(
+      chrome_test_utils::GetProfile(this))
+      ->OverrideTargetModelForTesting(
+          optimization_guide::proto::
+              OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER,
+          CreateOptimizationGuideModelInfo(search_user_metadata));
+
+  // Wait for model update to be written to disk.
+  WaitForSegmentInfoDatabaseUpdate(
+      proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER, histogram_tester_1);
+
+  // Get the number of signals tracked after receiving the new model. Updating
+  // signals happens synchronously, so there's no need to wait for these
+  // histograms.
+  auto user_actions_tracked_after_model = histogram_tester_1.GetTotalSum(
+      "SegmentationPlatform.Signals.ListeningCount.UserAction");
+  auto value_histograms_tracked_after_model = histogram_tester_1.GetTotalSum(
+      "SegmentationPlatform.Signals.ListeningCount.HistogramValue");
+
+  EXPECT_EQ(
+      user_actions_tracked_after_model - user_actions_tracked_before_model, 3);
+  EXPECT_EQ(value_histograms_tracked_after_model -
+                value_histograms_tracked_before_model,
+            2);
+
+  // OptimizationGuideSegmentationModelHandler should have recorded that it
+  // received a model with valid SegmentationModelMetadata.
+  histogram_tester_1.ExpectUniqueSample(
+      "SegmentationPlatform.ModelDelivery.HasMetadata." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER),
+      1, 1);
+  // OptimizationGuideSegmentationModelHandler should have recorded that it
+  // received a model with valid metadata.
+  histogram_tester_1.ExpectUniqueSample(
+      "SegmentationPlatform.ModelAvailability." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER),
+      stats::SegmentationModelAvailability::kModelAvailable, 1);
+  // ModelManagerImpl should have recorded that it received an updated model.
+  histogram_tester_1.ExpectUniqueSample(
+      "SegmentationPlatform.ModelDelivery.Received",
+      proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER, 1);
+  // ModelManagerImpl should have stored the SegmentInfo.
+  histogram_tester_1.ExpectBucketCount(
+      "SegmentationPlatform.ModelDelivery.SaveResult." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER),
+      1, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest,
+                       ReceiveNullModelUpdateFromOptimizationGuide) {
+  WaitForPlatformInit();
+
+  base::HistogramTester histogram_tester_1;
+  // Create a model metadata with 5 signals, 3 user actions and 2 histograms.
+  proto::SegmentationModelMetadata search_user_metadata =
+      GetSegmentationModelMetadataWithSignals();
+  // Send a model update event from Optimization Guide to segmentation platform.
+  OptimizationGuideKeyedServiceFactory::GetForProfile(
+      chrome_test_utils::GetProfile(this))
+      ->OverrideTargetModelForTesting(
+          optimization_guide::proto::
+              OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER,
+          CreateOptimizationGuideModelInfo(search_user_metadata));
+  // Count how many user actions and histograms are tracked with this new model,
+  // updating signals happens synchronously, so there's no need to wait for
+  // these histograms.
+  auto user_actions_tracked_before_model_deletion =
+      histogram_tester_1.GetTotalSum(
+          "SegmentationPlatform.Signals.ListeningCount.UserAction");
+  auto value_histograms_tracked_before_model_deletion =
+      histogram_tester_1.GetTotalSum(
+          "SegmentationPlatform.Signals.ListeningCount.HistogramValue");
+
+  // Wait for model update to be written to disk.
+  WaitForSegmentInfoDatabaseUpdate(
+      proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER, histogram_tester_1);
+
+  // Create a new HistogramTester to only count histograms recorded after
+  // removing the model.
+  base::HistogramTester histogram_tester_2;
+  // Send another model update, this time indicating the model is no longer
+  // being served.
+  OptimizationGuideKeyedServiceFactory::GetForProfile(
+      chrome_test_utils::GetProfile(this))
+      ->OverrideTargetModelForTesting(
+          optimization_guide::proto::
+              OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER,
+          nullptr);
+  // Count how many user actions and histgrams are tracked after removing this
+  // model. Updating signals happens synchronously, so there's no need to wait
+  // for these histograms.
+  auto user_actions_tracked_after_model_deletion =
+      histogram_tester_2.GetTotalSum(
+          "SegmentationPlatform.Signals.ListeningCount.UserAction");
+  auto value_histograms_tracked_after_model_deletion =
+      histogram_tester_2.GetTotalSum(
+          "SegmentationPlatform.Signals.ListeningCount.HistogramValue");
+
+  // Wait for model to be removed to disk.
+  WaitForSegmentInfoDatabaseUpdate(
+      proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER, histogram_tester_2);
+
+  // OptimizationGuideSegmentationModelHandler should not record the HasMetadata
+  // histogram, as it only applies to the SegmentationModelMetadata inside
+  // ModelInfo.
+  histogram_tester_2.ExpectUniqueSample(
+      "SegmentationPlatform.ModelDelivery.HasMetadata." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER),
+      1, 0);
+  // OptimizationGuideSegmentationModelHandler should have recorded that the
+  // optimization target has no model available.
+  histogram_tester_2.ExpectUniqueSample(
+      "SegmentationPlatform.ModelAvailability." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER),
+      stats::SegmentationModelAvailability::kNoModelAvailable, 1);
+
+  // ModelManagerImpl should have recorded that it received an updated model.
+  histogram_tester_2.ExpectUniqueSample(
+      "SegmentationPlatform.ModelDelivery.Received",
+      proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER, 1);
+  // ModelManagerImpl should have deleted the previous SegmentInfo.
+  histogram_tester_2.ExpectUniqueSample(
+      "SegmentationPlatform.ModelDelivery.DeleteResult." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_SEARCH_USER),
+      1, 1);
+
+  // SignalFilterProcessor should be tracking 3 fewer user actions after
+  // removing this model.
+  EXPECT_EQ(user_actions_tracked_before_model_deletion -
+                user_actions_tracked_after_model_deletion,
+            3);
+  // SignalFilterProcessor should be tracking 2 fewer value histograms after
+  // removing this model.
+  EXPECT_EQ(value_histograms_tracked_before_model_deletion -
+                value_histograms_tracked_after_model_deletion,
+            2);
+
+  // DatabaseMaintenanceImpl should have started a cleanup process, wait for it
+  // to complete.
+  WaitForHistogram("SegmentationPlatform.Maintenance.CleanupSignalSuccessCount",
+                   histogram_tester_2);
+  // DatabaseMaintenanceImpl should have cleaned 5 signals from the database.
+  histogram_tester_2.ExpectUniqueSample(
+      "SegmentationPlatform.Maintenance.CleanupSignalSuccessCount", 5, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(SegmentationPlatformTest,
+                       NullModelUpdateForUnknownModelShouldBeNoOp) {
+  WaitForPlatformInit();
+
+  // Create a new HistogramTester to only count histograms recorded after
+  // removing the model.
+  base::HistogramTester histogram_tester_2;
+  // Send a model update for an optimization target that wasn't registered.
+  OptimizationGuideKeyedServiceFactory::GetForProfile(
+      chrome_test_utils::GetProfile(this))
+      ->OverrideTargetModelForTesting(
+          optimization_guide::proto::
+              OPTIMIZATION_TARGET_SEGMENTATION_ADAPTIVE_TOOLBAR,
+          nullptr);
+
+  histogram_tester_2.ExpectUniqueSample(
+      "SegmentationPlatform.ModelDelivery.HasMetadata." +
+          SegmentIdToHistogramVariant(
+              proto::OPTIMIZATION_TARGET_SEGMENTATION_ADAPTIVE_TOOLBAR),
+      1, 0);
+}
+
 class SegmentationPlatformUkmModelTest : public SegmentationPlatformTest {
  public:
   SegmentationPlatformUkmModelTest() : utils_(&ukm_recorder_) {}
 
   void CreatedBrowserMainParts(content::BrowserMainParts* parts) override {
-    InProcessBrowserTest::CreatedBrowserMainParts(parts);
+    PlatformBrowserTest::CreatedBrowserMainParts(parts);
     utils_.PreProfileInit(
         {{kSegmentId1, utils_.GetSamplePageLoadMetadata(kSqlFeatureQuery)}});
     MockDefaultModelProvider* provider = utils_.GetDefaultOverride(kSegmentId1);
@@ -262,7 +491,8 @@ class SegmentationPlatformUkmModelTest : public SegmentationPlatformTest {
   void PreRunTestOnMainThread() override {
     SegmentationPlatformTest::PreRunTestOnMainThread();
     utils_.set_history_service(HistoryServiceFactory::GetForProfile(
-        browser()->profile(), ServiceAccessType::IMPLICIT_ACCESS));
+        chrome_test_utils::GetProfile(this),
+        ServiceAccessType::IMPLICIT_ACCESS));
   }
 
  protected:
@@ -276,7 +506,8 @@ class SegmentationPlatformUkmModelTest : public SegmentationPlatformTest {
 // TODO(ssid): Fix this test for CrOS by waiting for signin profile to be
 // deleted at startup before adding metrics.
 // https://crbug.com/1467530 -- Flaky on Mac
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+// https://crbug.com/1257820 -- Tests using "PRE_" don't work on Android.
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
 #define MAYBE_PRE_RunUkmBasedModel DISABLED_PRE_RunUkmBasedModel
 #define MAYBE_RunUkmBasedModel DISABLED_RunUkmBasedModel
 #else
@@ -293,7 +524,7 @@ IN_PROC_BROWSER_TEST_F(SegmentationPlatformUkmModelTest,
   utils_.WaitForUkmObserverRegistration();
 
   // Wait for the default model to run and save results to prefs.
-  WaitForPrefUpdate();
+  WaitForClientResultPrefUpdate();
 
   // Record page load UKM that should be recorded in the database, persisted
   // across sessions.
@@ -301,6 +532,10 @@ IN_PROC_BROWSER_TEST_F(SegmentationPlatformUkmModelTest,
   while (!utils_.IsUrlInDatabase(kUrl1)) {
     base::RunLoop().RunUntilIdle();
   }
+  UkmDatabaseClient::GetInstance()
+      .GetUkmDataManager()
+      ->GetUkmDatabase()
+      ->CommitTransactionForTesting();
   // There are no UKM metrics written to the database, count = 0.
   EXPECT_EQ(ModelProvider::Request({0}), input_feature_in_last_execution_);
 }
@@ -315,11 +550,12 @@ IN_PROC_BROWSER_TEST_F(SegmentationPlatformUkmModelTest,
   EXPECT_TRUE(utils_.IsUrlInDatabase(kUrl1));
 
   // Result is available from previous session's selection.
-  ExpectSegmentSelectionResult(kChromeLowUserEngagementSegmentationKey,
-                               /*result_expected=*/true);
+  ExpectClassificationResult(
+      kChromeLowUserEngagementSegmentationKey,
+      /*expected_prediction_status=*/PredictionStatus::kSucceeded);
 
   utils_.WaitForUkmObserverRegistration();
-  WaitForPrefUpdate();
+  WaitForClientResultPrefUpdate();
 
   // There are 2 UKM metrics written to the database, count = 2.
   EXPECT_EQ(ModelProvider::Request({2}), input_feature_in_last_execution_);

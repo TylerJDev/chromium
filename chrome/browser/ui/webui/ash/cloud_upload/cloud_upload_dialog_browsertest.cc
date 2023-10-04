@@ -26,6 +26,7 @@
 #include "chrome/browser/ash/file_manager/file_manager_test_util.h"
 #include "chrome/browser/ash/file_manager/file_tasks.h"
 #include "chrome/browser/ash/file_manager/fileapi_util.h"
+#include "chrome/browser/ash/file_manager/office_file_tasks.h"
 #include "chrome/browser/ash/file_manager/open_util.h"
 #include "chrome/browser/ash/file_manager/path_util.h"
 #include "chrome/browser/ash/file_manager/url_util.h"
@@ -158,6 +159,20 @@ void SetUpCommandLineForNonManagedUser(base::CommandLine* command_line) {
   command_line->AppendSwitchASCII(switches::kLoginProfile, "user");
 }
 
+// A matcher to verify that absl::optional<TaskDescriptor> corresponds to a Web
+// Drive Office Task.
+auto IsWebDriveOfficeTask() {
+  return testing::Optional(testing::ResultOf(
+      &file_manager::file_tasks::IsWebDriveOfficeTask, testing::Eq(true)));
+}
+
+// A matcher to verify that absl::optional<TaskDescriptor> corresponds to an
+// Open in Office Task.
+auto IsOpenInOfficeTask() {
+  return testing::Optional(testing::ResultOf(
+      &file_manager::file_tasks::IsOpenInOfficeTask, testing::Eq(true)));
+}
+
 }  // namespace
 
 // Tests the `kFileHandlerDialog` dialog page of the `CloudUploadDialog`.
@@ -258,7 +273,8 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, NewModalParentCreated) {
 
   // Launch File Handler dialog.
   ASSERT_TRUE(CloudOpenTask::Execute(profile(), files_,
-                                     CloudProvider::kGoogleDrive, nullptr));
+                                     CloudProvider::kGoogleDrive, nullptr,
+                                     std::make_unique<CloudOpenMetrics>()));
 
   // Wait for File Handler dialog to open at chrome://cloud-upload.
   navigation_observer_dialog.Wait();
@@ -302,7 +318,8 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest,
 
   // Launch File Handler dialog.
   ASSERT_TRUE(CloudOpenTask::Execute(profile(), files_,
-                                     CloudProvider::kGoogleDrive, nullptr));
+                                     CloudProvider::kGoogleDrive, nullptr,
+                                     std::make_unique<CloudOpenMetrics>()));
   // Check that a new browser opened.
   Browser* new_browser = ui_test_utils::WaitForBrowserToOpen();
   ASSERT_NE(new_browser, first_files_app);
@@ -349,7 +366,8 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, ModalParentProvided) {
   // Launch File Handler dialog.
   ASSERT_TRUE(CloudOpenTask::Execute(profile(), files_,
                                      CloudProvider::kGoogleDrive,
-                                     browser->window()->GetNativeWindow()));
+                                     browser->window()->GetNativeWindow(),
+                                     std::make_unique<CloudOpenMetrics>()));
 
   // Wait for File Handler dialog to open at chrome://cloud-upload.
   navigation_observer_dialog.Wait();
@@ -373,6 +391,9 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, OpenFileTaskFromDialog) {
       (GURL(chrome::kChromeUICloudUploadURL)));
   navigation_observer_dialog.StartWatchingNewWebContents();
 
+  auto cloud_open_metrics = std::make_unique<CloudOpenMetrics>();
+  auto cloud_open_metrics_weak_ptr = cloud_open_metrics->GetWeakPtr();
+
   // Check that the Setup flow has never run and so the File Handler dialog will
   // be launched when CloudOpenTask::Execute() is called.
   ASSERT_FALSE(file_manager::file_tasks::HasExplicitDefaultFileHandler(
@@ -380,7 +401,8 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, OpenFileTaskFromDialog) {
 
   // Launch File Handler dialog.
   ASSERT_TRUE(CloudOpenTask::Execute(profile(), files_,
-                                     CloudProvider::kGoogleDrive, nullptr));
+                                     CloudProvider::kGoogleDrive, nullptr,
+                                     std::move(cloud_open_metrics)));
 
   // Wait for File Handler dialog to open at chrome://cloud-upload.
   navigation_observer_dialog.Wait();
@@ -411,8 +433,7 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, OpenFileTaskFromDialog) {
 
 // Check QuickOffice was observed by the dialog as it should always be shown.
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  ASSERT_TRUE(file_manager::file_tasks::IsExtensionInstalled(
-      profile(), extension_misc::kQuickOfficeComponentExtensionId));
+  ASSERT_TRUE(file_manager::file_tasks::IsQuickOfficeInstalled(profile()));
   ASSERT_GE(PositionInList(observed_app_ids,
                            extension_misc::kQuickOfficeComponentExtensionId),
             0);
@@ -443,15 +464,12 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, OpenFileTaskFromDialog) {
   navigation_observer_task.StartWatchingNewWebContents();
 
   // Check that there is not a default task for doc files.
-  file_manager::file_tasks::TaskDescriptor default_task;
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension));
 
   // Check that there is not a default task for pptx files.
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension));
 
   // Expand local tasks accordion.
   EXPECT_TRUE(content::ExecJs(
@@ -477,23 +495,23 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, OpenFileTaskFromDialog) {
                                                                       ".docx"));
 
   // Check that the selected task has been made the default for doc files.
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension,
-      &default_task));
-  ASSERT_EQ(tasks_[selected_task], default_task);
+  ASSERT_EQ(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension),
+            tasks_[selected_task]);
 
   // Check that the selected task has been made the default for pptx files.
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension,
-      &default_task));
-  ASSERT_EQ(tasks_[selected_task], default_task);
+  ASSERT_EQ(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension),
+            tasks_[selected_task]);
 
   // Check that the selected task has not been made the default for xlsx files
   // because there was not an xlsx file selected by the user, even though the
   // task supports xlsx files.
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension));
+
+  // cloud_open_metrics should have been destroyed by the end of the test.
+  ASSERT_TRUE(cloud_open_metrics_weak_ptr.WasInvalidated());
 }
 
 IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, DefaultSetForDocsOnly) {
@@ -510,7 +528,8 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, DefaultSetForDocsOnly) {
 
   // Launch File Handler dialog.
   ASSERT_TRUE(CloudOpenTask::Execute(profile(), files_,
-                                     CloudProvider::kGoogleDrive, nullptr));
+                                     CloudProvider::kGoogleDrive, nullptr,
+                                     std::make_unique<CloudOpenMetrics>()));
 
   // Wait for File Handler dialog to open at chrome://cloud-upload.
   navigation_observer_dialog.Wait();
@@ -539,19 +558,16 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, DefaultSetForDocsOnly) {
   }
 
   // Check that there is not a default task for doc/x files.
-  file_manager::file_tasks::TaskDescriptor default_task;
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension, &default_task));
+      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension));
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension));
 
   // Check that there is not a default task for ppt/x files.
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kPptMimeType, kPptFileExtension, &default_task));
+      *profile()->GetPrefs(), kPptMimeType, kPptFileExtension));
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension));
 
   // Click the Docs task.
   EXPECT_TRUE(content::ExecJs(
@@ -579,24 +595,21 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, DefaultSetForDocsOnly) {
   // Check that the Docs/Slides task has been made the default for doc/x and
   // ppt/x files, but the Sheets task has not been made default for xlsx files,
   // because there was not an xlsx file selected by the user.
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension, &default_task));
-  ASSERT_TRUE(IsWebDriveOfficeTask(default_task));
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension,
-      &default_task));
-  ASSERT_TRUE(IsWebDriveOfficeTask(default_task));
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kPptMimeType, kPptFileExtension, &default_task));
-  ASSERT_TRUE(IsWebDriveOfficeTask(default_task));
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension,
-      &default_task));
-  ASSERT_TRUE(IsWebDriveOfficeTask(default_task));
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kDocMimeType, kDocFileExtension),
+              IsWebDriveOfficeTask());
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kDocxMimeType, kDocxFileExtension),
+              IsWebDriveOfficeTask());
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kPptMimeType, kPptFileExtension),
+              IsWebDriveOfficeTask());
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension),
+              IsWebDriveOfficeTask());
 
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension));
 }
 
 // Helper to launch Files app and return its NativeWindow.
@@ -650,45 +663,58 @@ IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest,
 // Tests that OnDialogComplete() opens the specified fake file task.
 IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest,
                        OnDialogCompleteOpensFileTasks) {
-  file_manager::file_tasks::TaskDescriptor default_task;
+  auto cloud_open_metrics = std::make_unique<CloudOpenMetrics>();
+  auto cloud_open_metrics_weak_ptr = cloud_open_metrics->GetWeakPtr();
+  {
+    file_manager::file_tasks::TaskDescriptor default_task;
 
-  auto cloud_open_task = base::WrapRefCounted(new CloudOpenTask(
-      profile(), files_, CloudProvider::kGoogleDrive, nullptr));
-  cloud_open_task->SetTasksForTest(tasks_);
+    auto cloud_open_task = base::WrapRefCounted(
+        new CloudOpenTask(profile(), files_, CloudProvider::kGoogleDrive,
+                          nullptr, std::move(cloud_open_metrics)));
+    cloud_open_task->SetTasksForTest(tasks_);
 
-  for (int selected_task = 0; selected_task < num_tasks_; selected_task++) {
-    std::string user_response = base::NumberToString(selected_task);
-    // Watch for the selected task to open.
-    content::TestNavigationObserver navigation_observer_task(
-        (GURL(urls_[selected_task])));
-    navigation_observer_task.StartWatchingNewWebContents();
+    for (int selected_task = 0; selected_task < num_tasks_; selected_task++) {
+      std::string user_response = base::NumberToString(selected_task);
+      // Watch for the selected task to open.
+      content::TestNavigationObserver navigation_observer_task(
+          (GURL(urls_[selected_task])));
+      navigation_observer_task.StartWatchingNewWebContents();
 
-    // Simulate user selecting this task.
-    cloud_open_task->OnDialogComplete(user_response);
+      // Simulate user selecting this task.
+      cloud_open_task->OnDialogComplete(user_response);
 
-    // Wait for the selected task to open.
-    navigation_observer_task.Wait();
+      // Wait for the selected task to open.
+      navigation_observer_task.Wait();
 
-    // Check that the selected task has been made the default.
-    ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-        *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension,
-        &default_task));
-    ASSERT_EQ(tasks_[selected_task], default_task);
+      // Check that the selected task has been made the default.
+      ASSERT_EQ(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                    *profile()->GetPrefs(), kPptxMimeType, kPptxFileExtension),
+                tasks_[selected_task]);
+    }
   }
+  // cloud_open_metrics should have been destroyed by the end of the test.
+  ASSERT_TRUE(cloud_open_metrics_weak_ptr.WasInvalidated());
 }
 
 // Tests that OnDialogComplete() doesn't crash when the specified selected task
 // doesn't exist.
 IN_PROC_BROWSER_TEST_F(FileHandlerDialogBrowserTest, OnDialogCompleteNoCrash) {
-  auto cloud_open_task = base::WrapRefCounted(new CloudOpenTask(
-      profile(), files_, CloudProvider::kGoogleDrive, nullptr));
-  cloud_open_task->SetTasksForTest(tasks_);
+  auto cloud_open_metrics = std::make_unique<CloudOpenMetrics>();
+  auto cloud_open_metrics_weak_ptr = cloud_open_metrics->GetWeakPtr();
+  {
+    auto cloud_open_task = base::WrapRefCounted(
+        new CloudOpenTask(profile(), files_, CloudProvider::kGoogleDrive,
+                          nullptr, std::move(cloud_open_metrics)));
+    cloud_open_task->SetTasksForTest(tasks_);
 
-  int out_of_range_task = num_tasks_;
-  std::string user_response = base::NumberToString(out_of_range_task);
+    int out_of_range_task = num_tasks_;
+    std::string user_response = base::NumberToString(out_of_range_task);
 
-  // Simulate user selecting a nonexistent selected task.
-  cloud_open_task->OnDialogComplete(user_response);
+    // Simulate user selecting a nonexistent selected task.
+    cloud_open_task->OnDialogComplete(user_response);
+  }
+  // cloud_open_metrics should have been destroyed by the end of the test.
+  ASSERT_TRUE(cloud_open_metrics_weak_ptr.WasInvalidated());
 }
 
 // Tests the Fixup flow. Ensures that it is run when the conditions are met: the
@@ -778,7 +804,7 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest, FixUpFlowWhenODFSNotMounted) {
   gfx::NativeWindow modal_parent = LaunchFilesAppAndWait(browser()->profile());
 
   CloudOpenTask::Execute(profile(), files_, CloudProvider::kOneDrive,
-                         modal_parent);
+                         modal_parent, std::make_unique<CloudOpenMetrics>());
 
   // Wait for Welcome Page to open at chrome://cloud-upload.
   navigation_observer_dialog.Wait();
@@ -823,7 +849,7 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest,
   gfx::NativeWindow modal_parent = LaunchFilesAppAndWait(browser()->profile());
 
   CloudOpenTask::Execute(profile(), files_, CloudProvider::kOneDrive,
-                         modal_parent);
+                         modal_parent, std::make_unique<CloudOpenMetrics>());
 
   // Wait for Welcome Page to open at chrome://cloud-upload.
   navigation_observer_dialog.Wait();
@@ -879,7 +905,8 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest,
   AddFakeOfficePWA();
 
   auto cloud_open_task = base::WrapRefCounted(
-      new CloudOpenTask(profile(), files_, CloudProvider::kOneDrive, nullptr));
+      new CloudOpenTask(profile(), files_, CloudProvider::kOneDrive, nullptr,
+                        std::make_unique<CloudOpenMetrics>()));
   mojom::DialogArgsPtr args =
       cloud_open_task->CreateDialogArgs(mojom::DialogPage::kOneDriveSetup);
   // Self-deleted on close.
@@ -893,15 +920,13 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest,
   navigation_observer_dialog.StartWatchingNewWebContents();
 
   // Check that there is not a default task for doc or xlsx files.
-  file_manager::file_tasks::TaskDescriptor default_task;
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension, &default_task));
+      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension));
   ASSERT_FALSE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension,
-      &default_task));
+      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension));
 
-  // Open the Welcome Page for the OneDrive set up part of the Setup flow. This
-  // will lead to the Office PWA being set as the default task.
+  // Open the Welcome Page for the OneDrive set up part of the Setup flow.
+  // This will lead to the Office PWA being set as the default task.
   dialog->ShowSystemDialog();
 
   // Wait for Welcome Page to open at chrome://cloud-upload.
@@ -924,14 +949,14 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest,
       ".querySelector('.action-button').click()")) {
   }
 
-  // Check that the Office PWA has been made the default for doc and xlsx files.
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension, &default_task));
-  ASSERT_TRUE(IsOpenInOfficeTask(default_task));
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension,
-      &default_task));
-  ASSERT_TRUE(IsOpenInOfficeTask(default_task));
+  // Check that the Office PWA has been made the default for doc and xlsx
+  // files.
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kDocMimeType, kDocFileExtension),
+              IsOpenInOfficeTask());
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kXlsxMimeType, kXlsxFileExtension),
+              IsOpenInOfficeTask());
 }
 
 // Test that entering and completing the Setup flow from the OneDrive Set Up
@@ -955,7 +980,8 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest,
   AddFakeOfficePWA();
 
   auto cloud_open_task = base::WrapRefCounted(
-      new CloudOpenTask(profile(), files_, CloudProvider::kOneDrive, nullptr));
+      new CloudOpenTask(profile(), files_, CloudProvider::kOneDrive, nullptr,
+                        std::make_unique<CloudOpenMetrics>()));
   mojom::DialogArgsPtr args =
       cloud_open_task->CreateDialogArgs(mojom::DialogPage::kOneDriveSetup);
   // Self-deleted on close.
@@ -995,10 +1021,11 @@ IN_PROC_BROWSER_TEST_F(FixUpFlowBrowserTest,
 
   // Check that the default task for doc files is still Drive, and not OneDrive,
   // despite running fixup setup.
-  file_manager::file_tasks::TaskDescriptor default_task;
-  ASSERT_TRUE(file_manager::file_tasks::GetDefaultTaskFromPrefs(
-      *profile()->GetPrefs(), kDocMimeType, kDocFileExtension, &default_task));
-  ASSERT_TRUE(default_task.action_id.ends_with(kActionIdWebDriveOfficeWord));
+  ASSERT_THAT(file_manager::file_tasks::GetDefaultTaskFromPrefs(
+                  *profile()->GetPrefs(), kDocMimeType, kDocFileExtension),
+              testing::Optional(testing::Field(
+                  &file_manager::file_tasks::TaskDescriptor::action_id,
+                  testing::EndsWith(kActionIdWebDriveOfficeWord))));
 }
 
 class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
@@ -1008,6 +1035,7 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
     my_files_dir_ = temp_dir_.GetPath().Append("myfiles");
     read_only_dir_ = temp_dir_.GetPath().Append("readonly");
     smb_dir_ = temp_dir_.GetPath().Append("smb");
+    cloud_open_metrics_ = std::make_unique<CloudOpenMetrics>();
   }
 
   CloudOpenTaskBrowserTest(const CloudOpenTaskBrowserTest&) = delete;
@@ -1023,7 +1051,8 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
 
     upload_task_ = base::WrapRefCounted(new ash::cloud_upload::CloudOpenTask(
         profile(), source_files_,
-        ash::cloud_upload::CloudProvider::kGoogleDrive, nullptr));
+        ash::cloud_upload::CloudProvider::kGoogleDrive, nullptr,
+        std::move(cloud_open_metrics_)));
   }
 
   void SetUpCloudToDriveTask() {
@@ -1036,7 +1065,8 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
 
     upload_task_ = base::WrapRefCounted(new ash::cloud_upload::CloudOpenTask(
         profile(), source_files_,
-        ash::cloud_upload::CloudProvider::kGoogleDrive, nullptr));
+        ash::cloud_upload::CloudProvider::kGoogleDrive, nullptr,
+        std::move(cloud_open_metrics_)));
   }
 
   void SetUpReadOnlyToDriveTask() {
@@ -1049,7 +1079,8 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
 
     upload_task_ = base::WrapRefCounted(new ash::cloud_upload::CloudOpenTask(
         profile(), source_files_,
-        ash::cloud_upload::CloudProvider::kGoogleDrive, nullptr));
+        ash::cloud_upload::CloudProvider::kGoogleDrive, nullptr,
+        std::move(cloud_open_metrics_)));
   }
 
   void SetUpLocalToOneDriveTask() {
@@ -1062,7 +1093,7 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
 
     upload_task_ = base::WrapRefCounted(new ash::cloud_upload::CloudOpenTask(
         profile(), source_files_, ash::cloud_upload::CloudProvider::kOneDrive,
-        nullptr));
+        nullptr, std::move(cloud_open_metrics_)));
   }
 
   void SetUpCloudToOneDriveTask() {
@@ -1075,7 +1106,7 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
 
     upload_task_ = base::WrapRefCounted(new ash::cloud_upload::CloudOpenTask(
         profile(), source_files_, ash::cloud_upload::CloudProvider::kOneDrive,
-        nullptr));
+        nullptr, std::move(cloud_open_metrics_)));
   }
 
   void SetUpReadOnlyToOneDriveTask() {
@@ -1088,7 +1119,7 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
 
     upload_task_ = base::WrapRefCounted(new ash::cloud_upload::CloudOpenTask(
         profile(), source_files_, ash::cloud_upload::CloudProvider::kOneDrive,
-        nullptr));
+        nullptr, std::move(cloud_open_metrics_)));
   }
 
   bool ShouldShowConfirmationDialog() {
@@ -1169,6 +1200,7 @@ class CloudOpenTaskBrowserTest : public InProcessBrowserTest {
   base::FilePath smb_dir_;
   std::vector<storage::FileSystemURL> source_files_;
   scoped_refptr<CloudOpenTask> upload_task_;
+  std::unique_ptr<CloudOpenMetrics> cloud_open_metrics_;
 };
 
 // Tests that when moving files from a local location to Drive, the preferences

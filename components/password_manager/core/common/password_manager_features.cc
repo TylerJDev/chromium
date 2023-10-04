@@ -51,6 +51,12 @@ BASE_FEATURE(kIOSPasswordCheckup,
 BASE_FEATURE(kIOSPasswordBottomSheet,
              "IOSPasswordBottomSheet",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, eligible users will be given the possibility to bulk upload
+// local passwords in the iOS password settings.
+BASE_FEATURE(kIOSPasswordSettingsBulkUploadLocalPasswords,
+             "IOSPasswordSettingsBulkUploadLocalPasswords",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // IS_IOS
 
 // Killswitch for changes regarding password issues in
@@ -132,15 +138,26 @@ BASE_FEATURE(kUnifiedPasswordManagerAndroid,
              "UnifiedPasswordManagerAndroid_LAUNCHED",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Enables use of Google Mobile services for non-sycned password storage.
-BASE_FEATURE(kUnifiedPasswordManagerLocalPasswordsAndroid,
-             "UnifiedPasswordManagerLocalPasswordsAndroid",
+// Enables use of Google Mobile services for non-synced password storage.
+BASE_FEATURE(kUnifiedPasswordManagerLocalPasswordsAndroidWithMigration,
+             "kUnifiedPasswordManagerLocalPasswordsAndroidWithMigration",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables use of Google Mobile services for non-synced password storage that
+// contains no passwords, so no migration will be necessary.
+// UnifiedPasswordManagerLocalPasswordsAndroidWithMigration will replace this
+// feature once UPM starts to be rolled out to local users who have saved
+// passwords.
+BASE_FEATURE(kUnifiedPasswordManagerLocalPasswordsAndroidWithoutMigration,
+             "kUnifiedPasswordManagerLocalPasswordsAndroidWithoutMigration",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables showing the warning about UPM migrating local passwords.
+// The feature is limited to Canary/Dev/Beta by a check in
+// local_passwords_migration_warning_util::ShouldShowWarning.
 BASE_FEATURE(kUnifiedPasswordManagerLocalPasswordsMigrationWarning,
              "UnifiedPasswordManagerLocalPasswordsMigrationWarning",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, the built-in sync functionality in PasswordSyncBridge becomes
 // unused, meaning that SyncService/SyncEngine will no longer download or
@@ -148,18 +165,6 @@ BASE_FEATURE(kUnifiedPasswordManagerLocalPasswordsMigrationWarning,
 // backend will be used to achieve similar behavior.
 BASE_FEATURE(kUnifiedPasswordManagerSyncUsingAndroidBackendOnly,
              "UnifiedPasswordManagerSyncUsingAndroidBackendOnly",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Enables all UI branding changes related to Unified Password Manager:
-// the strings containing 'Password Manager' and the password manager
-// icon.
-BASE_FEATURE(kUnifiedPasswordManagerAndroidBranding,
-             "UnifiedPasswordManagerAndroidBranding",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-// Enables new exploratory strings for the save/update password prompts.
-BASE_FEATURE(kExploratorySaveUpdatePasswordStrings,
-             "ExploratorySaveUpdatePasswordStrings",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPasswordsInCredMan,
@@ -182,6 +187,12 @@ BASE_FEATURE(kUsernameFirstFlowHonorAutocomplete,
              "UsernameFirstFlowHonorAutocomplete",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Enables storing more possible username values in the LRU cache. Part of the
+// `kUsernameFirstFlowWithIntermediateValues` feature.
+BASE_FEATURE(kUsernameFirstFlowStoreSeveralValues,
+             "UsernameFirstFlowStoreSeveralValues",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // Enables tolerating intermediate fields like OTP or CAPTCHA
 // between username and password fields in Username First Flow.
 BASE_FEATURE(kUsernameFirstFlowWithIntermediateValues,
@@ -197,12 +208,6 @@ BASE_FEATURE(kPasswordManagerPasskeys,
 
 #if BUILDFLAG(IS_ANDROID)
 
-// The string version to use for the save/update password prompts when the user
-// is syncing passwords. Version 1 is outdated, so the only supported versions
-// currently are 2 and 3.
-extern const base::FeatureParam<int> kSaveUpdatePromptSyncingStringVersion = {
-    &kExploratorySaveUpdatePasswordStrings, "syncing_string_version", 2};
-
 // The version of the password migration warning prefs. When the version
 // increases, the value of the pref LocalPasswordMigrationWarningPrefsVersion
 // increases and the affected prefs are reset. The affected prefs are:
@@ -211,7 +216,7 @@ extern const base::FeatureParam<int> kSaveUpdatePromptSyncingStringVersion = {
 extern const base::FeatureParam<int>
     kLocalPasswordMigrationWarningPrefsVersion = {
         &kUnifiedPasswordManagerLocalPasswordsMigrationWarning,
-        "pwd_migration_warning_prefs_version", 0};
+        "pwd_migration_warning_prefs_version", 1};
 #endif
 
 // Field trial identifier for password generation requirements.
@@ -252,11 +257,6 @@ bool UsesUnifiedPasswordManagerUi() {
   return false;
 }
 
-bool UsesUnifiedPasswordManagerBranding() {
-  return (UsesUnifiedPasswordManagerUi() ||
-          base::FeatureList::IsEnabled(kUnifiedPasswordManagerAndroidBranding));
-}
-
 bool RequiresMigrationForUnifiedPasswordManager() {
   if (!base::FeatureList::IsEnabled(kUnifiedPasswordManagerAndroid)) {
     return false;
@@ -280,6 +280,11 @@ bool RequiresMigrationForUnifiedPasswordManager() {
 bool IsPasswordCheckupEnabled() {
   return base::FeatureList::IsEnabled(
       password_manager::features::kIOSPasswordCheckup);
+}
+
+bool IsBulkUploadLocalPasswordsEnabled() {
+  return base::FeatureList::IsEnabled(
+      kIOSPasswordSettingsBulkUploadLocalPasswords);
 }
 #endif  // IS_IOS
 

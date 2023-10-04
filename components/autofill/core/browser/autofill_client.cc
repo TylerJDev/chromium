@@ -13,6 +13,7 @@
 #include "components/autofill/core/browser/single_field_form_fill_router.h"
 #include "components/autofill/core/browser/ui/payments/bubble_show_options.h"
 #include "components/autofill/core/browser/ui/suggestion.h"
+#include "components/plus_addresses/plus_address_types.h"
 #include "components/version_info/channel.h"
 
 namespace autofill {
@@ -58,12 +59,29 @@ AutofillOptimizationGuide* AutofillClient::GetAutofillOptimizationGuide()
   return nullptr;
 }
 
+AutofillMlPredictionModelHandler*
+AutofillClient::GetAutofillMlPredictionModelHandler() {
+  return nullptr;
+}
+
 IbanManager* AutofillClient::GetIbanManager() {
+  return nullptr;
+}
+
+compose::ComposeManager* AutofillClient::GetComposeManager() {
   return nullptr;
 }
 
 plus_addresses::PlusAddressService* AutofillClient::GetPlusAddressService() {
   return nullptr;
+}
+
+void AutofillClient::OfferPlusAddressCreation(
+    const url::Origin& main_frame_origin,
+    plus_addresses::PlusAddressCallback callback) {
+  // This is overridden by platform subclasses. Currently only
+  // ChromeAutofillClient (Chrome Desktop & Android) implements this, with iOS
+  // support also expected.
 }
 
 MerchantPromoCodeManager* AutofillClient::GetMerchantPromoCodeManager() {
@@ -85,12 +103,16 @@ CreditCardOtpAuthenticator* AutofillClient::GetOtpAuthenticator() {
   return nullptr;
 }
 
+CreditCardRiskBasedAuthenticator* AutofillClient::GetRiskBasedAuthenticator() {
+  return nullptr;
+}
+
 AutofillOfferManager* AutofillClient::GetAutofillOfferManager() {
   return nullptr;
 }
 
-std::string AutofillClient::GetVariationConfigCountryCode() const {
-  return std::string();
+GeoIpCountryCode AutofillClient::GetVariationConfigCountryCode() const {
+  return GeoIpCountryCode(std::string());
 }
 
 profile_metrics::BrowserProfileType AutofillClient::GetProfileType() const {
@@ -172,8 +194,9 @@ void AutofillClient::OnUnmaskOtpVerificationResult(
   // ChromeAutofillClient (Chrome Desktop and Clank) implements this.
 }
 
-void AutofillClient::UpdateOfferNotification(const AutofillOfferData* offer,
-                                             bool notification_has_been_shown) {
+void AutofillClient::UpdateOfferNotification(
+    const AutofillOfferData* offer,
+    const OfferNotificationOptions& options) {
   // This is overridden by platform subclasses. Currently only
   // ChromeAutofillClient (Chrome Desktop and Clank) implement this.
 }
@@ -189,7 +212,7 @@ void AutofillClient::OnVirtualCardDataAvailable(
   // ChromeAutofillClient (Chrome Desktop & Android) implements this.
 }
 
-void AutofillClient::ShowVirtualCardErrorDialog(
+void AutofillClient::ShowAutofillErrorDialog(
     const AutofillErrorDialogContext& context) {
   // This is overridden by platform subclasses. Currently only
   // ChromeAutofillClient (Chrome Desktop & Android) implements this.
@@ -219,8 +242,8 @@ const AutofillAblationStudy& AutofillClient::GetAblationStudy() const {
   return *ablation_study;
 }
 
-scoped_refptr<device_reauth::DeviceAuthenticator>
-AutofillClient::GetDeviceAuthenticator() const {
+std::unique_ptr<device_reauth::DeviceAuthenticator>
+AutofillClient::GetDeviceAuthenticator() {
   return nullptr;
 }
 

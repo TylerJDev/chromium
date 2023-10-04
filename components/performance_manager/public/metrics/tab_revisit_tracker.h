@@ -9,6 +9,7 @@
 
 #include "base/time/time.h"
 #include "components/performance_manager/public/decorators/page_live_state_decorator.h"
+#include "components/performance_manager/public/decorators/tab_connectedness_decorator.h"
 #include "components/performance_manager/public/decorators/tab_page_decorator.h"
 #include "components/performance_manager/public/graph/graph.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -20,30 +21,59 @@ namespace performance_manager {
 // about these states.
 class TabRevisitTracker : public GraphOwned,
                           public TabPageObserver,
-                          public PageLiveStateObserver {
+                          public PageLiveStateObserverDefaultImpl,
+                          public TabConnectednessDecorator::Observer,
+                          public PageNode::ObserverDefaultImpl {
  public:
   static constexpr char kTimeToRevisitHistogramName[] =
-      "PerformanceManager.TabRevisitTracker.TimeToRevisit";
+      "PerformanceManager.TabRevisitTracker.TimeToRevisit2";
   static constexpr char kTimeToCloseHistogramName[] =
-      "PerformanceManager.TabRevisitTracker.TimeToClose";
+      "PerformanceManager.TabRevisitTracker.TimeToClose2";
 
   TabRevisitTracker();
   ~TabRevisitTracker() override;
 
- private:
+  static int64_t ExponentiallyBucketedSeconds(base::TimeDelta time);
+
   enum class State {
+    // The order of the leading elements must match the one in enums.xml
+    // `TabRevisitTracker.TabState`.
     kActive,
     kBackground,
+    kClosed,
+    // The following entries aren't present in enums.xml but they are used for
+    // internal tracking
     kDiscarded,
   };
 
   struct StateBundle {
     State state;
     absl::optional<base::TimeTicks> last_active_time;
+    base::TimeDelta total_time_active;
+    base::TimeTicks last_state_change_time;
+    int64_t num_revisits;
+    // This tab's connectedness score to the previously active tab when it last
+    // became active. Stored as an int64_t because that's what is supported in
+    // histograms, so the connectedness score (expressed as a foat in the range
+    // [0, 1]) is remapped as an int in the range [0, 1000]. Can possibly be
+    // `nullopt` if the tab was never connected to the active tab.
+    absl::optional<int64_t> connectedness_to_last_switch_active_tab;
   };
+
+ private:
+  friend class TabRevisitTrackerTest;
+
+  class UkmSourceIdReadyRecorder;
 
   void RecordRevisitHistograms(const TabPageDecorator::TabHandle* tab_handle);
   void RecordCloseHistograms(const TabPageDecorator::TabHandle* tab_handle);
+  void RecordStateChangeUkmAndUpdateStateBundle(
+      const TabPageDecorator::TabHandle* tab_handle,
+      StateBundle new_state_bundle);
+
+  StateBundle CreateUpdatedStateBundle(
+      const TabPageDecorator::TabHandle* tab_handle,
+      State new_state) const;
 
   // GraphOwned:
   void OnPassedToGraph(Graph* graph) override;
@@ -56,25 +86,20 @@ class TabRevisitTracker : public GraphOwned,
       TabPageDecorator::TabHandle* tab_handle) override;
   void OnBeforeTabRemoved(TabPageDecorator::TabHandle* tab_handle) override;
 
-  // PageLiveStateObserver:
+  // PageLiveStateObserverDefaultImpl:
   void OnIsActiveTabChanged(const PageNode* page_node) override;
-  // We only care about `OnIsActiveTabChanged` but these are all pure virtual so
-  // no-op here.
-  void OnIsConnectedToUSBDeviceChanged(const PageNode* page_node) override {}
-  void OnIsConnectedToBluetoothDeviceChanged(
-      const PageNode* page_node) override {}
-  void OnIsCapturingVideoChanged(const PageNode* page_node) override {}
-  void OnIsCapturingAudioChanged(const PageNode* page_node) override {}
-  void OnIsBeingMirroredChanged(const PageNode* page_node) override {}
-  void OnIsCapturingWindowChanged(const PageNode* page_node) override {}
-  void OnIsCapturingDisplayChanged(const PageNode* page_node) override {}
-  void OnIsAutoDiscardableChanged(const PageNode* page_node) override {}
-  void OnWasDiscardedChanged(const PageNode* page_node) override {}
-  void OnIsPinnedTabChanged(const PageNode* page_node) override {}
-  void OnContentSettingsChanged(const PageNode* page_node) override {}
-  void OnIsDevToolsOpenChanged(const PageNode* page_node) override {}
+
+  // TabConnectednessDecorator::Observer:
+  void OnBeforeTabSwitch(TabPageDecorator::TabHandle* source,
+                         TabPageDecorator::TabHandle* destination) override;
+
+  // PageNode::ObserverDefaultImpl:
+  void OnUkmSourceIdChanged(const PageNode* page_node) override;
 
   std::map<const TabPageDecorator::TabHandle*, StateBundle> tab_states_;
+  std::map<const TabPageDecorator::TabHandle*,
+           std::unique_ptr<UkmSourceIdReadyRecorder>>
+      pending_ukm_records_;
 };
 
 }  // namespace performance_manager

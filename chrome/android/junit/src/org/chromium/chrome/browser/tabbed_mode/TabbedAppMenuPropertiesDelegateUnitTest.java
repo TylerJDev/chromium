@@ -56,7 +56,7 @@ import org.chromium.chrome.browser.multiwindow.MultiWindowModeStateDispatcher;
 import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
 import org.chromium.chrome.browser.offlinepages.OfflinePageUtils;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileJni;
 import org.chromium.chrome.browser.readaloud.ReadAloudController;
@@ -240,9 +240,9 @@ public class TabbedAppMenuPropertiesDelegateUnitTest {
                 mToolbarManager, mDecorView, mAppMenuDelegate, mLayoutStateProviderSupplier, null,
                 mBookmarkModelSupplier, mFeedLauncher, mDialogManager, mSnackbarManager,
                 mIncognitoReauthControllerSupplier, mReadAloudControllerSupplier));
-        SharedPreferencesManager.getInstance().removeKeysWithPrefix(
+        ChromeSharedPreferences.getInstance().removeKeysWithPrefix(
                 ChromePreferenceKeys.MULTI_INSTANCE_URL);
-        SharedPreferencesManager.getInstance().removeKeysWithPrefix(
+        ChromeSharedPreferences.getInstance().removeKeysWithPrefix(
                 ChromePreferenceKeys.MULTI_INSTANCE_TAB_COUNT);
 
         ShoppingServiceFactory.setShoppingServiceForTesting(mShoppingService);
@@ -391,7 +391,7 @@ public class TabbedAppMenuPropertiesDelegateUnitTest {
     @Test
     public void getFooterResourceId_nonHttpUrl_doesNotReturnWebFeedMenuItem() {
         setUpMocksForWebFeedFooter();
-        when(mTab.getOriginalUrl()).thenReturn(JUnitTestGURLs.getGURL(JUnitTestGURLs.NTP_URL));
+        when(mTab.getOriginalUrl()).thenReturn(JUnitTestGURLs.NTP_URL);
 
         assertNotEquals("Footer Resource ID should not be web_feed_main_menu_item.",
                 R.layout.web_feed_main_menu_item,
@@ -420,7 +420,7 @@ public class TabbedAppMenuPropertiesDelegateUnitTest {
     private void setUpMocksForWebFeedFooter() {
         when(mActivityTabProvider.get()).thenReturn(mTab);
         when(mTab.isIncognito()).thenReturn(false);
-        when(mTab.getOriginalUrl()).thenReturn(JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL));
+        when(mTab.getOriginalUrl()).thenReturn(JUnitTestGURLs.EXAMPLE_URL);
         when(mOfflinePageUtils.isOfflinePage(mTab)).thenReturn(false);
         when(mIdentityManager.hasPrimaryAccount(anyInt())).thenReturn(true);
     }
@@ -442,7 +442,7 @@ public class TabbedAppMenuPropertiesDelegateUnitTest {
         doReturn(true).when(mTabbedAppMenuPropertiesDelegate).isAutoDarkWebContentsEnabled();
 
         setUpIncognitoMocks();
-        when(mTab.getUrl()).thenReturn(JUnitTestGURLs.getGURL(JUnitTestGURLs.SEARCH_URL));
+        when(mTab.getUrl()).thenReturn(JUnitTestGURLs.SEARCH_URL);
         when(mTab.isNativePage()).thenReturn(false);
         doReturn(false)
                 .when(mTabbedAppMenuPropertiesDelegate)
@@ -630,12 +630,12 @@ public class TabbedAppMenuPropertiesDelegateUnitTest {
 
     private static void createInstance(int index, String url) {
         String urlKey = ChromePreferenceKeys.MULTI_INSTANCE_URL.createKey(String.valueOf(index));
-        SharedPreferencesManager.getInstance().writeString(urlKey, url);
+        ChromeSharedPreferences.getInstance().writeString(urlKey, url);
         String tabCountKey =
                 ChromePreferenceKeys.MULTI_INSTANCE_TAB_COUNT.createKey(String.valueOf(index));
-        SharedPreferencesManager.getInstance().writeInt(tabCountKey, 1);
+        ChromeSharedPreferences.getInstance().writeInt(tabCountKey, 1);
         String accessTimeKey = ChromePreferenceKeys.MULTI_INSTANCE_LAST_ACCESSED_TIME.createKey(
                 String.valueOf(index));
-        SharedPreferencesManager.getInstance().writeLong(accessTimeKey, System.currentTimeMillis());
+        ChromeSharedPreferences.getInstance().writeLong(accessTimeKey, System.currentTimeMillis());
     }
 }

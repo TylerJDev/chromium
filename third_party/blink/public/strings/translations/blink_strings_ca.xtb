@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">S'ha canviat a projecció</translation>
 <translation id="2031987842108996681">Canal vermell</translation>
 <translation id="2060505056492490888">"<ph name="DOT" />" s'ha utilitzat en una posició incorrecta a "<ph name="INVALIDDOMAIN" />".</translation>
+<translation id="2068711044993563745">El valor mínim (<ph name="MINIMUM" />) ha de ser inferior al valor màxim (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Avui</translation>
 <translation id="2226276347425096477">Escurceu aquest text a un màxim de <ph name="MAX_CHARACTERS" /> caràcters (ara n'esteu utilitzant <ph name="CURRENT_LENGTH" />).</translation>
 <translation id="2247351761944213033">Setmana <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Marqueu aquesta casella si voleu continuar.</translation>
 <translation id="2908441821576996758">Introduïu una llista d'adreces electròniques separades per comes.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">mostra el menú d'audiodescripcions</translation>
 <translation id="3075154866155599887">Introduïu un valor vàlid. El camp està incomplet o conté una data no vàlida.</translation>
 <translation id="310520048233152454">Introduïu un URL.</translation>
 <translation id="3220661731597678625">pas actual</translation>

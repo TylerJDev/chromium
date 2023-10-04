@@ -124,13 +124,15 @@ TEST_F(PasswordSyncUtilTest, IsSyncAccountEmail) {
     SCOPED_TRACE(testing::Message() << "i=" << i);
     if (kTestCases[i].fake_sync_email.empty()) {
       EXPECT_EQ(kTestCases[i].expected_result,
-                IsSyncAccountEmail(kTestCases[i].input_username, nullptr));
+                IsSyncAccountEmail(kTestCases[i].input_username, nullptr,
+                                   signin::ConsentLevel::kSignin));
       continue;
     }
     FakeSigninAs(kTestCases[i].fake_sync_email);
     EXPECT_EQ(
         kTestCases[i].expected_result,
-        IsSyncAccountEmail(kTestCases[i].input_username, identity_manager()));
+        IsSyncAccountEmail(kTestCases[i].input_username, identity_manager(),
+                           signin::ConsentLevel::kSignin));
   }
 }
 
@@ -138,7 +140,7 @@ TEST_F(PasswordSyncUtilTest, SyncDisabled) {
   syncer::TestSyncService sync_service;
   sync_service.SetTransportState(syncer::SyncService::TransportState::DISABLED);
   sync_service.SetHasSyncConsent(false);
-  EXPECT_FALSE(IsPasswordSyncEnabled(&sync_service));
+  EXPECT_FALSE(IsSyncFeatureEnabledIncludingPasswords(&sync_service));
   EXPECT_FALSE(IsPasswordSyncActive(&sync_service));
   EXPECT_EQ(absl::nullopt, GetSyncingAccount(&sync_service));
 }
@@ -149,7 +151,7 @@ TEST_F(PasswordSyncUtilTest, SyncEnabledButNotForPasswords) {
   sync_service.SetHasSyncConsent(true);
   sync_service.GetUserSettings()->SetSelectedTypes(
       /*sync_everything=*/false, {syncer::UserSelectableType::kHistory});
-  EXPECT_FALSE(IsPasswordSyncEnabled(&sync_service));
+  EXPECT_FALSE(IsSyncFeatureEnabledIncludingPasswords(&sync_service));
   EXPECT_FALSE(IsPasswordSyncActive(&sync_service));
   EXPECT_EQ(absl::nullopt, GetSyncingAccount(&sync_service));
 }
@@ -161,7 +163,7 @@ TEST_F(PasswordSyncUtilTest, SyncEnabled) {
   AccountInfo active_info;
   active_info.email = "test@email.com";
   sync_service.SetAccountInfo(active_info);
-  EXPECT_TRUE(IsPasswordSyncEnabled(&sync_service));
+  EXPECT_TRUE(IsSyncFeatureEnabledIncludingPasswords(&sync_service));
   EXPECT_TRUE(IsPasswordSyncActive(&sync_service));
   EXPECT_TRUE(GetSyncingAccount(&sync_service).has_value());
   EXPECT_EQ(active_info.email, GetSyncingAccount(&sync_service).value());
@@ -173,7 +175,7 @@ TEST_F(PasswordSyncUtilTest, SyncPaused) {
   sync_service.SetPersistentAuthError();
   ASSERT_EQ(sync_service.GetTransportState(),
             syncer::SyncService::TransportState::PAUSED);
-  EXPECT_TRUE(IsPasswordSyncEnabled(&sync_service));
+  EXPECT_TRUE(IsSyncFeatureEnabledIncludingPasswords(&sync_service));
   EXPECT_FALSE(IsPasswordSyncActive(&sync_service));
   EXPECT_NE(absl::nullopt, GetSyncingAccount(&sync_service));
 }

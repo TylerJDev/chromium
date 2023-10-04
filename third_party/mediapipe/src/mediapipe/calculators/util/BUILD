@@ -183,9 +183,9 @@ cc_library(
         "//mediapipe/framework:calculator_options_cc_proto",
         "//mediapipe/framework:timestamp",
         "//mediapipe/framework/deps:clock",
-        "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -248,11 +248,12 @@ cc_library(
         ":annotation_overlay_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework:calculator_options_cc_proto",
+        "//mediapipe/framework/formats:image",
         "//mediapipe/framework/formats:image_format_cc_proto",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:image_frame_opencv",
+        "//mediapipe/framework/formats:image_opencv",
         "//mediapipe/framework/formats:video_stream_header",
-        "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:opencv_imgproc",
         "//mediapipe/framework/port:status",
@@ -260,6 +261,7 @@ cc_library(
         "//mediapipe/util:annotation_renderer",
         "//mediapipe/util:color_cc_proto",
         "//mediapipe/util:render_data_cc_proto",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
     ] + select({
         "//mediapipe/gpu:disable_gpu": [],
@@ -267,6 +269,7 @@ cc_library(
             "//mediapipe/gpu:gl_calculator_helper",
             "//mediapipe/gpu:gl_simple_shaders",
             "//mediapipe/gpu:gpu_buffer",
+            "//mediapipe/gpu:gpu_buffer_format",
             "//mediapipe/gpu:shader_util",
         ],
     }),
@@ -374,9 +377,10 @@ cc_library(
         "//mediapipe/framework/formats:detection_cc_proto",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:location",
-        "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:rectangle",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
     ],
     alwayslink = 1,
 )
@@ -675,6 +679,7 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/util:color_cc_proto",
         "//mediapipe/util:render_data_cc_proto",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -731,6 +736,7 @@ cc_library(
         "//mediapipe/framework/port:statusor",
         "//mediapipe/util:color_cc_proto",
         "//mediapipe/util:render_data_cc_proto",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -746,6 +752,7 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/util:color_cc_proto",
         "//mediapipe/util:render_data_cc_proto",
+        "@com_google_absl//absl/log:absl_check",
     ],
     alwayslink = 1,
 )
@@ -1149,6 +1156,7 @@ cc_library(
         "//mediapipe/framework/port:file_helpers",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/log:absl_log",
     ],
     alwayslink = 1,
 )
@@ -1209,6 +1217,7 @@ cc_library(
         "//mediapipe/framework/port:rectangle",
         "//mediapipe/framework/port:status",
         "//mediapipe/util:rectangle_util",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
@@ -1480,6 +1489,7 @@ cc_library(
         "//mediapipe/framework/formats:landmark_cc_proto",
         "//mediapipe/framework/port:core_proto",
         "//mediapipe/framework/port:ret_check",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
@@ -1561,6 +1571,78 @@ cc_test(
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/framework/port:status_matchers",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+mediapipe_proto_library(
+    name = "landmarks_transformation_calculator_proto",
+    srcs = ["landmarks_transformation_calculator.proto"],
+    deps = [
+        "//mediapipe/framework:calculator_options_proto",
+        "//mediapipe/framework:calculator_proto",
+    ],
+)
+
+cc_library(
+    name = "landmarks_transformation_calculator",
+    srcs = ["landmarks_transformation_calculator.cc"],
+    hdrs = ["landmarks_transformation_calculator.h"],
+    deps = [
+        ":landmarks_transformation_calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/api2:node",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/framework/port:statusor",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "landmarks_transformation_calculator_test",
+    srcs = ["landmarks_transformation_calculator_test.cc"],
+    deps = [
+        ":landmarks_transformation_calculator",
+        ":landmarks_transformation_calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework:packet",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/framework/port:status_matchers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "pass_through_or_empty_detection_vector_calculator",
+    srcs = ["pass_through_or_empty_detection_vector_calculator.cc"],
+    hdrs = ["pass_through_or_empty_detection_vector_calculator.h"],
+    deps = [
+        "//mediapipe/framework:calculator_context",
+        "//mediapipe/framework/api2:builder",
+        "//mediapipe/framework/api2:node",
+        "//mediapipe/framework/api2:packet",
+        "//mediapipe/framework/api2:port",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "pass_through_or_empty_detection_vector_calculator_test",
+    srcs = ["pass_through_or_empty_detection_vector_calculator_test.cc"],
+    tags = ["desktop_only_test"],
+    deps = [
+        ":pass_through_or_empty_detection_vector_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/api2:builder",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:status_matchers",
         "@com_google_absl//absl/status",
     ],

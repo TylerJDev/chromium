@@ -23,7 +23,6 @@ class WebNNGraphBuilderTest : public TestBase {
 
  protected:
   ComPtr<IDMLDevice> dml_device_;
-  bool is_compile_graph_supported_ = true;
 };
 
 void WebNNGraphBuilderTest::SetUp() {
@@ -34,8 +33,30 @@ void WebNNGraphBuilderTest::SetUp() {
   ASSERT_NE(adapter.get(), nullptr);
   dml_device_ = adapter->dml_device();
   ASSERT_NE(dml_device_.Get(), nullptr);
-  is_compile_graph_supported_ =
-      adapter->IsDMLDeviceCompileGraphSupportedForTesting();
+  // Graph compilation relies on IDMLDevice1::CompileGraph introduced in
+  // DirectML version 1.2 or DML_FEATURE_LEVEL_2_1, so skip the tests if the
+  // DirectML version doesn't support this feature.
+  SKIP_TEST_IF(!adapter->IsDMLDeviceCompileGraphSupportedForTesting());
+}
+
+// Test creating an invalid operator node with inconsistent tensor dimensions.
+TEST_F(WebNNGraphBuilderTest, CreateInvalidOperator) {
+  GraphBuilder graph_builder(dml_device_);
+
+  TensorDesc input_tensor_desc(DML_TENSOR_DATA_TYPE_FLOAT32, {1, 2, 3, 4});
+  TensorDesc output_tensor_desc(DML_TENSOR_DATA_TYPE_FLOAT32, {1, 2, 3});
+  NodeInfo input_node = graph_builder.CreateInputNode();
+  ASSERT_EQ(input_node.type, NodeInfo::Type::kInput);
+  NodeOutputInfo input =
+      graph_builder.CreateNodeOutput(input_node, input_tensor_desc);
+
+  DML_ACTIVATION_RELU_OPERATOR_DESC invalid_operator_desc{
+      .InputTensor = &input_tensor_desc.GetDMLTensorDesc(),
+      .OutputTensor = &output_tensor_desc.GetDMLTensorDesc()};
+
+  NodeInfo invalid_node = graph_builder.CreateOperatorNode(
+      DML_OPERATOR_ACTIVATION_RELU, &invalid_operator_desc, {input});
+  EXPECT_EQ(invalid_node.type, NodeInfo::Type::kInvalid);
 }
 
 // Test building a DML graph with single operator relu.
@@ -58,8 +79,8 @@ TEST_F(WebNNGraphBuilderTest, BuildSingleOperatorRelu) {
   NodeOutputInfo output =
       graph_builder.CreateNodeOutput(relu_node, input_tensor_desc);
 
-  EXPECT_NE(graph_builder.Compile({output}, DML_EXECUTION_FLAG_NONE).Get(),
-            nullptr);
+  EXPECT_EQ(graph_builder.CreateOutputEdge(output), 0u);
+  EXPECT_NE(graph_builder.Compile(DML_EXECUTION_FLAG_NONE).Get(), nullptr);
 }
 
 // Test building a DML graph with single operator conv2d which has multiple
@@ -109,8 +130,8 @@ TEST_F(WebNNGraphBuilderTest, BuildSingleOperatorConv2d) {
   NodeOutputInfo output =
       graph_builder.CreateNodeOutput(conv_node, output_tensor_desc);
 
-  EXPECT_NE(graph_builder.Compile({output}, DML_EXECUTION_FLAG_NONE).Get(),
-            nullptr);
+  EXPECT_EQ(graph_builder.CreateOutputEdge(output), 0u);
+  EXPECT_NE(graph_builder.Compile(DML_EXECUTION_FLAG_NONE).Get(), nullptr);
 }
 
 // Test building a DML graph with single operator split which has multiple
@@ -153,10 +174,10 @@ TEST_F(WebNNGraphBuilderTest, BuildSingleOperatorSplit) {
   NodeOutputInfo output2 =
       graph_builder.CreateNodeOutput(split_node, output_tensor_desc2, 2);
 
-  EXPECT_NE(graph_builder
-                .Compile({output0, output1, output2}, DML_EXECUTION_FLAG_NONE)
-                .Get(),
-            nullptr);
+  EXPECT_EQ(graph_builder.CreateOutputEdge(output0), 0u);
+  EXPECT_EQ(graph_builder.CreateOutputEdge(output1), 1u);
+  EXPECT_EQ(graph_builder.CreateOutputEdge(output2), 2u);
+  EXPECT_NE(graph_builder.Compile(DML_EXECUTION_FLAG_NONE).Get(), nullptr);
 }
 
 // Test building a DML graph with two operators: relu and conv2d.
@@ -166,7 +187,6 @@ TEST_F(WebNNGraphBuilderTest, BuildSingleOperatorSplit) {
 //        \   /
 //       conv2d
 TEST_F(WebNNGraphBuilderTest, BuildGraphWithReluAndConv2d) {
-  SKIP_TEST_IF(!is_compile_graph_supported_);
   GraphBuilder graph_builder(dml_device_);
 
   TensorDesc input_tensor_desc(DML_TENSOR_DATA_TYPE_FLOAT32, {1, 1, 3, 3});
@@ -221,8 +241,8 @@ TEST_F(WebNNGraphBuilderTest, BuildGraphWithReluAndConv2d) {
   NodeOutputInfo output =
       graph_builder.CreateNodeOutput(conv_node, output_tensor_desc);
 
-  EXPECT_NE(graph_builder.Compile({output}, DML_EXECUTION_FLAG_NONE).Get(),
-            nullptr);
+  EXPECT_EQ(graph_builder.CreateOutputEdge(output), 0u);
+  EXPECT_NE(graph_builder.Compile(DML_EXECUTION_FLAG_NONE).Get(), nullptr);
 }
 
 }  // namespace webnn::dml

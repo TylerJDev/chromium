@@ -98,6 +98,21 @@ git add <file> # for each file you want to stage
 git commit -v -m "Fix foo/bar"
 ```
 
+NOTE: due to a bug in gclient (crbug.com/1475448), it's possible that gclient
+left unmanaged git repository. You may need to manually remove those unmanaged
+repositories.
+
+```
+# Inside chromium/src checkout:
+# This ensures that all managed dependencies are in sync:
+gclient sync -D
+# This moves all unused dependencies to ../unused directory in gclient root
+# (just outside of src directory). It then tells git to restore gitlink.
+for f in $( git status | grep '(new commits)' | awk '{print $2}' ); do mkdir -p "../unused/`dirname $f`" && mv $f "../unused/$f" && git checkout -- $f; done
+# inspect ../unused/ if you'd like, and remove it there's nothing useful there,
+# e.g. no non-uploaded commits.
+```
+
 If a submodule has uncommitted changes (i.e. you made some manual changes to the
 affected submodule), running `git status` in its parent repo will show them as
 unstaged changes:
@@ -124,9 +139,89 @@ restore --staged <path to submodule>`.
 We will need to create either a commit that sets it back to old value, or amend
 the commit that added it. You can try to run `gclient sync` to bring the commit
 back to what is expected. If that doesn't work, you can use `gclient setdep -r
-<path>@{old hash}`, run `gclient gitmodules` to sync all submodules commits back
+<path>@<old hash>`, run `gclient gitmodules` to sync all submodules commits back
 to what is in DEPS, or check detailed instructions in [Managing
 dependencies](dependencies.md).
+
+NOTE: setdep for chromium/src is always prefixed with src/. For example, if you
+are updating v8, the command would be `gclient setdep -r src/v8@<hash>.
+
+## Workflows with submodules
+
+### Submodules during 'git status' and 'git commit'
+Submodules that show up under `Changes not staged for commit` when you run
+`git status` can be hidden with `git -c diff.ignoreSubmodules=all status`
+
+You can also `git commit -a` your changes while excluding all submodules with
+`git -c diff.ignoreSubmodules=all commit -a`.
+
+To make these commands shorter, you can create git aliases for them by adding
+the following to your src/.git/commit file:
+```
+[alias]
+        # 's', 'c', or whatever alias you want for each command
+        s = -c diff.ignoreSubmodules=all status
+        c = -c diff.ignoreSubmodules=all commit -a
+        d = -c diff.ignoreSubmodules=all difftool --dir-diff
+```
+With the above, you can execute these commands by running `git s` and `git c`
+
+NOTE: `diff.ignoreSubmodules` is not supported with `git add`. If you are hiding
+subodules from your view with something like `git s`, running
+`git add .|--all|-A` will still stage any submodules you do not see for commit.
+Then running `git c` will still include these submodules in your commit.
+
+We recommend you use the pre-commit git hook detailed below.
+
+### Submodules during a 'git rebase-update'
+While resolving merge conflicts during a `git rebase-update` you may see
+submodules show up in unexpected places.
+
+#### Submodules under "Changes not staged for commit"
+Submodules under this section can be safely ignored. This simply shows that the
+local commits of these submodules do not match the latest pinned commits fetched
+from remote. In other words, these submodules have been rolled since your last
+`git rebase-update`.
+
+If you use a diff tool like meld you can run:
+`git -c diff.ignoreSubmodules=all difftool --dir-diff`
+to prevent these submodules from showing up in your diff tool.
+
+#### Submodules under "Unmerged paths"
+If Submodules show up under this section it means that new revisions were
+committed for those submodules (either intentional or unintentionally) and these
+submodules were also rolled at remote. So now there is a conflict.
+
+If you DID NOT intentionally make any submdoules changes, you should run:
+`gclient gitmodules`. This will update the submdoules for you, to match whatever
+commits are listed in DEPS (which you have just pulled from remote).
+
+If you DID intentionally roll submodules, you can resolve this conflict just by
+resetting it:
+`gclient setdep -r {path}@{hash}`
+
+## BETA: Install a hook to help detect unintentional submodule commits
+
+depot_tools provides an opt-in pre-commit hook to detect unintentional submodule
+ changes during `git commit` and remove them from the commit.
+
+To install the hook: `gclient installhooks`
+
+If there is an existing pre-commit hook, gclient will instruct you how to update
+it. If you have already installed this hook, gclient will do nothing.
+
+To uninstall the hook, in `chromium/src` `rm .git/hooks/pre-commit` if you have
+no other hooks. Otherwise update `.git/hooks/pre-commit` to remove the gclient
+provided hook.
+
+To bypass this hook run `git commit --no-verify` (which bypasses all hooks you
+ may have) OR set the following environment variable: `SKIP_GITLINK_PRECOMMIT=1`
+(which bypasses this specific hook).
+
+Note that this is currently and best effort solution and does not guarantee
+that unintentional commits will always be detected. The team will iterate
+quickly on this hook to fill in other gaps and behavior is subject to change.
+Please file an [issue](https://bugs.chromium.org/p/chromium/issues/entry?components=Infra%3ESDK&labels=submodules-feedback&cc=sokcevic@chromium.org,jojwang@chromium.org&description=Please%20steps%20to%20reproduce%20the%20problem:%0A%0ADo%20you%20have%20any%20custom%20environment%20setups%20like%20git%20hooks%20or%20git%20configs%20that%20you%20have%20set%20yourself%0A%0APlease%20attach%20output%20of:%0Agit%20config%20-l%0Agit%20map-branches%20-vv%0A%0AIf%20this%20is%20an%20issue%20with%20git%20cl%20upload%20please%20include%20the%20git%20trace%20file%20for%20the%20problematic%20run%20found%20in:%0A%3Cdepot_tools_path%3E/traces/%3Clatest%20trace%3E) for any feedback.
 
 ## FAQ
 
@@ -137,7 +232,38 @@ massive switch, it's easier to transition to Git submodules this way. Moreover,
 unwanted Git submodule updates can be detected and developers can be warned.
 
 ### How do I manually roll Git submodule?
+
 See the [dependencies](dependencies.md) page.
+
+### I got a conflict on a submodule, how do I resolve it?
+
+First, you will need to determine what is the right commit hash. If you
+accidentally committed a gitlink, which got in the meantime updated, you most
+likely want to restore the original updated gitlink. You can run `gclient
+gitmodules`, which will take care of all unmerged submodule paths, and set it to
+match DEPS file.
+
+If you prefer to manually resolve it, under git status, you will see "Unmerged
+paths". If those are submodules, you want to restore them by running the
+following command:
+
+```
+git restore --staging <affected path>
+```
+
+### How do I see what revision is pinned?
+
+`gclient getdep` will return whatever commit is pinned for the deps in `DEPS`
+(unstaged, staged, or committed). If the repo is using git submodules only
+(and has no git deps in `DEPS`) it will return the whatever pinned commit is
+staged or committed.
+
+```
+gclient getdep -r <path>
+```
+
+
+If you want to keep your gitlink, then run `git add <affected path>`.
 
 ### How can I provide feedback?
 

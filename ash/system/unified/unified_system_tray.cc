@@ -160,9 +160,7 @@ bool UnifiedSystemTray::UiDelegate::ShowPopups() {
   return true;
 }
 
-void UnifiedSystemTray::UiDelegate::HidePopups() {
-  message_popup_collection_->SetBaselineOffset(0);
-}
+void UnifiedSystemTray::UiDelegate::HidePopups() {}
 
 bool UnifiedSystemTray::UiDelegate::ShowMessageCenter() {
   if (owner_->IsBubbleShown()) {
@@ -190,8 +188,8 @@ UnifiedSystemTray::UnifiedSystemTray(Shelf* shelf)
               ? nullptr
               : std::make_unique<NotificationIconsController>(shelf,
                                                               model_.get())) {
-  SetPressedCallback(base::BindRepeating(&UnifiedSystemTray::OnButtonPressed,
-                                         base::Unretained(this)));
+  SetCallback(base::BindRepeating(&UnifiedSystemTray::OnButtonPressed,
+                                  base::Unretained(this)));
 
   if (features::IsUserEducationEnabled()) {
     // NOTE: Set `kHelpBubbleContextKey` before `views::kElementIdentifierKey`
@@ -502,6 +500,10 @@ views::Widget* UnifiedSystemTray::GetBubbleWidget() const {
   return bubble_ ? bubble_->GetBubbleWidget() : nullptr;
 }
 
+TrayBubbleView* UnifiedSystemTray::GetBubbleView() {
+  return bubble_ ? bubble_->GetBubbleView() : nullptr;
+}
+
 const char* UnifiedSystemTray::GetClassName() const {
   return "UnifiedSystemTray";
 }
@@ -687,14 +689,21 @@ std::u16string UnifiedSystemTray::GetAccessibleNameForTray() {
                        ? channel_indicator_view_->GetAccessibleNameString()
                        : base::EmptyString16());
 
-  status.push_back(network_tray_view_->GetVisible()
-                       ? network_tray_view_->GetAccessibleNameString()
-                       : base::EmptyString16());
-
-  if (hotspot_tray_view_) {
-    status.push_back(hotspot_tray_view_->GetVisible()
-                         ? hotspot_tray_view_->GetAccessibleNameString()
-                         : base::EmptyString16());
+  std::u16string network_string, hotspot_string;
+  if (network_tray_view_->GetVisible()) {
+    network_string = network_tray_view_->GetAccessibleNameString();
+  }
+  if (hotspot_tray_view_ && hotspot_tray_view_->GetVisible()) {
+    hotspot_string = hotspot_tray_view_->GetAccessibleNameString();
+  }
+  if (!network_string.empty() && !hotspot_string.empty()) {
+    status.push_back(l10n_util::GetStringFUTF16(
+        IDS_ASH_STATUS_TRAY_NETWORK_ACCESSIBLE_DESCRIPTION,
+        {hotspot_string, network_string}, /*offsets=*/nullptr));
+  } else if (!hotspot_string.empty()) {
+    status.push_back(hotspot_string);
+  } else {
+    status.push_back(network_string);
   }
 
   // For privacy string, we use either `privacy_indicators_view_` or the combo

@@ -11,6 +11,7 @@
 #include "ash/public/cpp/system/toast_data.h"
 #include "ash/public/cpp/system/toast_manager.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/aura/client/aura_constants.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 
@@ -34,12 +35,13 @@ class FakeToastManager : public ash::ToastManager {
       const std::string& id) override {
     return false;
   }
-  bool IsRunning(const std::string& id) const override { return false; }
+  bool IsRunning(std::string_view id) const override { return false; }
   std::unique_ptr<ash::ScopedToastPause> CreateScopedPause() override {
     return nullptr;
   }
   void Pause() override {}
   void Resume() override {}
+  bool IsHighlighted(std::string_view id) const override { return false; }
 
   void ResetState() {
     called_show_ = false;
@@ -79,6 +81,10 @@ class ResizeUtilTest : public CompatModeTestBase {
 TEST_F(ResizeUtilTest, TestResizeLockToPhone) {
   widget()->Maximize();
 
+  // Fake a restore state to make sure resizing always results in normal state.
+  widget()->GetNativeWindow()->SetProperty(aura::client::kRestoreShowStateKey,
+                                           ui::SHOW_STATE_MAXIMIZED);
+
   // Test the widget is resized.
   pref_delegate()->SetResizeLockNeedsConfirmation(kTestAppId, false);
   EXPECT_TRUE(widget()->IsMaximized());
@@ -94,6 +100,10 @@ TEST_F(ResizeUtilTest, TestResizeLockToPhone) {
 // needs-conirmation case.
 TEST_F(ResizeUtilTest, TestResizeLockToTablet) {
   widget()->Maximize();
+
+  // Fake a restore state to make sure resizing always results in normal state.
+  widget()->GetNativeWindow()->SetProperty(aura::client::kRestoreShowStateKey,
+                                           ui::SHOW_STATE_MAXIMIZED);
 
   // Test the widget is resized.
   pref_delegate()->SetResizeLockNeedsConfirmation(kTestAppId, false);

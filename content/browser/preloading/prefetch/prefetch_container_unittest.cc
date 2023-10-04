@@ -9,7 +9,6 @@
 #include "content/browser/preloading/prefetch/prefetch_document_manager.h"
 #include "content/browser/preloading/prefetch/prefetch_probe_result.h"
 #include "content/browser/preloading/prefetch/prefetch_status.h"
-#include "content/browser/preloading/prefetch/prefetch_streaming_url_loader.h"
 #include "content/browser/preloading/prefetch/prefetch_test_utils.h"
 #include "content/browser/preloading/prefetch/prefetch_type.h"
 #include "content/public/browser/browser_context.h"
@@ -78,7 +77,7 @@ class PrefetchContainerTest : public RenderViewHostTestHarness {
     run_loop.Run();
 
     // This will run until the cookie listener is updated.
-    base::RunLoop().RunUntilIdle();
+    task_environment()->RunUntilIdle();
 
     return result;
   }
@@ -94,6 +93,21 @@ class PrefetchContainerTest : public RenderViewHostTestHarness {
  private:
   mojo::Remote<network::mojom::CookieManager> cookie_manager_;
 };
+
+namespace {
+
+// Add a redirect hop with dummy redirect info that should be good enough in
+// most cases.
+void AddRedirectHop(PrefetchContainer& container, const GURL& url) {
+  net::RedirectInfo redirect_info;
+  redirect_info.status_code = 302;
+  redirect_info.new_method = "GET";
+  redirect_info.new_url = url;
+  redirect_info.new_site_for_cookies = net::SiteForCookies::FromUrl(url);
+  container.AddRedirectHop(redirect_info);
+}
+
+}  // namespace
 
 TEST_F(PrefetchContainerTest, CreatePrefetchContainer) {
   PrefetchContainer prefetch_container(
@@ -170,8 +184,10 @@ TEST_F(PrefetchContainerTest, Servable) {
 
   task_environment()->FastForwardBy(base::Minutes(2));
 
-  EXPECT_FALSE(prefetch_container.IsPrefetchServable(base::Minutes(1)));
-  EXPECT_TRUE(prefetch_container.IsPrefetchServable(base::Minutes(3)));
+  EXPECT_NE(prefetch_container.GetServableState(base::Minutes(1)),
+            PrefetchContainer::ServableState::kServable);
+  EXPECT_EQ(prefetch_container.GetServableState(base::Minutes(3)),
+            PrefetchContainer::ServableState::kServable);
   EXPECT_TRUE(prefetch_container.GetHead());
 }
 
@@ -188,12 +204,13 @@ TEST_F(PrefetchContainerTest, CookieListener) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       /*prefetch_document_manager=*/nullptr);
+  prefetch_container.MakeResourceRequest({});
   prefetch_container.RegisterCookieListener(cookie_manager());
 
   // Add redirect hops, and register its own cookie listener for each hop.
-  prefetch_container.AddRedirectHop(kTestUrl2);
+  AddRedirectHop(prefetch_container, kTestUrl2);
   prefetch_container.RegisterCookieListener(cookie_manager());
-  prefetch_container.AddRedirectHop(kTestUrl3);
+  AddRedirectHop(prefetch_container, kTestUrl3);
   prefetch_container.RegisterCookieListener(cookie_manager());
 
   // Check the cookies for `kTestUrl1`, `kTestUrl2` and `kTestUrl3`,
@@ -325,12 +342,13 @@ TEST_F(PrefetchContainerTest, CookieCopyWithRedirects) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       /*prefetch_document_manager=*/nullptr);
+  prefetch_container.MakeResourceRequest({});
   prefetch_container.RegisterCookieListener(cookie_manager());
 
-  prefetch_container.AddRedirectHop(kRedirectUrl1);
+  AddRedirectHop(prefetch_container, kRedirectUrl1);
   prefetch_container.RegisterCookieListener(cookie_manager());
 
-  prefetch_container.AddRedirectHop(kRedirectUrl2);
+  AddRedirectHop(prefetch_container, kRedirectUrl2);
   prefetch_container.RegisterCookieListener(cookie_manager());
 
   auto reader = prefetch_container.CreateReader();
@@ -648,6 +666,7 @@ TEST_F(PrefetchContainerTest, EligibilityCheck) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       prefetch_document_manager->GetWeakPtr());
+  prefetch_container.MakeResourceRequest({});
 
   // Mark initial prefetch as eligible
   prefetch_container.OnEligibilityCheckComplete(true, absl::nullopt);
@@ -657,7 +676,7 @@ TEST_F(PrefetchContainerTest, EligibilityCheck) {
             1);
 
   // Add a redirect, register a callback for it, and then mark it as eligible.
-  prefetch_container.AddRedirectHop(kTestUrl2);
+  AddRedirectHop(prefetch_container, kTestUrl2);
   prefetch_container.OnEligibilityCheckComplete(true, absl::nullopt);
 
   // Referring page metrics is only incremented for the original prefetch URL
@@ -685,6 +704,7 @@ TEST_F(PrefetchContainerTest, IneligibleRedirect) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       prefetch_document_manager->GetWeakPtr());
+  prefetch_container.MakeResourceRequest({});
 
   // Mark initial prefetch as eligible
   prefetch_container.OnEligibilityCheckComplete(true, absl::nullopt);
@@ -694,7 +714,7 @@ TEST_F(PrefetchContainerTest, IneligibleRedirect) {
             1);
 
   // Add a redirect, register a callback for it, and then mark it as ineligible.
-  prefetch_container.AddRedirectHop(kTestUrl2);
+  AddRedirectHop(prefetch_container, kTestUrl2);
   prefetch_container.OnEligibilityCheckComplete(
       false, PrefetchStatus::kPrefetchNotEligibleUserHasCookies);
 
@@ -789,9 +809,10 @@ TEST_F(PrefetchContainerTest, RecordRedirectChainSize) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       /*prefetch_document_manager=*/nullptr);
+  prefetch_container.MakeResourceRequest({});
 
-  prefetch_container.AddRedirectHop(GURL("https://redirect1.com"));
-  prefetch_container.AddRedirectHop(GURL("https://redirect2.com"));
+  AddRedirectHop(prefetch_container, GURL("https://redirect1.com"));
+  AddRedirectHop(prefetch_container, GURL("https://redirect2.com"));
   prefetch_container.OnPrefetchComplete();
 
   histogram_tester.ExpectUniqueSample(
@@ -810,32 +831,33 @@ TEST_F(PrefetchContainerTest, IsIsolatedNetworkRequired) {
       referrer, /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       /*prefetch_document_manager=*/nullptr);
+  prefetch_container.MakeResourceRequest({});
 
   EXPECT_FALSE(
       prefetch_container.IsIsolatedNetworkContextRequiredForCurrentPrefetch());
 
-  prefetch_container.AddRedirectHop(GURL("https://test.com/redirect"));
-
-  EXPECT_FALSE(
-      prefetch_container.IsIsolatedNetworkContextRequiredForCurrentPrefetch());
-  EXPECT_FALSE(prefetch_container
-                   .IsIsolatedNetworkContextRequiredForPreviousRedirectHop());
-
-  prefetch_container.AddRedirectHop(GURL("https://m.test.com/redirect"));
+  AddRedirectHop(prefetch_container, GURL("https://test.com/redirect"));
 
   EXPECT_FALSE(
       prefetch_container.IsIsolatedNetworkContextRequiredForCurrentPrefetch());
   EXPECT_FALSE(prefetch_container
                    .IsIsolatedNetworkContextRequiredForPreviousRedirectHop());
 
-  prefetch_container.AddRedirectHop(GURL("https://other.com/redirect1"));
+  AddRedirectHop(prefetch_container, GURL("https://m.test.com/redirect"));
+
+  EXPECT_FALSE(
+      prefetch_container.IsIsolatedNetworkContextRequiredForCurrentPrefetch());
+  EXPECT_FALSE(prefetch_container
+                   .IsIsolatedNetworkContextRequiredForPreviousRedirectHop());
+
+  AddRedirectHop(prefetch_container, GURL("https://other.com/redirect1"));
 
   EXPECT_TRUE(
       prefetch_container.IsIsolatedNetworkContextRequiredForCurrentPrefetch());
   EXPECT_FALSE(prefetch_container
                    .IsIsolatedNetworkContextRequiredForPreviousRedirectHop());
 
-  prefetch_container.AddRedirectHop(GURL("https://other.com/redirect2"));
+  AddRedirectHop(prefetch_container, GURL("https://other.com/redirect2"));
 
   EXPECT_TRUE(
       prefetch_container.IsIsolatedNetworkContextRequiredForCurrentPrefetch());
@@ -857,52 +879,42 @@ TEST_F(PrefetchContainerTest, MultipleStreamingURLLoaders) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       /*prefetch_document_manager=*/nullptr);
+  prefetch_container->MakeResourceRequest({});
 
-  EXPECT_FALSE(prefetch_container->HasStreamingURLLoadersForTest());
-  EXPECT_EQ(prefetch_container->GetLastStreamingURLLoader(), nullptr);
+  EXPECT_FALSE(prefetch_container->GetStreamingURLLoader());
 
-  EXPECT_FALSE(prefetch_container->IsPrefetchServable(base::TimeDelta::Max()));
+  EXPECT_NE(prefetch_container->GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
   EXPECT_FALSE(prefetch_container->GetHead());
 
-  auto streaming_loaders =
-      MakeServableStreamingURLLoadersWithNetworkTransitionRedirectForTest(
-          prefetch_container.get(), kTestUrl1, kTestUrl2);
-  ASSERT_EQ(streaming_loaders.size(), 2U);
-  EXPECT_EQ(prefetch_container->GetLastStreamingURLLoader(),
-            streaming_loaders[1].get());
-  EXPECT_TRUE(prefetch_container->IsPrefetchServable(base::TimeDelta::Max()));
+  MakeServableStreamingURLLoadersWithNetworkTransitionRedirectForTest(
+      prefetch_container.get(), kTestUrl1, kTestUrl2);
+  EXPECT_EQ(prefetch_container->GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
   EXPECT_TRUE(prefetch_container->GetHead());
+
+  // As the prefetch is already completed, the streaming loader is deleted
+  // asynchronously.
+  EXPECT_TRUE(
+      prefetch_container->IsStreamingURLLoaderDeletionScheduledForTesting());
+  task_environment()->RunUntilIdle();
+  EXPECT_FALSE(prefetch_container->GetStreamingURLLoader());
 
   PrefetchContainer::Reader reader = prefetch_container->CreateReader();
 
   base::WeakPtr<PrefetchResponseReader> weak_first_response_reader =
       reader.GetCurrentResponseReaderToServeForTesting();
-  PrefetchResponseReader::RequestHandler first_request_handler =
-      reader.CreateRequestHandler();
-
-  EXPECT_EQ(prefetch_container->GetLastStreamingURLLoader(),
-            streaming_loaders[1].get());
-
-  EXPECT_TRUE(streaming_loaders[0]);
-  // `PrefetchStreamingURLLoader` is deleted asynchronously, because
-  // `RequestHandler` doesn't keep it alive.
-  base::RunLoop().RunUntilIdle();
-  EXPECT_FALSE(streaming_loaders[0]);
+  PrefetchRequestHandler first_request_handler = reader.CreateRequestHandler();
 
   base::WeakPtr<PrefetchResponseReader> weak_second_response_reader =
       reader.GetCurrentResponseReaderToServeForTesting();
-  PrefetchResponseReader::RequestHandler second_request_handler =
-      reader.CreateRequestHandler();
+  PrefetchRequestHandler second_request_handler = reader.CreateRequestHandler();
 
-  EXPECT_FALSE(prefetch_container->HasStreamingURLLoadersForTest());
-  EXPECT_EQ(prefetch_container->GetLastStreamingURLLoader(), nullptr);
-
-  EXPECT_FALSE(prefetch_container->IsPrefetchServable(base::TimeDelta::Max()));
+  // `CreateRequestHandler()` itself doesn't make the PrefetchContainer
+  // non-servable.
+  EXPECT_EQ(prefetch_container->GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
   EXPECT_TRUE(prefetch_container->GetHead());
-
-  EXPECT_TRUE(streaming_loaders[1]);
-  base::RunLoop().RunUntilIdle();
-  EXPECT_FALSE(streaming_loaders[1]);
 
   std::unique_ptr<PrefetchTestURLLoaderClient> first_serving_url_loader_client =
       std::make_unique<PrefetchTestURLLoaderClient>();
@@ -929,7 +941,7 @@ TEST_F(PrefetchContainerTest, MultipleStreamingURLLoaders) {
 
   prefetch_container.reset();
 
-  base::RunLoop().RunUntilIdle();
+  task_environment()->RunUntilIdle();
 
   EXPECT_EQ(first_serving_url_loader_client->received_redirects().size(), 1u);
 
@@ -942,13 +954,13 @@ TEST_F(PrefetchContainerTest, MultipleStreamingURLLoaders) {
 
   first_serving_url_loader_client->DisconnectMojoPipes();
   second_serving_url_loader_client->DisconnectMojoPipes();
-  base::RunLoop().RunUntilIdle();
+  task_environment()->RunUntilIdle();
 
   EXPECT_FALSE(weak_first_response_reader);
   EXPECT_FALSE(weak_second_response_reader);
 }
 
-TEST_F(PrefetchContainerTest, ReleaseAllStreamingURLLoaders) {
+TEST_F(PrefetchContainerTest, CancelAndClearStreamingLoader) {
   const GURL kTestUrl1 = GURL("https://test1.com");
   const GURL kTestUrl2 = GURL("https://test2.com");
 
@@ -962,29 +974,42 @@ TEST_F(PrefetchContainerTest, ReleaseAllStreamingURLLoaders) {
       /*no_vary_search_expected=*/absl::nullopt,
       blink::mojom::SpeculationInjectionWorld::kNone,
       /*prefetch_document_manager=*/nullptr);
+  prefetch_container.MakeResourceRequest({});
 
-  EXPECT_FALSE(prefetch_container.HasStreamingURLLoadersForTest());
-  EXPECT_EQ(prefetch_container.GetLastStreamingURLLoader(), nullptr);
+  auto pending_request =
+      MakeManuallyServableStreamingURLLoaderForTest(&prefetch_container);
 
-  auto streaming_loaders =
-      MakeServableStreamingURLLoadersWithNetworkTransitionRedirectForTest(
-          &prefetch_container, kTestUrl1, kTestUrl2);
-  ASSERT_EQ(streaming_loaders.size(), 2U);
-  EXPECT_EQ(prefetch_container.GetLastStreamingURLLoader(),
-            streaming_loaders[1].get());
+  mojo::ScopedDataPipeConsumerHandle consumer_handle;
+  mojo::ScopedDataPipeProducerHandle producer_handle;
+  CHECK_EQ(mojo::CreateDataPipe(1024, producer_handle, consumer_handle),
+           MOJO_RESULT_OK);
+  pending_request.client->OnReceiveResponse(
+      network::mojom::URLResponseHead::New(), std::move(consumer_handle),
+      absl::nullopt);
+  task_environment()->RunUntilIdle();
 
-  prefetch_container.ResetAllStreamingURLLoaders();
+  // Prefetching is ongoing.
+  ASSERT_TRUE(prefetch_container.GetStreamingURLLoader());
+  base::WeakPtr<PrefetchStreamingURLLoader> streaming_loader =
+      prefetch_container.GetStreamingURLLoader();
+  EXPECT_EQ(prefetch_container.GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
 
-  EXPECT_FALSE(prefetch_container.HasStreamingURLLoadersForTest());
-  EXPECT_EQ(prefetch_container.GetLastStreamingURLLoader(), nullptr);
+  prefetch_container.CancelStreamingURLLoaderIfNotServing();
 
-  EXPECT_TRUE(streaming_loaders[0]);
-  EXPECT_TRUE(streaming_loaders[1]);
-  // The streaming loaders are released from |prefetch_container|, but are made
-  // self owned and scheduled to delete themselves.
-  base::RunLoop().RunUntilIdle();
-  EXPECT_FALSE(streaming_loaders[0]);
-  EXPECT_FALSE(streaming_loaders[1]);
+  // `streaming_loader` is still alive and working.
+  EXPECT_FALSE(prefetch_container.GetStreamingURLLoader());
+  EXPECT_TRUE(streaming_loader);
+  EXPECT_EQ(prefetch_container.GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
+
+  task_environment()->RunUntilIdle();
+
+  // `streaming_loader` is deleted asynchronously and its prefetching URL loader
+  // is canceled. This itself doesn't make PrefetchContainer non-servable.
+  EXPECT_FALSE(streaming_loader);
+  EXPECT_EQ(prefetch_container.GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
 }
 
 // To test lifetime and ownership issues, all possible event orderings for
@@ -996,7 +1021,7 @@ enum class Event {
   // Call CreateRequestHandler().
   kCreateRequestHandler,
 
-  // Call the RequestHandler returned by CreateRequestHandler().
+  // Call the PrefetchRequestHandler returned by CreateRequestHandler().
   kRequestHandler,
 
   // Disconnect `serving_url_loader_client`.
@@ -1009,7 +1034,32 @@ enum class Event {
   kDestructPrefetchContainer,
 };
 
+std::ostream& operator<<(std::ostream& ostream, Event event) {
+  switch (event) {
+    case Event::kPrefetchOnComplete:
+      return ostream << "kPrefetchOnComplete";
+    case Event::kCreateRequestHandler:
+      return ostream << "kCreateRequestHandler";
+    case Event::kRequestHandler:
+      return ostream << "kRequestHandler";
+    case Event::kDisconnectServingClient:
+      return ostream << "kDisconnectServingClient";
+    case Event::kCompleteBody:
+      return ostream << "kCompleteBody";
+    case Event::kDestructPrefetchContainer:
+      return ostream << "kDestructPrefetchContainer";
+  }
+}
+
 enum class BodySize { kSmall, kLarge };
+std::ostream& operator<<(std::ostream& ostream, BodySize body_size) {
+  switch (body_size) {
+    case BodySize::kSmall:
+      return ostream << "Small";
+    case BodySize::kLarge:
+      return ostream << "Large";
+  }
+}
 
 // To detect corner cases around lifetime and ownership, test all possible
 // permutations of the order of events.
@@ -1064,32 +1114,34 @@ TEST_P(PrefetchContainerLifetimeTest, Lifetime) {
                             [](std::unique_ptr<mojo::DataPipeProducer> producer,
                                bool* producer_completed, MojoResult result) {
                               *producer_completed = true;
-                              DCHECK_EQ(result, MOJO_RESULT_OK);
+                              CHECK_EQ(result, MOJO_RESULT_OK);
                               // `producer` is deleted here.
                             },
                             std::move(producer), &producer_completed));
   }
 
-  EXPECT_FALSE(prefetch_container->IsPrefetchServable(base::TimeDelta::Max()));
+  EXPECT_NE(prefetch_container->GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
   EXPECT_FALSE(prefetch_container->GetHead());
 
   pending_request.client->OnReceiveResponse(
       network::mojom::URLResponseHead::New(), std::move(consumer_handle),
       absl::nullopt);
-  base::RunLoop().RunUntilIdle();
+  task_environment()->RunUntilIdle();
 
-  EXPECT_TRUE(prefetch_container->IsPrefetchServable(base::TimeDelta::Max()));
+  EXPECT_EQ(prefetch_container->GetServableState(base::TimeDelta::Max()),
+            PrefetchContainer::ServableState::kServable);
   EXPECT_TRUE(prefetch_container->GetHead());
 
   PrefetchContainer::Reader reader = prefetch_container->CreateReader();
 
   base::WeakPtr<PrefetchResponseReader> weak_response_reader =
       reader.GetCurrentResponseReaderToServeForTesting();
-  ASSERT_TRUE(prefetch_container->GetLastStreamingURLLoader());
+  ASSERT_TRUE(prefetch_container->GetStreamingURLLoader());
   base::WeakPtr<PrefetchStreamingURLLoader> weak_streaming_loader =
-      prefetch_container->GetLastStreamingURLLoader()->GetWeakPtr();
+      prefetch_container->GetStreamingURLLoader();
 
-  PrefetchResponseReader::RequestHandler request_handler;
+  PrefetchRequestHandler request_handler;
   std::unique_ptr<PrefetchTestURLLoaderClient> serving_url_loader_client;
 
   // `PrefetchStreamingURLLoader` and `PrefetchResponseReader` are initially
@@ -1110,7 +1162,7 @@ TEST_P(PrefetchContainerLifetimeTest, Lifetime) {
         request_handler = reader.CreateRequestHandler();
         break;
 
-      // Call the RequestHandler returned by CreateRequestHandler().
+      // Call the PrefetchRequestHandler returned by CreateRequestHandler().
       case Event::kRequestHandler: {
         ASSERT_TRUE(request_handler);  // NOLINT(bugprone-use-after-move)
         ASSERT_FALSE(serving_url_loader_client);
@@ -1148,11 +1200,8 @@ TEST_P(PrefetchContainerLifetimeTest, Lifetime) {
         // Wait until the URLLoaderClient completion.
         // `base::RunLoop().RunUntilIdle()` is not sufficient here, because
         // `mojo::DataPipeProducer` uses thread pool.
-        base::RunLoop loop;
-        serving_url_loader_client->SetOnDataCompleteCallback(
-            loop.QuitClosure());
         serving_url_loader_client->StartDraining();
-        loop.Run();
+        task_environment()->RunUntilIdle();
         EXPECT_TRUE(producer_completed);
         break;
       }
@@ -1164,7 +1213,7 @@ TEST_P(PrefetchContainerLifetimeTest, Lifetime) {
     }
     done.insert(event);
 
-    base::RunLoop().RunUntilIdle();
+    task_environment()->RunUntilIdle();
 
     // `PrefetchResponseReader` should be kept alive as long as
     // `PrefetchContainer` is alive or serving URLLoaderClients are not
@@ -1173,9 +1222,9 @@ TEST_P(PrefetchContainerLifetimeTest, Lifetime) {
               !done.count(Event::kDisconnectServingClient) ||
                   !done.count(Event::kDestructPrefetchContainer));
 
-    EXPECT_EQ(!!weak_streaming_loader,
-              !done.count(Event::kPrefetchOnComplete) ||
-                  !done.count(Event::kCreateRequestHandler));
+    // `PrefetchStreamingURLLoader` is kept alive until prefetching is
+    // completed.
+    EXPECT_EQ(!!weak_streaming_loader, !done.count(Event::kPrefetchOnComplete));
 
     if (done.count(Event::kRequestHandler)) {
       EXPECT_EQ(serving_url_loader_client->completion_status().has_value(),
@@ -1256,8 +1305,8 @@ std::vector<std::vector<Event>> ValidEventPermutations() {
                   Event::kDestructPrefetchContainer, Event::kPrefetchOnComplete,
                   Event::kCompleteBody, Event::kDisconnectServingClient}));
 
-  // - `PrefetchContainer` is destructed before RequestHandler is invoked and
-  // prefetch is completed:
+  // - `PrefetchContainer` is destructed before PrefetchRequestHandler is
+  // invoked and prefetch is completed:
   CHECK(base::Contains(
       params,
       std::vector<Event>{
@@ -1265,8 +1314,8 @@ std::vector<std::vector<Event>> ValidEventPermutations() {
           Event::kRequestHandler, Event::kPrefetchOnComplete,
           Event::kCompleteBody, Event::kDisconnectServingClient}));
 
-  // - `PrefetchContainer` is destructed before RequestHandler is invoked but
-  // after prefetch is completed:
+  // - `PrefetchContainer` is destructed before PrefetchRequestHandler is
+  // invoked but after prefetch is completed:
   CHECK(base::Contains(
       params, std::vector<Event>{
                   Event::kPrefetchOnComplete, Event::kCreateRequestHandler,

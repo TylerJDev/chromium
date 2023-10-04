@@ -74,6 +74,11 @@ const char kEnableDoNotTrack[] = "enable_do_not_track";
 // Number of times the First Follow UI has been shown.
 const char kFirstFollowUIShownCount[] = "follow.first_follow_ui_modal_count";
 
+// Number of times the First Follow UI has been shown with Follow UI Update
+// enabled.
+const char kFirstFollowUpdateUIShownCount[] =
+    "follow.first_follow_update_ui_modal_count";
+
 // A dictionary mapping push notification enabled features to their permission
 // to send notifications to the user.
 const char kFeaturePushNotificationPermissions[] =
@@ -175,6 +180,11 @@ const char kIosLatestMostVisitedSites[] = "ios.most_visited_sites";
 const char kIosMagicStackSegmentationMVTImpressionsSinceFreshness[] =
     "ios.magic_stack_segmentation.most_visited_sites_freshness";
 
+// Integer representing the number of impressions of the Parcel Tracking module
+// since a freshness signal.
+const char kIosMagicStackSegmentationParcelTrackingImpressionsSinceFreshness[] =
+    "ios.magic_stack_segmentation.parcel_tracking_freshness";
+
 // Integer representing the number of impressions of Shortcuts since a freshness
 // signal.
 const char kIosMagicStackSegmentationShortcutsImpressionsSinceFreshness[] =
@@ -184,6 +194,19 @@ const char kIosMagicStackSegmentationShortcutsImpressionsSinceFreshness[] =
 // freshness signal.
 const char kIosMagicStackSegmentationSafetyCheckImpressionsSinceFreshness[] =
     "ios.magic_stack_segmentation.safety_check_freshness";
+
+const char kIosMagicStackSegmentationTabResumptionImpressionsSinceFreshness[] =
+    "ios.magic_stack_segmentation.tab_resumption_freshness";
+
+// Boolean to represent if the parcel tracking opt-in prompt has been displayed
+// for the user.
+const char kIosParcelTrackingOptInPromptDisplayed[] =
+    "ios.parcel_tracking.opt_in_prompt_displayed";
+
+// Integer that maps to IOSParcelTrackingOptInStatus, the enum type of the
+// user's preference for automatically tracking parcels.
+const char kIosParcelTrackingOptInStatus[] =
+    "ios.parcel_tracking.opt_in_status";
 
 // The number of consecutive times the user dismissed the password bottom sheet.
 // This gets reset to 0 whenever the user selects a password from the bottom
@@ -235,14 +258,10 @@ const char kIosSafetyCheckManagerSafeBrowsingCheckResult[] =
 const char kIosSaveToPhotosDefaultGaiaId[] =
     "ios.save_to_photos.default_gaia_id";
 
-// Preference that hold a boolean indicating if the user has already dismissed
-// the sign-in promo in settings view.
-const char kIosSettingsPromoAlreadySeen[] = "ios.settings.promo_already_seen";
-
-// Integer to represent the number of time the sign-in promo has been displayed
-// in the settings view.
-const char kIosSettingsSigninPromoDisplayedCount[] =
-    "ios.settings.signin_promo_displayed_count";
+// Time preference containing the last run time of the Safety Check (via
+// Settings).
+const char kIosSettingsSafetyCheckLastRunTime[] =
+    "ios.settings.safety_check.last_run_time";
 
 // The count of how many times the user has shared the app.
 const char kIosShareChromeCount[] = "ios.share_chrome.count";
@@ -433,5 +452,10 @@ const char kAutofillBrandingKeyboardAccessoriesTapped[] =
 // A boolean used to determine if the Price Tracking UI has been shown.
 const char kPriceNotificationsHasBeenShown[] =
     "ios.price_notifications.has_been_shown";
+
+// A boolean used to determine if the user has entered the password sharing flow
+// from the first run experience screen.
+const char kPasswordSharingFlowHasBeenEntered[] =
+    "ios.password_sharing.flow_entered";
 
 }  // namespace prefs

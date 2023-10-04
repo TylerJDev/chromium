@@ -1155,6 +1155,9 @@ void FramebufferTextureMultiviewOVR(GLenum target,
 
 void MaxShaderCompilerThreadsKHR(GLuint count) override;
 
+void TexImage2DSharedImageCHROMIUM(GLuint texture,
+                                   const GLbyte* mailbox) override;
+
 GLuint CreateAndTexStorage2DSharedImageCHROMIUM(const GLbyte* mailbox) override;
 
 void BeginSharedImageAccessDirectCHROMIUM(GLuint texture, GLenum mode) override;
@@ -1166,7 +1169,11 @@ void ConvertRGBAToYUVAMailboxesINTERNAL(GLenum planes_yuv_color_space,
                                         GLenum subsampling,
                                         const GLbyte* mailboxes) override;
 
-void ConvertYUVAMailboxesToRGBINTERNAL(GLenum planes_yuv_color_space,
+void ConvertYUVAMailboxesToRGBINTERNAL(GLint src_x,
+                                       GLint src_y,
+                                       GLsizei width,
+                                       GLsizei height,
+                                       GLenum planes_yuv_color_space,
                                        GLenum plane_config,
                                        GLenum subsampling,
                                        const GLbyte* mailboxes) override;
@@ -1287,5 +1294,13 @@ void GetFramebufferPixelLocalStorageParameterfvANGLE(GLint plane,
 void GetFramebufferPixelLocalStorageParameterivANGLE(GLint plane,
                                                      GLenum pname,
                                                      GLint* params) override;
+
+void ClipControlEXT(GLenum origin, GLenum depth) override;
+
+void PolygonModeANGLE(GLenum face, GLenum mode) override;
+
+void PolygonOffsetClampEXT(GLfloat factor,
+                           GLfloat units,
+                           GLfloat clamp) override;
 
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_AUTOGEN_H_

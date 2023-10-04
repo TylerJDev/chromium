@@ -8,6 +8,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/strings/string_piece_forward.h"
 #include "chrome/browser/download/download_ui_model.h"
+#include "chrome/browser/ui/download/download_bubble_row_list_view_info.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/layout/flex_layout_view.h"
 
@@ -16,6 +17,10 @@ class DownloadBubbleNavigationHandler;
 class DownloadBubbleRowListView;
 class DownloadBubbleRowView;
 class DownloadBubbleUIController;
+
+namespace offline_items_collection {
+struct ContentId;
+}
 
 namespace views {
 class ScrollView;
@@ -35,8 +40,13 @@ class DownloadBubblePrimaryView : public views::FlexLayoutView {
   DownloadBubblePrimaryView& operator=(const DownloadBubblePrimaryView&) =
       delete;
 
+  // Gets the row view with the given id. Returns nullptr if not found.
+  DownloadBubbleRowView* GetRow(const offline_items_collection::ContentId& id);
+
   // Gets the row view at the given index.
   DownloadBubbleRowView* GetRowForTesting(size_t index);
+
+  views::ScrollView* scroll_view_for_testing() { return scroll_view_; }
 
  protected:
   // TODO(crbug.com/1344515): Add support for refreshing the scroll view
@@ -45,7 +55,7 @@ class DownloadBubblePrimaryView : public views::FlexLayoutView {
       base::WeakPtr<Browser> browser,
       base::WeakPtr<DownloadBubbleUIController> bubble_controller,
       base::WeakPtr<DownloadBubbleNavigationHandler> navigation_handler,
-      std::vector<DownloadUIModel::DownloadUIModelPtr> models,
+      const DownloadBubbleRowListViewInfo& info,
       int fixed_width);
 
   int DefaultPreferredWidth() const;

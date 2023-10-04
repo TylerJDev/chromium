@@ -29,11 +29,6 @@ AppServicePromiseAppItem::AppServicePromiseAppItem(
       package_id_(update.PackageId()) {
   InitializeItem(update);
 
-  SetPromisePackageId(update.PackageId().ToString());
-  SetAppStatus(
-      ShelfControllerHelper::ConvertPromiseStatusToAppStatus(update.Status()));
-  SetProgress(update.Progress().value_or(0));
-
   // Promise icons should not be synced as they are transient and only present
   // during app installations.
   SetIsEphemeral(true);
@@ -61,17 +56,15 @@ AppServicePromiseAppItem::~AppServicePromiseAppItem() = default;
 
 void AppServicePromiseAppItem::OnPromiseAppUpdate(
     const apps::PromiseAppUpdate& update) {
-  if (update.NameChanged() && update.Name().has_value()) {
-    SetName(update.Name().value());
-  }
-  if (update.ProgressChanged() && update.Progress().has_value()) {
-    SetProgress(update.Progress().value());
-  }
   // Each status has its own set of visual effects.
   if (update.StatusChanged()) {
     SetAppStatus(ShelfControllerHelper::ConvertPromiseStatusToAppStatus(
         update.Status()));
+    SetName(ShelfControllerHelper::GetLabelForPromiseStatus(update.Status()));
     LoadIcon();
+  }
+  if (update.ProgressChanged() && update.Progress().has_value()) {
+    SetProgress(update.Progress().value());
   }
 }
 
@@ -79,7 +72,7 @@ void AppServicePromiseAppItem::LoadIcon() {
   apps::AppServiceProxyFactory::GetForProfile(profile())->LoadPromiseIcon(
       package_id_,
       ash::SharedAppListConfig::instance().default_grid_icon_dimension(),
-      apps::GetPromiseIconEffectsForAppStatus(app_status()),
+      apps::IconEffects::kCrOsStandardMask,
       base::BindOnce(&AppServicePromiseAppItem::OnLoadIcon,
                      weak_ptr_factory_.GetWeakPtr()));
 }
@@ -95,12 +88,10 @@ void AppServicePromiseAppItem::OnLoadIcon(apps::IconValuePtr icon_value) {
 
 void AppServicePromiseAppItem::InitializeItem(
     const apps::PromiseAppUpdate& update) {
-  CHECK(update.Name().has_value());
   CHECK(update.ShouldShow());
-  SetName(update.Name().value());
-  if (update.Progress().has_value()) {
-    SetProgress(update.Progress().value());
-  }
+  SetPromisePackageId(update.PackageId().ToString());
+  SetName(ShelfControllerHelper::GetLabelForPromiseStatus(update.Status()));
+  SetProgress(update.Progress().value_or(0));
   SetAppStatus(
       ShelfControllerHelper::ConvertPromiseStatusToAppStatus(update.Status()));
 }

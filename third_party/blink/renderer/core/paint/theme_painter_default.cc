@@ -411,13 +411,12 @@ bool ThemePainterDefault::PaintSliderTrack(const Element& element,
                                            const gfx::Rect& rect,
                                            const ComputedStyle& style) {
   WebThemeEngine::SliderExtraParams slider;
-  slider.vertical =
-      (RuntimeEnabledFeatures::
-           FormControlsVerticalWritingModeSupportEnabled() &&
-       !IsHorizontalWritingMode(style.GetWritingMode())) ||
-      (!RuntimeEnabledFeatures::
-           RemoveNonStandardAppearanceValueSliderVerticalEnabled() &&
-       style.EffectiveAppearance() == kSliderVerticalPart);
+  slider.vertical = (RuntimeEnabledFeatures::
+                         FormControlsVerticalWritingModeSupportEnabled() &&
+                     !IsHorizontalWritingMode(style.GetWritingMode())) ||
+                    (RuntimeEnabledFeatures::
+                         NonStandardAppearanceValueSliderVerticalEnabled() &&
+                     style.EffectiveAppearance() == kSliderVerticalPart);
   slider.in_drag = false;
 
   PaintSliderTicks(layout_object, paint_info, rect);
@@ -439,11 +438,8 @@ bool ThemePainterDefault::PaintSliderTrack(const Element& element,
     LayoutBox* thumb = thumb_element ? thumb_element->GetLayoutBox() : nullptr;
     LayoutBox* input_box = input->GetLayoutBox();
     if (thumb) {
-      gfx::Rect thumb_rect =
-          RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()
-              ? ToPixelSnappedRect(
-                    PhysicalRect(thumb->PhysicalLocation(), thumb->Size()))
-              : ToPixelSnappedRect(thumb->FrameRect());
+      gfx::Rect thumb_rect = ToPixelSnappedRect(
+          PhysicalRect(thumb->PhysicalLocation(), thumb->Size()));
       slider.thumb_x = thumb_rect.x() + input_box->PaddingLeft().ToInt() +
                        input_box->BorderLeft().ToInt();
       slider.thumb_y = thumb_rect.y() + input_box->PaddingTop().ToInt() +
@@ -464,13 +460,12 @@ bool ThemePainterDefault::PaintSliderThumb(const Element& element,
                                            const PaintInfo& paint_info,
                                            const gfx::Rect& rect) {
   WebThemeEngine::SliderExtraParams slider;
-  slider.vertical =
-      (RuntimeEnabledFeatures::
-           FormControlsVerticalWritingModeSupportEnabled() &&
-       !IsHorizontalWritingMode(style.GetWritingMode())) ||
-      (!RuntimeEnabledFeatures::
-           RemoveNonStandardAppearanceValueSliderVerticalEnabled() &&
-       style.EffectiveAppearance() == kSliderThumbVerticalPart);
+  slider.vertical = (RuntimeEnabledFeatures::
+                         FormControlsVerticalWritingModeSupportEnabled() &&
+                     !IsHorizontalWritingMode(style.GetWritingMode())) ||
+                    (RuntimeEnabledFeatures::
+                         NonStandardAppearanceValueSliderVerticalEnabled() &&
+                     style.EffectiveAppearance() == kSliderThumbVerticalPart);
   slider.in_drag = element.IsActive();
   slider.zoom = style.EffectiveZoom();
 

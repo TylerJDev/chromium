@@ -13,8 +13,7 @@
 <div class="fragment-content">
   <settings-radio-group id="safeBrowsingRadioGroup"
       pref="{{prefs.generated.safe_browsing}}"
-      selectable-elements="settings-collapse-radio-button"
-      on-keydown="onRadioGroupKeyDown_">
+      selectable-elements="settings-collapse-radio-button">
     <settings-collapse-radio-button id="safeBrowsingRadioEnhanced"
         pref="[[prefs.generated.safe_browsing]]"
         name="[[safeBrowsingSettingEnum_.ENHANCED]]"
@@ -97,17 +96,17 @@
                 </privacy-guide-description-item>
                 <privacy-guide-description-item
                     role="listitem"
-                    icon="settings20:vpn-key-new"
+                    icon="settings20:gshield"
                     label="$i18n{safeBrowsingEnhancedWhenOnBulThree}">
                 </privacy-guide-description-item>
                 <privacy-guide-description-item
                     role="listitem"
-                    icon="settings20:gshield"
+                    icon="settings:language"
                     label="$i18n{safeBrowsingEnhancedWhenOnBulFour}">
                 </privacy-guide-description-item>
                 <privacy-guide-description-item
                     role="listitem"
-                    icon="settings:language"
+                    icon="settings20:vpn-key-new"
                     label="$i18n{safeBrowsingEnhancedWhenOnBulFive}">
                 </privacy-guide-description-item>
               </div>
@@ -129,7 +128,7 @@
                 </privacy-guide-description-item>
                 <privacy-guide-description-item
                     role="listitem"
-                    icon="settings20:speed"
+                    icon="settings:performance"
                     label="$i18n{safeBrowsingEnhancedThingsToConsiderBulThree}">
                 </privacy-guide-description-item>
               </div>
@@ -143,7 +142,8 @@
         name="[[safeBrowsingSettingEnum_.STANDARD]]"
         label="$i18n{safeBrowsingStandard}"
         sub-label="[[getSafeBrowsingStandardSubLabel_(
-                    enableFriendlierSafeBrowsingSettings_)]]"
+                    enableFriendlierSafeBrowsingSettings_,
+                    enableHashPrefixRealTimeLookups_)]]"
         expand-aria-label="$i18n{safeBrowsingStandardExpandA11yLabel}"
         on-click="onSafeBrowsingStandardClick_">
         <template is="dom-if" if="[[!enableFriendlierSafeBrowsingSettings_]]">
@@ -160,9 +160,11 @@
                     label="$i18n{privacyGuideSafeBrowsingCardStandardProtectionFeatureDescription1}">
                 </privacy-guide-description-item>
                 <privacy-guide-description-item
+                    id="standardProtectionFeatureDescription2"
                     role="listitem"
                     icon="settings20:googleg"
-                    label="$i18n{privacyGuideSafeBrowsingCardStandardProtectionFeatureDescription2}">
+                    label="[[getStandardProtectionFeatureDescription2_(
+                            enableHashPrefixRealTimeLookups_)]]">
                 </privacy-guide-description-item>
               </div>
             </div>
@@ -172,9 +174,11 @@
               </div>
               <div role="list">
                 <privacy-guide-description-item
+                    id="standardProtectionPrivacyDescription1"
                     role="listitem"
                     icon="settings20:data"
-                    label="$i18n{privacyGuideSafeBrowsingCardStandardProtectionPrivacyDescription1}">
+                    label="[[getStandardProtectionPrivacyDescription1_(
+                            enableHashPrefixRealTimeLookups_)]]">
                 </privacy-guide-description-item>
               </div>
             </div>

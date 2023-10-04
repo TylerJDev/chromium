@@ -152,7 +152,10 @@ class OmniboxSuggestionRowButton : public views::MdTextButton {
         color_provider->GetColor(GetOmniboxBackgroundColorId(theme_state_));
     SetBackground(CreateBackgroundFromPainter(
         views::Painter::CreateRoundRectWith1PxBorderPainter(
-            fill_color, stroke_color, GetCornerRadiusValue())));
+            fill_color, stroke_color, GetCornerRadiusValue(),
+            SkBlendMode::kSrcOver, /*antialias=*/true,
+            /*should_border_scale=*/
+            OmniboxFieldTrial::IsChromeRefreshActionChipShapeEnabled())));
   }
 
   void GetAccessibleNodeData(ui::AXNodeData* node_data) override {
@@ -187,8 +190,13 @@ OmniboxSuggestionButtonRowView::OmniboxSuggestionButtonRowView(
   int left_margin = OmniboxMatchCellView::GetTextIndent();
   // +4 for the focus bar width, which shifts the suggest text but isn't
   // included in `GetTextIndent()`.
-  if (OmniboxFieldTrial::IsCr23LayoutEnabled())
+  if (OmniboxFieldTrial::IsCr23LayoutEnabled()) {
     left_margin += 4;
+    // Do not apply left margin when action chips are inlined.
+    if (OmniboxFieldTrial::IsActionsUISimplificationEnabled()) {
+      left_margin = 0;
+    }
+  }
   int top_margin =
       OmniboxFieldTrial::IsChromeRefreshSuggestHoverFillShapeEnabled() ? 6 : 0;
   int bottom_margin =
@@ -196,11 +204,12 @@ OmniboxSuggestionButtonRowView::OmniboxSuggestionButtonRowView(
           ? 6
           : ChromeLayoutProvider::Get()->GetDistanceMetric(
                 DISTANCE_OMNIBOX_CELL_VERTICAL_PADDING);
+  const auto insets =
+      gfx::Insets::TLBR(top_margin, left_margin, bottom_margin, 0);
   SetLayoutManager(std::make_unique<views::FlexLayout>())
       ->SetCrossAxisAlignment(views::LayoutAlignment::kStart)
       .SetCollapseMargins(true)
-      .SetInteriorMargin(
-          gfx::Insets::TLBR(top_margin, left_margin, bottom_margin, 0))
+      .SetInteriorMargin(insets)
       .SetDefault(
           views::kMarginsKey,
           gfx::Insets::VH(0, ChromeLayoutProvider::Get()->GetDistanceMetric(

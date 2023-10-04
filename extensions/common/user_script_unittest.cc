@@ -200,15 +200,15 @@ TEST(ExtensionUserScriptTest, Pickle) {
   ASSERT_EQ(URLPattern::ParseResult::kSuccess, exclude2.Parse("https://*/*"));
 
   UserScript script1;
-  script1.js_scripts().push_back(std::make_unique<UserScript::File>(
+  script1.js_scripts().push_back(UserScript::Content::CreateFile(
       base::FilePath(FILE_PATH_LITERAL("c:\\foo\\")),
       base::FilePath(FILE_PATH_LITERAL("foo.user.js")),
       GURL("chrome-extension://abc/foo.user.js")));
-  script1.css_scripts().push_back(std::make_unique<UserScript::File>(
+  script1.css_scripts().push_back(UserScript::Content::CreateFile(
       base::FilePath(FILE_PATH_LITERAL("c:\\foo\\")),
       base::FilePath(FILE_PATH_LITERAL("foo.user.css")),
       GURL("chrome-extension://abc/foo.user.css")));
-  script1.css_scripts().push_back(std::make_unique<UserScript::File>(
+  script1.css_scripts().push_back(UserScript::Content::CreateFile(
       base::FilePath(FILE_PATH_LITERAL("c:\\foo\\")),
       base::FilePath(FILE_PATH_LITERAL("foo2.user.css")),
       GURL("chrome-extension://abc/foo2.user.css")));
@@ -255,6 +255,20 @@ TEST(ExtensionUserScriptTest, Pickle) {
 TEST(ExtensionUserScriptTest, Defaults) {
   UserScript script;
   ASSERT_EQ(mojom::RunLocation::kDocumentIdle, script.run_location());
+}
+
+// Verifies the correct source is returned for a script id with source prefix.
+TEST(ExtensionUserScriptTest, GetSourceForScriptID) {
+  std::string manifest_script_id = "_mc_manifest_script";
+  std::string content_script_id = "_dc_content_script";
+  std::string user_script_id = "_du_user_script";
+
+  EXPECT_EQ(UserScript::GetSourceForScriptID(manifest_script_id),
+            UserScript::Source::kStaticContentScript);
+  EXPECT_EQ(UserScript::GetSourceForScriptID(content_script_id),
+            UserScript::Source::kDynamicContentScript);
+  EXPECT_EQ(UserScript::GetSourceForScriptID(user_script_id),
+            UserScript::Source::kDynamicUserScript);
 }
 
 }  // namespace extensions

@@ -501,6 +501,93 @@ TEST_P(CordTest, StartsEndsWith) {
   ASSERT_TRUE(!empty.EndsWith("xyz"));
 }
 
+TEST_P(CordTest, Contains) {
+  auto flat_haystack = absl::Cord("this is a flat cord");
+  auto fragmented_haystack = absl::MakeFragmentedCord(
+      {"this", " ", "is", " ", "a", " ", "fragmented", " ", "cord"});
+
+  EXPECT_TRUE(flat_haystack.Contains(""));
+  EXPECT_TRUE(fragmented_haystack.Contains(""));
+  EXPECT_TRUE(flat_haystack.Contains(absl::Cord("")));
+  EXPECT_TRUE(fragmented_haystack.Contains(absl::Cord("")));
+  EXPECT_TRUE(absl::Cord("").Contains(""));
+  EXPECT_TRUE(absl::Cord("").Contains(absl::Cord("")));
+  EXPECT_FALSE(absl::Cord("").Contains(flat_haystack));
+  EXPECT_FALSE(absl::Cord("").Contains(fragmented_haystack));
+
+  EXPECT_FALSE(flat_haystack.Contains("z"));
+  EXPECT_FALSE(fragmented_haystack.Contains("z"));
+  EXPECT_FALSE(flat_haystack.Contains(absl::Cord("z")));
+  EXPECT_FALSE(fragmented_haystack.Contains(absl::Cord("z")));
+
+  EXPECT_FALSE(flat_haystack.Contains("is an"));
+  EXPECT_FALSE(fragmented_haystack.Contains("is an"));
+  EXPECT_FALSE(flat_haystack.Contains(absl::Cord("is an")));
+  EXPECT_FALSE(fragmented_haystack.Contains(absl::Cord("is an")));
+  EXPECT_FALSE(
+      flat_haystack.Contains(absl::MakeFragmentedCord({"is", " ", "an"})));
+  EXPECT_FALSE(fragmented_haystack.Contains(
+      absl::MakeFragmentedCord({"is", " ", "an"})));
+
+  EXPECT_TRUE(flat_haystack.Contains("is a"));
+  EXPECT_TRUE(fragmented_haystack.Contains("is a"));
+  EXPECT_TRUE(flat_haystack.Contains(absl::Cord("is a")));
+  EXPECT_TRUE(fragmented_haystack.Contains(absl::Cord("is a")));
+  EXPECT_TRUE(
+      flat_haystack.Contains(absl::MakeFragmentedCord({"is", " ", "a"})));
+  EXPECT_TRUE(
+      fragmented_haystack.Contains(absl::MakeFragmentedCord({"is", " ", "a"})));
+}
+
+TEST_P(CordTest, Find) {
+  auto flat_haystack = absl::Cord("this is a flat cord");
+  auto fragmented_haystack = absl::MakeFragmentedCord(
+      {"this", " ", "is", " ", "a", " ", "fragmented", " ", "cord"});
+  auto empty_haystack = absl::Cord("");
+
+  EXPECT_EQ(flat_haystack.Find(""), flat_haystack.char_begin());
+  EXPECT_EQ(fragmented_haystack.Find(""), fragmented_haystack.char_begin());
+  EXPECT_EQ(flat_haystack.Find(absl::Cord("")), flat_haystack.char_begin());
+  EXPECT_EQ(fragmented_haystack.Find(absl::Cord("")),
+            fragmented_haystack.char_begin());
+  EXPECT_EQ(empty_haystack.Find(""), empty_haystack.char_begin());
+  EXPECT_EQ(empty_haystack.Find(absl::Cord("")), empty_haystack.char_begin());
+  EXPECT_EQ(empty_haystack.Find(flat_haystack), empty_haystack.char_end());
+  EXPECT_EQ(empty_haystack.Find(fragmented_haystack),
+            empty_haystack.char_end());
+
+  EXPECT_EQ(flat_haystack.Find("z"), flat_haystack.char_end());
+  EXPECT_EQ(fragmented_haystack.Find("z"), fragmented_haystack.char_end());
+  EXPECT_EQ(flat_haystack.Find(absl::Cord("z")), flat_haystack.char_end());
+  EXPECT_EQ(fragmented_haystack.Find(absl::Cord("z")),
+            fragmented_haystack.char_end());
+
+  EXPECT_EQ(flat_haystack.Find("is an"), flat_haystack.char_end());
+  EXPECT_EQ(fragmented_haystack.Find("is an"), fragmented_haystack.char_end());
+  EXPECT_EQ(flat_haystack.Find(absl::Cord("is an")), flat_haystack.char_end());
+  EXPECT_EQ(fragmented_haystack.Find(absl::Cord("is an")),
+            fragmented_haystack.char_end());
+  EXPECT_EQ(flat_haystack.Find(absl::MakeFragmentedCord({"is", " ", "an"})),
+            flat_haystack.char_end());
+  EXPECT_EQ(
+      fragmented_haystack.Find(absl::MakeFragmentedCord({"is", " ", "an"})),
+      fragmented_haystack.char_end());
+
+  EXPECT_EQ(flat_haystack.Find("is a"),
+            std::next(flat_haystack.char_begin(), 5));
+  EXPECT_EQ(fragmented_haystack.Find("is a"),
+            std::next(fragmented_haystack.char_begin(), 5));
+  EXPECT_EQ(flat_haystack.Find(absl::Cord("is a")),
+            std::next(flat_haystack.char_begin(), 5));
+  EXPECT_EQ(fragmented_haystack.Find(absl::Cord("is a")),
+            std::next(fragmented_haystack.char_begin(), 5));
+  EXPECT_EQ(flat_haystack.Find(absl::MakeFragmentedCord({"is", " ", "a"})),
+            std::next(flat_haystack.char_begin(), 5));
+  EXPECT_EQ(
+      fragmented_haystack.Find(absl::MakeFragmentedCord({"is", " ", "a"})),
+      std::next(fragmented_haystack.char_begin(), 5));
+}
+
 TEST_P(CordTest, Subcord) {
   RandomEngine rng(GTEST_FLAG_GET(random_seed));
   const std::string s = RandomLowercaseString(&rng, 1024);
@@ -2023,8 +2110,6 @@ TEST_P(CordTest, DiabolicalGrowth) {
   // This test exercises a diabolical Append(<one char>) on a cord, making the
   // cord shared before each Append call resulting in a terribly fragmented
   // resulting cord.
-  // TODO(b/183983616): Apply some minimum compaction when copying a shared
-  // source cord into a mutable copy for updates in CordRepRing.
   RandomEngine rng(GTEST_FLAG_GET(random_seed));
   const std::string expected = RandomLowercaseString(&rng, 5000);
   absl::Cord cord;
@@ -3153,6 +3238,12 @@ TEST_P(CordTest, ChecksummedEmptyCord) {
   EXPECT_EQ(cc3.TryFlat(), "");
   EXPECT_EQ(absl::HashOf(c3), absl::HashOf(absl::Cord()));
   EXPECT_EQ(absl::HashOf(c3), absl::HashOf(absl::string_view()));
+}
+
+TEST(CrcCordTest, ChecksummedEmptyCordEstimateMemoryUsage) {
+  absl::Cord cord;
+  cord.SetExpectedChecksum(0);
+  EXPECT_NE(cord.EstimatedMemoryUsage(), 0);
 }
 
 #if defined(GTEST_HAS_DEATH_TEST) && defined(ABSL_INTERNAL_CORD_HAVE_SANITIZER)

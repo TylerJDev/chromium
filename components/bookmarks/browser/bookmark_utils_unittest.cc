@@ -17,6 +17,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "components/bookmarks/browser/base_bookmark_model_observer.h"
+#include "components/bookmarks/browser/bookmark_client.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/bookmarks/browser/bookmark_model_observer.h"
 #include "components/bookmarks/browser/bookmark_node_data.h"
@@ -85,6 +86,26 @@ class BookmarkUtilsTest : public testing::Test,
   int grouped_changes_beginning_count_{0};
   int grouped_changes_ended_count_{0};
   base::HistogramTester histogram_;
+};
+
+// A bookmark client that suggests a save location for new nodes.
+class SuggestFolderClient : public TestBookmarkClient {
+ public:
+  SuggestFolderClient() = default;
+  SuggestFolderClient(const SuggestFolderClient&) = delete;
+  SuggestFolderClient& operator=(const SuggestFolderClient&) = delete;
+  ~SuggestFolderClient() override = default;
+
+  const BookmarkNode* GetSuggestedSaveLocation(const GURL& url) override {
+    return suggested_save_location_.get();
+  }
+
+  void SetSuggestedSaveLocation(const BookmarkNode* node) {
+    suggested_save_location_ = node;
+  }
+
+ private:
+  raw_ptr<const BookmarkNode> suggested_save_location_;
 };
 
 TEST_F(BookmarkUtilsTest, GetBookmarksMatchingPropertiesWordPhraseQuery) {
@@ -442,7 +463,7 @@ TEST_F(BookmarkUtilsTest, MAYBE_PasteNonEditableNodes) {
 
   // But it can't be pasted into a non-editable folder.
   BookmarkClient* upcast = model->client();
-  EXPECT_FALSE(upcast->CanBeEditedByUser(managed_node));
+  EXPECT_TRUE(upcast->IsNodeManaged(managed_node));
   EXPECT_FALSE(CanPasteFromClipboard(model.get(), managed_node));
 }
 #endif  // !BUILDFLAG(IS_IOS)
@@ -483,6 +504,28 @@ TEST_F(BookmarkUtilsTest, GetParentForNewNodes) {
   real_parent = GetParentForNewNodes(model->bookmark_bar_node(), nodes, &index);
   EXPECT_EQ(real_parent, model->bookmark_bar_node());
   EXPECT_EQ(2u, index);
+}
+
+// Ensures the BookmarkClient has the power to suggest the parent for new nodes.
+TEST_F(BookmarkUtilsTest, GetParentForNewNodes_ClientOverride) {
+  std::unique_ptr<SuggestFolderClient> client =
+      std::make_unique<SuggestFolderClient>();
+  SuggestFolderClient* client_ptr = client.get();
+  std::unique_ptr<BookmarkModel> model(
+      TestBookmarkClient::CreateModelWithClient(std::move(client)));
+
+  const BookmarkNode* folder_to_suggest =
+      model->AddFolder(model->bookmark_bar_node(), 0, u"Suggested");
+  const BookmarkNode* folder1 =
+      model->AddFolder(model->bookmark_bar_node(), 1, u"Folder 1");
+
+  ASSERT_EQ(folder1, GetParentForNewNodes(model.get(), GURL()));
+
+  client_ptr->SetSuggestedSaveLocation(folder_to_suggest);
+
+  ASSERT_EQ(folder_to_suggest, GetParentForNewNodes(model.get(), GURL()));
+
+  client_ptr = nullptr;
 }
 
 // Verifies that meta info is copied when nodes are cloned.
@@ -585,14 +628,12 @@ TEST_F(BookmarkUtilsTest, RemoveAllBookmarks) {
   model->AddURL(model->mobile_node(), 0, title, url);
   model->AddURL(managed_node, 0, title, url);
 
-  std::vector<const BookmarkNode*> nodes;
-  model->GetNodesByURL(url, &nodes);
+  std::vector<const BookmarkNode*> nodes = model->GetNodesByURL(url);
   ASSERT_EQ(4u, nodes.size());
 
   RemoveAllBookmarks(model.get(), url);
 
-  nodes.clear();
-  model->GetNodesByURL(url, &nodes);
+  nodes = model->GetNodesByURL(url);
   ASSERT_EQ(1u, nodes.size());
   EXPECT_TRUE(model->bookmark_bar_node()->children().empty());
   EXPECT_TRUE(model->other_node()->children().empty());

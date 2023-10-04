@@ -10,6 +10,7 @@
 #include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/to_vector.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
@@ -100,14 +101,6 @@ class SiteSettingsHelperTest : public testing::Test {
     map->SetContentSettingCustomScope(
         ContentSettingsPattern::FromString(pattern),
         ContentSettingsPattern::Wildcard(), kContentType, setting);
-  }
-
-  void RecordNotification(permissions::NotificationsEngagementService* service,
-                          GURL url,
-                          int daily_average_count) {
-    // This many notifications were recorded during the past week in total.
-    int total_count = daily_average_count * 7;
-    service->RecordNotificationDisplayed(url, total_count);
   }
 
   static base::Time GetReferenceTime() {
@@ -577,10 +570,8 @@ TEST_F(SiteSettingsHelperTest, CookieExceptions) {
 
     // Convert the test cases, and the returned dictionary, into tuples for
     // unordered comparison, as the order of exception is not relevant.
-    std::vector<std::tuple<std::string, std::string, std::string>> expected;
-    std::vector<std::tuple<std::string, std::string, std::string>> actual;
-    base::ranges::transform(
-        test_cases, std::back_inserter(expected), [&](const auto& test_case) {
+    std::vector<std::tuple<std::string, std::string, std::string>> expected =
+        base::test::ToVector(test_cases, [&](const auto& test_case) {
           // make_tuple as we've some temporary rvalues.
           return std::make_tuple(
               test_case.primary_pattern,
@@ -592,12 +583,13 @@ TEST_F(SiteSettingsHelperTest, CookieExceptions) {
                   feature_state ? test_case.updated_setting
                                 : test_case.initial_setting));
         });
-    base::ranges::transform(
-        exceptions, std::back_inserter(actual), [](const auto& exception) {
+
+    std::vector<std::tuple<std::string, std::string, std::string>> actual =
+        base::test::ToVector(exceptions, [](const auto& exception) {
           const base::Value::Dict& dict = exception.GetDict();
-          return std::forward_as_tuple(*dict.FindString(kOrigin),
-                                       *dict.FindString(kEmbeddingOrigin),
-                                       *dict.FindString(kSetting));
+          return std::make_tuple(*dict.FindString(kOrigin),
+                                 *dict.FindString(kEmbeddingOrigin),
+                                 *dict.FindString(kSetting));
         });
 
     EXPECT_THAT(actual, testing::UnorderedElementsAreArray(expected))
@@ -837,89 +829,6 @@ TEST_F(SiteSettingsHelperTest, CreateChooserExceptionObject) {
         /*source=*/kPreferenceSource,
         /*incognito=*/false);
   }
-}
-
-TEST_F(SiteSettingsHelperTest, PopulateNotificationPermissionReviewData) {
-  TestingProfile profile;
-  base::test::ScopedFeatureList scoped_feature;
-  scoped_feature.InitAndEnableFeature(
-      ::features::kSafetyCheckNotificationPermissions);
-
-  // Add a couple of notification permission and check they appear in review
-  // list.
-  HostContentSettingsMap* map =
-      HostContentSettingsMapFactory::GetForProfile(&profile);
-  GURL urls[] = {GURL("https://google.com:443"),
-                 GURL("https://www.youtube.com:443"),
-                 GURL("https://www.example.com:443")};
-
-  map->SetContentSettingDefaultScope(urls[0], GURL(),
-                                     ContentSettingsType::NOTIFICATIONS,
-                                     CONTENT_SETTING_ALLOW);
-  map->SetContentSettingDefaultScope(urls[1], GURL(),
-                                     ContentSettingsType::NOTIFICATIONS,
-                                     CONTENT_SETTING_ALLOW);
-  map->SetContentSettingDefaultScope(urls[2], GURL(),
-                                     ContentSettingsType::NOTIFICATIONS,
-                                     CONTENT_SETTING_ALLOW);
-
-  // Record initial display date to enable comparing dictionaries for
-  // NotificationEngagementService.
-  auto* notification_engagement_service =
-      NotificationsEngagementServiceFactory::GetForProfile(&profile);
-  std::string displayedDate =
-      notification_engagement_service->GetBucketLabel(base::Time::Now());
-
-  auto* site_engagement_service =
-      site_engagement::SiteEngagementServiceFactory::GetForProfile(&profile);
-
-  // Set a host to have minimum engagement. This should be in review list.
-  RecordNotification(notification_engagement_service, urls[0], 1);
-  site_engagement::SiteEngagementScore score =
-      site_engagement_service->CreateEngagementScore(urls[0]);
-  score.Reset(0.5, GetReferenceTime());
-  score.Commit();
-  EXPECT_EQ(blink::mojom::EngagementLevel::MINIMAL,
-            site_engagement_service->GetEngagementLevel(urls[0]));
-
-  // Set a host to have large number of notifications, but low engagement. This
-  // should be in review list.
-  RecordNotification(notification_engagement_service, urls[1], 5);
-  site_engagement_service->AddPointsForTesting(urls[1], 1.0);
-  EXPECT_EQ(blink::mojom::EngagementLevel::LOW,
-            site_engagement_service->GetEngagementLevel(urls[1]));
-
-  // Set a host to have medium engagement and high notification count. This
-  // should not be in review list.
-  RecordNotification(notification_engagement_service, urls[2], 5);
-  site_engagement_service->AddPointsForTesting(urls[2], 50.0);
-  EXPECT_EQ(blink::mojom::EngagementLevel::MEDIUM,
-            site_engagement_service->GetEngagementLevel(urls[2]));
-
-  const auto& notification_permissions =
-      PopulateNotificationPermissionReviewData(&profile);
-  // Check if resulting list contains only the expected URLs. They should be in
-  // descending order of notification count.
-  EXPECT_EQ(2UL, notification_permissions.size());
-  EXPECT_EQ("https://www.youtube.com:443",
-            *notification_permissions[0].GetDict().FindString(
-                site_settings::kOrigin));
-  EXPECT_EQ("https://google.com:443",
-            *notification_permissions[1].GetDict().FindString(
-                site_settings::kOrigin));
-
-  // Increasing notification count also promotes host in the list.
-  RecordNotification(notification_engagement_service,
-                     GURL("https://google.com:443"), 10);
-  const auto& updated_notification_permissions =
-      PopulateNotificationPermissionReviewData(&profile);
-  EXPECT_EQ(2UL, updated_notification_permissions.size());
-  EXPECT_EQ("https://google.com:443",
-            *updated_notification_permissions[0].GetDict().FindString(
-                site_settings::kOrigin));
-  EXPECT_EQ("https://www.youtube.com:443",
-            *updated_notification_permissions[1].GetDict().FindString(
-                site_settings::kOrigin));
 }
 
 namespace {

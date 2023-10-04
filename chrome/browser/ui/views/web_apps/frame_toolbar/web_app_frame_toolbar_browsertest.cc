@@ -13,13 +13,14 @@
 #include "base/test/test_future.h"
 #include "base/test/test_timeouts.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/download/bubble/download_bubble_ui_controller.h"
-#include "chrome/browser/download/bubble/download_display.h"
 #include "chrome/browser/download/bubble/download_display_controller.h"
 #include "chrome/browser/extensions/chrome_test_extension_loader.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_finder.h"
+#include "chrome/browser/ui/download/download_display.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/extensions/extensions_menu_view.h"
@@ -493,7 +494,7 @@ class BorderlessIsolatedWebAppBrowserTest
     auto* web_contents = browser_view()->GetActiveWebContents();
     std::string permission_auto_approve_script = R"(
       const draggable = document.getElementById('draggable');
-      draggable.setAttribute('allow', 'window-placement');
+      draggable.setAttribute('allow', 'window-management');
     )";
     EXPECT_TRUE(ExecJs(web_contents, permission_auto_approve_script,
                        content::EXECUTE_SCRIPT_NO_USER_GESTURE));
@@ -506,7 +507,7 @@ class BorderlessIsolatedWebAppBrowserTest
 
     std::string permission_query_script = R"(
       navigator.permissions.query({
-        name: 'window-placement'
+        name: 'window-management'
       }).then(res => res.state)
     )";
     EXPECT_EQ("granted", EvalJs(web_contents, permission_query_script));
@@ -732,7 +733,13 @@ IN_PROC_BROWSER_TEST_F(BorderlessIsolatedWebAppBrowserTest, PopupSize) {
 #endif
 }
 
-IN_PROC_BROWSER_TEST_F(BorderlessIsolatedWebAppBrowserTest, PopupResize) {
+// TODO(crbug.com/1489123): Re-enable this test
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+#define MAYBE_PopupResize DISABLED_PopupResize
+#else
+#define MAYBE_PopupResize PopupResize
+#endif
+IN_PROC_BROWSER_TEST_F(BorderlessIsolatedWebAppBrowserTest, MAYBE_PopupResize) {
   InstallAndLaunchIsolatedWebApp(/*uses_borderless=*/true);
   GrantWindowManagementPermission();
   ASSERT_TRUE(browser_view()->IsBorderlessModeEnabled());
@@ -844,7 +851,7 @@ class WebAppFrameToolbarBrowserTest_WindowControlsOverlay
     WebAppFrameToolbarBrowserTest::SetUp();
   }
 
-  web_app::AppId InstallAndLaunchWCOWebApp(GURL start_url,
+  webapps::AppId InstallAndLaunchWCOWebApp(GURL start_url,
                                            std::u16string app_title) {
     std::vector<blink::mojom::DisplayMode> display_overrides;
     display_overrides.push_back(web_app::DisplayMode::kWindowControlsOverlay);
@@ -861,7 +868,7 @@ class WebAppFrameToolbarBrowserTest_WindowControlsOverlay
         browser(), std::move(web_app_info), start_url);
   }
 
-  web_app::AppId InstallAndLaunchWebApp() {
+  webapps::AppId InstallAndLaunchWebApp() {
     EXPECT_TRUE(https_server()->Start());
     return InstallAndLaunchWCOWebApp(
         helper()->LoadWindowControlsOverlayTestPageWithDataAndGetURL(
@@ -869,7 +876,7 @@ class WebAppFrameToolbarBrowserTest_WindowControlsOverlay
         u"A window-controls-overlay app");
   }
 
-  web_app::AppId InstallAndLaunchFullyDraggableWebApp() {
+  webapps::AppId InstallAndLaunchFullyDraggableWebApp() {
     EXPECT_TRUE(https_server()->Start());
     return InstallAndLaunchWCOWebApp(
         helper()->LoadWholeAppIsDraggableTestPageWithDataAndGetURL(
@@ -1448,7 +1455,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
 // Regression test for https://crbug.com/1239443.
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
                        OpenWithOverlayEnabled) {
-  web_app::AppId app_id = InstallAndLaunchWebApp();
+  webapps::AppId app_id = InstallAndLaunchWebApp();
   base::test::TestFuture<void> future;
   helper()
       ->browser_view()
@@ -1531,7 +1538,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
 // Regression test for https://crbug.com/1351566.
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
                        ExtensionsIconVisibility) {
-  web_app::AppId app_id = InstallAndLaunchWebApp();
+  webapps::AppId app_id = InstallAndLaunchWebApp();
   ToggleWindowControlsOverlayAndWait();
 
   // There should be no visible Extensions icon.
@@ -1567,7 +1574,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
 // app's window.
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
                        DownloadIconVisibilityForAppDownload) {
-  web_app::AppId app_id = InstallAndLaunchWebApp();
+  webapps::AppId app_id = InstallAndLaunchWebApp();
   ToggleWindowControlsOverlayAndWait();
 
   Browser* non_app_browser = CreateBrowser(profile());
@@ -1605,7 +1612,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
 // app's window.
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
                        DownloadIconVisibilityForRegularDownload) {
-  web_app::AppId app_id = InstallAndLaunchWebApp();
+  webapps::AppId app_id = InstallAndLaunchWebApp();
   ToggleWindowControlsOverlayAndWait();
 
   Browser* non_app_browser = CreateBrowser(profile());

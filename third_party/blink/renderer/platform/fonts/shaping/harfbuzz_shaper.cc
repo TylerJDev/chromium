@@ -48,6 +48,7 @@
 #include "third_party/blink/renderer/platform/fonts/opentype/open_type_caps_support.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/case_mapping_harfbuzz_buffer_filler.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/font_features.h"
+#include "third_party/blink/renderer/platform/fonts/shaping/han_kerning.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/harfbuzz_face.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_inline_headers.h"
 #include "third_party/blink/renderer/platform/fonts/small_caps_iterator.h"
@@ -232,6 +233,10 @@ static inline hb_script_t ICUScriptToHBScript(UScriptCode script) {
     return HB_SCRIPT_INVALID;
 
   return hb_script_from_string(uscript_getShortName(script), -1);
+}
+
+inline float HarfBuzzPositionToFloat(hb_position_t value) {
+  return static_cast<float>(value) / (1 << 16);
 }
 
 void RoundHarfBuzzPosition(hb_position_t* value) {
@@ -743,8 +748,8 @@ void HarfBuzzShaper::ShapeSegment(
   DCHECK(range_data->buffer);
   const Font* font = range_data->font;
   const FontDescription& font_description = font->GetFontDescription();
-  const hb_language_t language =
-      font_description.LocaleOrDefault().HarfbuzzLanguage();
+  const LayoutLocale& locale = font_description.LocaleOrDefault();
+  const hb_language_t language = locale.HarfbuzzLanguage();
   bool needs_caps_handling =
       font_description.VariantCaps() != FontDescription::kCapsNormal;
   OpenTypeCapsSupport caps_support;
@@ -843,6 +848,9 @@ void HarfBuzzShaper::ShapeSegment(
         &range_data->font_features,
         caps_support.FontFeatureToUse(small_caps_behavior));
     hb_direction_t direction = range_data->HarfBuzzDirection(canvas_rotation);
+    HanKerning han_kerning(
+        text_, shape_start, shape_end, *adjusted_font, font_description,
+        HB_DIRECTION_IS_HORIZONTAL(direction), &range_data->font_features);
 
     if (!ShapeRange(range_data->buffer, range_data->font_features,
                     adjusted_font, current_font_data_for_range_set->Ranges(),
@@ -942,14 +950,13 @@ scoped_refptr<ShapeResult> HarfBuzzShaper::Shape(
 
   hb::unique_ptr<hb_buffer_t> buffer(hb_buffer_create());
   RangeData range_data = CreateRangeData(font, direction, buffer.get());
+  range_data.start = start;
+  range_data.end = end;
 
   for (const RunSegmenter::RunSegmenterRange& segmented_range : ranges) {
     DCHECK_GE(segmented_range.end, segmented_range.start);
     DCHECK_GE(segmented_range.start, start);
     DCHECK_LE(segmented_range.end, end);
-
-    range_data.start = segmented_range.start;
-    range_data.end = segmented_range.end;
     ShapeSegment(&range_data, segmented_range, result.get());
   }
 
@@ -995,6 +1002,51 @@ scoped_refptr<ShapeResult> HarfBuzzShaper::Shape(
     const Font* font,
     TextDirection direction) const {
   return Shape(font, direction, 0, text_.length());
+}
+
+void HarfBuzzShaper::GetGlyphData(const SimpleFontData& font_data,
+                                  const LayoutLocale& locale,
+                                  UScriptCode script,
+                                  bool is_horizontal,
+                                  GlyphDataList& glyphs) {
+  hb::unique_ptr<hb_buffer_t> hb_buffer(hb_buffer_create());
+  hb_buffer_set_language(hb_buffer, locale.HarfbuzzLanguage());
+  hb_buffer_set_script(hb_buffer, ICUScriptToHBScript(script));
+  hb_buffer_set_direction(hb_buffer,
+                          is_horizontal ? HB_DIRECTION_LTR : HB_DIRECTION_TTB);
+  CHECK(!text_.Is8Bit());
+  static_assert(sizeof(uint16_t) == sizeof(UChar));
+  hb_buffer_add_utf16(hb_buffer,
+                      reinterpret_cast<const uint16_t*>(text_.Characters16()),
+                      text_.length(), 0, text_.length());
+
+  const FontPlatformData& platform_data = font_data.PlatformData();
+  HarfBuzzFace* const hb_face = platform_data.GetHarfBuzzFace();
+  DCHECK(hb_face);
+  hb_font_t* const hb_font = hb_face->GetScaledFont(
+      nullptr,
+      is_horizontal ? HarfBuzzFace::kNoVerticalLayout
+                    : HarfBuzzFace::kPrepareForVerticalLayout,
+      platform_data.size());
+  DCHECK(hb_font);
+  hb_shape(hb_font, hb_buffer, nullptr, 0);
+
+  // Create `GlyphDataList` from `hb_buffer`.
+  unsigned num_glyphs;
+  hb_glyph_info_t* glyph_info =
+      hb_buffer_get_glyph_infos(hb_buffer, &num_glyphs);
+  hb_glyph_position_t* glyph_position =
+      hb_buffer_get_glyph_positions(hb_buffer, nullptr);
+  glyphs.reserve(num_glyphs);
+  for (; num_glyphs; --num_glyphs, ++glyph_info, ++glyph_position) {
+    glyphs.push_back(GlyphData{
+        .cluster = glyph_info->cluster,
+        .glyph = static_cast<Glyph>(glyph_info->codepoint),
+        .advance = {HarfBuzzPositionToFloat(glyph_position->x_advance),
+                    -HarfBuzzPositionToFloat(glyph_position->y_advance)},
+        .offset = {HarfBuzzPositionToFloat(glyph_position->x_offset),
+                   -HarfBuzzPositionToFloat(glyph_position->y_offset)}});
+  }
 }
 
 }  // namespace blink

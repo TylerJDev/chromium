@@ -81,8 +81,8 @@ void SVGShapePainter::Paint(const PaintInfo& paint_info) {
           case PT_FILL: {
             cc::PaintFlags fill_flags;
             if (!SVGObjectPainter(layout_svg_shape_)
-                     .PreparePaint(paint_info.IsRenderingClipPathAsMaskImage(),
-                                   style, kApplyToFillMode, fill_flags)) {
+                     .PreparePaint(paint_info.GetPaintFlags(), style,
+                                   kApplyToFillMode, fill_flags)) {
               break;
             }
             fill_flags.setAntiAlias(should_anti_alias);
@@ -107,7 +107,7 @@ void SVGShapePainter::Paint(const PaintInfo& paint_info) {
               cc::PaintFlags stroke_flags;
               if (!SVGObjectPainter(layout_svg_shape_)
                        .PreparePaint(
-                           paint_info.IsRenderingClipPathAsMaskImage(), style,
+                           paint_info.GetPaintFlags(), style,
                            kApplyToStrokeMode, stroke_flags,
                            base::OptionalToPtr(non_scaling_transform))) {
                 break;
@@ -160,18 +160,20 @@ void SVGShapePainter::FillShape(GraphicsContext& context,
                                 SkPathFillType fill_type) {
   AutoDarkMode auto_dark_mode(PaintAutoDarkMode(
       layout_svg_shape_.StyleRef(), DarkModeFilter::ElementRole::kSVG));
-  switch (layout_svg_shape_.GeometryCodePath()) {
-    case kRectGeometryFastPath:
+  switch (layout_svg_shape_.GetGeometryType()) {
+    case LayoutSVGShape::GeometryType::kRectangle:
       context.DrawRect(
           gfx::RectFToSkRect(layout_svg_shape_.ObjectBoundingBox()), flags,
           auto_dark_mode);
       break;
-    case kEllipseGeometryFastPath:
+    case LayoutSVGShape::GeometryType::kCircle:
+    case LayoutSVGShape::GeometryType::kEllipse:
       context.DrawOval(
           gfx::RectFToSkRect(layout_svg_shape_.ObjectBoundingBox()), flags,
           auto_dark_mode);
       break;
     default: {
+      DCHECK(layout_svg_shape_.HasPath());
       PathWithTemporaryWindingRule path_with_winding(
           layout_svg_shape_.GetPath(), fill_type);
       context.DrawPath(path_with_winding.GetSkPath(), flags, auto_dark_mode);
@@ -188,13 +190,21 @@ void SVGShapePainter::StrokeShape(GraphicsContext& context,
   AutoDarkMode auto_dark_mode(PaintAutoDarkMode(
       layout_svg_shape_.StyleRef(), DarkModeFilter::ElementRole::kSVG));
 
-  switch (layout_svg_shape_.GeometryCodePath()) {
-    case kRectGeometryFastPath:
+  // Remap all geometry types to 'path' when non-scaling-stroke is in effect.
+  LayoutSVGShape::GeometryType geometry_type =
+      layout_svg_shape_.GetGeometryType();
+  if (layout_svg_shape_.HasNonScalingStroke()) {
+    geometry_type = LayoutSVGShape::GeometryType::kPath;
+  }
+
+  switch (geometry_type) {
+    case LayoutSVGShape::GeometryType::kRectangle:
       context.DrawRect(
           gfx::RectFToSkRect(layout_svg_shape_.ObjectBoundingBox()), flags,
           auto_dark_mode);
       break;
-    case kEllipseGeometryFastPath:
+    case LayoutSVGShape::GeometryType::kCircle:
+    case LayoutSVGShape::GeometryType::kEllipse:
       context.DrawOval(
           gfx::RectFToSkRect(layout_svg_shape_.ObjectBoundingBox()), flags,
           auto_dark_mode);

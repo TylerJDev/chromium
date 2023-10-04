@@ -72,6 +72,13 @@ void ResizeShadowController::HideAllShadows() {
   }
 }
 
+void ResizeShadowController::OnCrossFadeAnimationCompleted(
+    aura::Window* window) {
+  if (auto* shadow = GetShadowForWindow(window)) {
+    shadow->ReparentLayer();
+  }
+}
+
 void ResizeShadowController::RemoveAllShadows() {
   windows_observation_.RemoveAllObservations();
   window_shadows_.clear();
@@ -116,6 +123,13 @@ void ResizeShadowController::OnWindowPropertyChanged(aura::Window* window,
   if (key != aura::client::kShowStateKey)
     return;
   UpdateShadowVisibility(window, window->IsVisible());
+}
+
+void ResizeShadowController::OnWindowAddedToRootWindow(aura::Window* window) {
+  ResizeShadow* shadow = GetShadowForWindow(window);
+  if (shadow) {
+    shadow->OnWindowParentToRootWindow();
+  }
 }
 
 void ResizeShadowController::UpdateResizeShadowBoundsOfWindow(

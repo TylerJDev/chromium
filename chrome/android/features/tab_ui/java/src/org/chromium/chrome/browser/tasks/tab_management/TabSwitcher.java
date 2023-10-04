@@ -7,6 +7,7 @@ package org.chromium.chrome.browser.tasks.tab_management;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.SystemClock;
+import android.util.Size;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
@@ -19,7 +20,6 @@ import org.chromium.chrome.browser.compositor.layouts.Layout;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tasks.tab_management.TabManagementDelegate.TabSwitcherType;
 import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
-import org.chromium.ui.resources.dynamics.ViewResourceAdapter;
 
 /**
  * Interface for the Tab Switcher.
@@ -189,10 +189,10 @@ public interface TabSwitcher {
         int getResourceId();
 
         /**
-         * @return The timestamp of last dirty event of {@link ViewResourceAdapter} of
-         * {@link TabListRecyclerView}.
+         * Call before showing the Grid Tab Switcher from Start Surface with refactor disabled to
+         * properly register the layout changed listener.
          */
-        long getLastDirtyTime();
+        void prepareTabGridView();
 
         /**
          * Before calling {@link Controller#showTabSwitcherView} to start showing the
@@ -215,6 +215,17 @@ public interface TabSwitcher {
          */
         @NonNull
         Rect getThumbnailLocationOfCurrentTab();
+
+        /**
+         * Returns the {@link Size} of a thumbnail.
+         */
+        @NonNull
+        Size getThumbnailSize();
+
+        /**
+         * Returns the {@link Rect} of the {@link TabListRecyclerView} relative to its container.
+         */
+        Rect getRecyclerViewLocation();
 
         /**
          * Set a hook to receive all the {@link Bitmap}s returned by
@@ -283,4 +294,14 @@ public interface TabSwitcher {
     TabSwitcherCustomViewManager getTabSwitcherCustomViewManager();
 
     boolean onBackPressed();
+
+    /**
+     * @return The number of elements in the tab switcher's tab list model.
+     */
+    int getTabSwitcherTabListModelSize();
+
+    /**
+     * Set the tab switcher's current RecyclerViewPosition.
+     */
+    void setTabSwitcherRecyclerViewPosition(RecyclerViewPosition recyclerViewPosition);
 }

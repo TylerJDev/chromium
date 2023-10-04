@@ -60,11 +60,51 @@ struct Padding2d {
   Size2d ending;
 };
 
-// Contains the attributes of pool2d operator.
-// The `roundingType` and `outputSizes` array in MLPool2dOptions are not
-// included because they are used to calculate the output dimensions of poo2d in
-// blink side.
-struct Pool2dAttributes {
+// Contains the attributes of conv2d operator.
+// Only `oihw` (output_channels, input_channels/groups, height, width) filter
+// layout is supported, other variants are being discussed in the working group
+// https://github.com/webmachinelearning/webnn/issues/324.
+struct Conv2dAttributes {
+  // The padding of input tensor which is the explicit pad or calculated pad
+  // with `MLAutoPad` type, input sizes, filter size, strides and dilations in
+  // blink side.
+  Padding2d padding;
+  // The stride of the sliding window for each spatial dimension of input.
+  Size2d strides;
+  // The dilation factor for each spatial dimension of input.
+  Size2d dilations;
+  // The number of groups that input channels and output channels are divided
+  // into.
+  uint32 groups = 1;
+  // The layout format of the input.
+  InputOperandLayout input_layout;
+  // The additional 1-D tensor with the shape of output channels whose values
+  // are added to the convolution result.
+  uint64? bias_operand_id;
+  //The optional activation function that immediately follows the convolution.
+  Operator? activation;
+};
+
+// Represents an average or max pooling operation across all the elements with
+// moving window over the input tensor.
+// This struct also contains the attributes of pool2d operator, but the
+// `roundingType` and `outputSizes` array in MLPool2dOptions are not included
+// because they are used to calculate the output dimensions of pool2d in blink
+// side.
+struct Pool2d {
+  enum Kind {
+    kAveragePool2d,
+    kMaxPool2d,
+  };
+
+  Kind kind;
+  // The id of input operand is used to get the `Operand` description from
+  // `GraphInfo.id_to_operand_map`.
+  uint64 input_operand_id;
+  // The id of output operand is used to get the `Operand` description from
+  // `GraphInfo.id_to_operand_map`.
+  uint64 output_operand_id;
+
   // The dimensions of the sliding window which is supplied by user or the
   // element of input operand height and width.
   Size2d window_dimensions;
@@ -98,8 +138,8 @@ struct GemmAttributes {
 // Holds one of operator attributes.
 union OperatorAttributes {
   ClampAttributes clamp;
+  Conv2dAttributes conv2d;
   GemmAttributes gemm;
-  Pool2dAttributes pool2d;
 };
 
 // Represents the operations defined in `MLGraphBuilder` that describes the
@@ -108,15 +148,15 @@ struct Operator {
   enum Kind {
     // Keep the order as the same as build methods of `MLGraphBuilder`.
     kClamp,
+    kConv2d,
     kAdd,
     kSub,
     kMul,
     kDiv,
     kMax,
     kMin,
+    kPow,
     kGemm,
-    kAveragePool2d,
-    kMaxPool2d,
     kRelu,
     kReshape,
     kSoftmax,
@@ -134,18 +174,29 @@ struct Operator {
   OperatorAttributes? attributes;
 };
 
+// Holds one of operator.
+union Operation {
+  Pool2d pool2d;
+
+  // TODO(crbug.com/1273291): The `generic_operator` will be removed.
+  Operator generic_operator;
+};
+
 // Describes an entire WebNN graph information.
 struct GraphInfo {
   // A map of all operands used in this `GraphInfo`, the key is the operand id.
   map<uint64, Operand> id_to_operand_map;
-  // The id array from the `GraphInfo.operands` is used to identify the input
-  // operands of this graph.
+  // The id array from the `GraphInfo.id_to_operand_map` is used to identify the
+  // input operands of this graph.
   array<uint64> input_operands;
-  // The id array from the `GraphInfo.operands` is used to identify the output
-  // operands of this graph.
+  // The id array from the `GraphInfo.id_to_operand_map` is used to identify the
+  // output operands of this graph.
   array<uint64> output_operands;
-  // The operators are sorted in the topological order.
-  array<Operator> operators;
+  // The operations are sorted in the topological order.
+  array<Operation> operations;
+  // The constant weight data specified through the MLGraphBuilder.constant()
+  // method defined in the WebIDL, the key is the constant operand id.
+  map<uint64, mojo_base.mojom.BigBuffer> constant_id_to_buffer_map;
 };
 
 enum ComputeResult {
@@ -163,7 +214,12 @@ interface WebNNGraph {
   // Called by the renderer process to carry out the computational workload of
   // the compiled graph. The key of map is the name of input/output to identify
   // the tensor in the graph, the value is the shared memory to reduce memory
-  // copy for inference.
+  // copy for inference. The Sync version of this method will only be called
+  // from a worker thread.
+  //
+  // TODO(crbug.com/1488162): Remove [Sync] the standard groups decides that
+  // the WebNN sync APIs are not required.
+  [Sync]
   Compute(map<string, mojo_base.mojom.BigBuffer>  named_inputs)
       => (ComputeResult result,
           map<string, mojo_base.mojom.BigBuffer>? named_outputs);

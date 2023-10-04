@@ -485,8 +485,7 @@ IN_PROC_BROWSER_TEST_F(ViewSourceTest,
   EXPECT_TRUE(request->trusted_params->isolation_info.IsEqualForTesting(
       net::IsolationInfo::Create(net::IsolationInfo::RequestType::kMainFrame,
                                  origin, origin,
-                                 net::SiteForCookies::FromOrigin(origin),
-                                 std::set<net::SchemefulSite>())));
+                                 net::SiteForCookies::FromOrigin(origin))));
 }
 
 class ViewSourceWithSplitCacheTest
@@ -781,7 +780,8 @@ class ViewSourcePrerenderTest : public ViewSourceTest {
   void set_target(content::WebContents* target) { target_ = target; }
 
   void SetUp() override {
-    prerender_test_helper().SetUp(embedded_test_server());
+    prerender_test_helper().RegisterServerRequestMonitor(
+        embedded_test_server());
     ViewSourceTest::SetUp();
   }
 

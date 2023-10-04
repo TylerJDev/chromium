@@ -60,6 +60,7 @@ class CORE_EXPORT HTMLTextAreaElement final : public TextControlElement {
   // Sets the suggested value and puts the element into
   // WebAutofillState::kPreviewed state if |value| is non-empty, or
   // WebAutofillState::kNotFilled otherwise.
+  // A null value indicates that the suggested value should be hidden.
   void SetSuggestedValue(const String& value) override;
 
   // For ValidityState
@@ -118,6 +119,7 @@ class CORE_EXPORT HTMLTextAreaElement final : public TextControlElement {
   void RestoreFormControlState(const FormControlState&) override;
 
   bool IsTextControl() const override { return true; }
+  bool ShouldAutoDirUseValue() const final { return true; }
   int scrollWidth() override;
   int scrollHeight() override;
   void ChildrenChanged(const ChildrenChange&) override;

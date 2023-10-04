@@ -19,6 +19,7 @@ import static org.mockito.Mockito.verify;
 import static org.chromium.base.test.util.CriteriaHelper.pollUiThread;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.CredentialProperties.CREDENTIAL;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.CredentialProperties.FORMATTED_ORIGIN;
+import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.CredentialProperties.ITEM_COLLECTION_INFO;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.CredentialProperties.ON_CLICK_LISTENER;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.CredentialProperties.SHOW_SUBMIT_BUTTON;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.FooterProperties.MANAGE_BUTTON_TEXT;
@@ -33,6 +34,7 @@ import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.He
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.SHEET_ITEMS;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.VISIBLE;
 import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.WebAuthnCredentialProperties.WEBAUTHN_CREDENTIAL;
+import static org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.WebAuthnCredentialProperties.WEBAUTHN_ITEM_COLLECTION_INFO;
 
 import static java.util.Arrays.asList;
 
@@ -59,16 +61,15 @@ import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.ScalableTimeout;
 import org.chromium.chrome.browser.app.ChromeActivity;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.password_manager.GetLoginMatchType;
 import org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.FooterProperties;
 import org.chromium.chrome.browser.touch_to_fill.TouchToFillProperties.HeaderProperties;
+import org.chromium.chrome.browser.touch_to_fill.common.FillableItemCollectionInfo;
 import org.chromium.chrome.browser.touch_to_fill.data.Credential;
 import org.chromium.chrome.browser.touch_to_fill.data.WebAuthnCredential;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.ChromeTabbedActivityTestRule;
-import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.SheetState;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetTestSupport;
@@ -99,11 +100,14 @@ public class TouchToFillViewTest {
             "Nik", "***", "Nik", "group.xyz", "group.xyz", GetLoginMatchType.AFFILIATED, 0);
     private final AtomicBoolean mManageButtonClicked = new AtomicBoolean(false);
     private final AtomicBoolean mHybridButtonClicked = new AtomicBoolean(false);
+    private final AtomicBoolean mMorePasskeysClicked = new AtomicBoolean(false);
 
     @Mock
     private Callback<Integer> mDismissHandler;
     @Mock
     private Callback<Credential> mCredentialCallback;
+    @Mock
+    private FillableItemCollectionInfo mItemCollectionInfo;
 
     private PropertyModel mModel;
     private TouchToFillView mTouchToFillView;
@@ -142,8 +146,8 @@ public class TouchToFillViewTest {
         // After setting the visibility to true, the view should exist and be visible.
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
-                            buildFooterItem(false)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -157,7 +161,6 @@ public class TouchToFillViewTest {
 
     @Test
     @MediumTest
-    @EnableFeatures(ChromeFeatureList.UNIFIED_PASSWORD_MANAGER_ANDROID)
     public void testTitlePropagatesToView() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
@@ -185,7 +188,6 @@ public class TouchToFillViewTest {
 
     @Test
     @MediumTest
-    @EnableFeatures(ChromeFeatureList.UNIFIED_PASSWORD_MANAGER_ANDROID)
     public void testManageButtonTextPropagatesToView() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
@@ -309,11 +311,12 @@ public class TouchToFillViewTest {
     @MediumTest
     public void testCredentialsChangedByModel() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
-            mModel.get(SHEET_ITEMS).add(buildCredentialItem(ANA));
+            mModel.get(SHEET_ITEMS).add(buildCredentialItem(ANA, mItemCollectionInfo));
             mTouchToFillView.setVisible(true);
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(NO_ONE), buildCredentialItem(BOB),
-                            buildCredentialItem(NIK)));
+                    .addAll(asList(buildCredentialItem(NO_ONE, mItemCollectionInfo),
+                            buildCredentialItem(BOB, mItemCollectionInfo),
+                            buildCredentialItem(NIK, mItemCollectionInfo)));
         });
 
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -348,7 +351,8 @@ public class TouchToFillViewTest {
     public void testCredentialsAreClickable() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildFooterItem(false)));
+                    .addAll(asList(
+                            buildCredentialItem(ANA, mItemCollectionInfo), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -365,8 +369,8 @@ public class TouchToFillViewTest {
     public void testSingleCredentialHasClickableButton() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, false),
-                            buildFooterItem(false)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, false), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -385,7 +389,7 @@ public class TouchToFillViewTest {
         final boolean showSubmitButton = false;
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA),
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
                             buildConfirmationButton(ANA, showSubmitButton),
                             buildFooterItem(false)));
             mModel.set(VISIBLE, true);
@@ -403,8 +407,8 @@ public class TouchToFillViewTest {
     public void testButtonTitle() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
-                            buildFooterItem(false)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -420,8 +424,8 @@ public class TouchToFillViewTest {
     public void testManagePasswordsIsClickable() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
-                            buildFooterItem(false)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -442,8 +446,8 @@ public class TouchToFillViewTest {
     public void testDismissesWhenHidden() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
-                            buildFooterItem(false)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -457,8 +461,51 @@ public class TouchToFillViewTest {
     public void testPasswordCredentialAccessibilityDescription() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
+                    .addAll(asList(buildCredentialItem(ANA, new FillableItemCollectionInfo(1, 1)),
+                            buildConfirmationButton(ANA, true), buildFooterItem(false)));
+            mModel.set(VISIBLE, true);
+        });
+
+        BottomSheetTestSupport.waitForOpen(mBottomSheetController);
+
+        assertNotNull(getCredentials().getChildAt(0));
+        String label = getActivity().getString(
+                R.string.touch_to_fill_password_credential_accessibility_description,
+                ANA.getFormattedUsername());
+        assertEquals(getCredentials().getChildAt(0).getContentDescription(),
+                getActivity().getString(
+                        R.string.touch_to_fill_a11y_item_collection_info, label, 1, 1));
+    }
+
+    @Test
+    @MediumTest
+    public void testPasskeyCredentialAccessibilityDescription() {
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            mModel.get(SHEET_ITEMS)
+                    .addAll(asList(
+                            buildWebAuthnCredentialItem(CAM, new FillableItemCollectionInfo(1, 1)),
                             buildFooterItem(false)));
+            mModel.set(VISIBLE, true);
+        });
+
+        BottomSheetTestSupport.waitForOpen(mBottomSheetController);
+
+        assertNotNull(getCredentials().getChildAt(0));
+        String label = getActivity().getString(
+                R.string.touch_to_fill_passkey_credential_accessibility_description,
+                CAM.getUsername());
+        assertEquals(getCredentials().getChildAt(0).getContentDescription(),
+                getActivity().getString(
+                        R.string.touch_to_fill_a11y_item_collection_info, label, 1, 1));
+    }
+
+    @Test
+    @MediumTest
+    public void testCredentialAccessibilityDescriptionWithNoCollectionInfo() {
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            mModel.get(SHEET_ITEMS)
+                    .addAll(asList(buildCredentialItem(ANA, null),
+                            buildWebAuthnCredentialItem(CAM, null), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
 
@@ -469,21 +516,9 @@ public class TouchToFillViewTest {
                 getActivity().getString(
                         R.string.touch_to_fill_password_credential_accessibility_description,
                         ANA.getFormattedUsername()));
-    }
 
-    @Test
-    @MediumTest
-    public void testPasskeyCredentialAccessibilityDescription() {
-        TestThreadUtils.runOnUiThreadBlocking(() -> {
-            mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildWebAuthnCredentialItem(CAM), buildFooterItem(false)));
-            mModel.set(VISIBLE, true);
-        });
-
-        BottomSheetTestSupport.waitForOpen(mBottomSheetController);
-
-        assertNotNull(getCredentials().getChildAt(0));
-        assertEquals(getCredentials().getChildAt(0).getContentDescription(),
+        assertNotNull(getCredentials().getChildAt(1));
+        assertEquals(getCredentials().getChildAt(1).getContentDescription(),
                 getActivity().getString(
                         R.string.touch_to_fill_passkey_credential_accessibility_description,
                         CAM.getUsername()));
@@ -499,7 +534,8 @@ public class TouchToFillViewTest {
 
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true)));
             mModel.set(VISIBLE, true);
         });
 
@@ -514,8 +550,8 @@ public class TouchToFillViewTest {
     public void testSheetStartsWithHalfHeight() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
-                            buildFooterItem(false)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true), buildFooterItem(false)));
             mModel.set(VISIBLE, true);
         });
 
@@ -529,7 +565,7 @@ public class TouchToFillViewTest {
     @MediumTest
     public void testSheetScrollabilityDependsOnState() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
-            mModel.get(SHEET_ITEMS).add(buildCredentialItem(ANA));
+            mModel.get(SHEET_ITEMS).add(buildCredentialItem(ANA, mItemCollectionInfo));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -551,7 +587,6 @@ public class TouchToFillViewTest {
 
     @Test
     @MediumTest
-    @EnableFeatures(ChromeFeatureList.UNIFIED_PASSWORD_MANAGER_ANDROID)
     public void testHybridPropertyShowsHybridButton() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
@@ -582,8 +617,8 @@ public class TouchToFillViewTest {
     public void testHybridButtonIsClickable() {
         TestThreadUtils.runOnUiThreadBlocking(() -> {
             mModel.get(SHEET_ITEMS)
-                    .addAll(asList(buildCredentialItem(ANA), buildConfirmationButton(ANA, true),
-                            buildFooterItem(true)));
+                    .addAll(asList(buildCredentialItem(ANA, mItemCollectionInfo),
+                            buildConfirmationButton(ANA, true), buildFooterItem(true)));
             mModel.set(VISIBLE, true);
         });
         BottomSheetTestSupport.waitForOpen(mBottomSheetController);
@@ -596,6 +631,26 @@ public class TouchToFillViewTest {
         TouchCommon.singleClickView(hybridButton);
 
         pollUiThread(mHybridButtonClicked::get);
+    }
+
+    @Test
+    @MediumTest
+    public void testMorePasskeysButtonIsClickable() {
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            mModel.get(SHEET_ITEMS)
+                    .addAll(asList(buildMorePasskeysItem(), buildFooterItem(/*showHybrid=*/false)));
+            mModel.set(VISIBLE, true);
+        });
+        BottomSheetTestSupport.waitForOpen(mBottomSheetController);
+
+        TestThreadUtils.runOnUiThreadBlocking(
+                () -> mSheetTestSupport.setSheetState(SheetState.FULL, false));
+
+        TextView morePasskeysItem =
+                mTouchToFillView.getContentView().findViewById(R.id.more_passkeys);
+        TouchCommon.singleClickView(morePasskeysItem);
+
+        pollUiThread(mMorePasskeysClicked::get);
     }
 
     private ChromeActivity getActivity() {
@@ -615,7 +670,7 @@ public class TouchToFillViewTest {
     }
 
     private TextView getCredentialPasswordAt(int index) {
-        return getCredentials().getChildAt(index).findViewById(R.id.password);
+        return getCredentials().getChildAt(index).findViewById(R.id.password_or_context);
     }
 
     private TextView getCredentialOriginAt(int index) {
@@ -627,34 +682,44 @@ public class TouchToFillViewTest {
                 timeout(ScalableTimeout.scaleTimeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL)));
     }
 
-    private MVCListAdapter.ListItem buildCredentialItem(Credential credential) {
-        return buildSheetItem(
-                TouchToFillProperties.ItemType.CREDENTIAL, credential, mCredentialCallback, false);
+    private MVCListAdapter.ListItem buildCredentialItem(
+            Credential credential, FillableItemCollectionInfo collectionInfo) {
+        return new MVCListAdapter.ListItem(TouchToFillProperties.ItemType.CREDENTIAL,
+                new PropertyModel.Builder(TouchToFillProperties.CredentialProperties.ALL_KEYS)
+                        .with(CREDENTIAL, credential)
+                        .with(ON_CLICK_LISTENER, mCredentialCallback)
+                        .with(FORMATTED_ORIGIN, credential.getDisplayName())
+                        .with(SHOW_SUBMIT_BUTTON, false)
+                        .with(ITEM_COLLECTION_INFO, collectionInfo)
+                        .build());
     }
 
-    private MVCListAdapter.ListItem buildWebAuthnCredentialItem(WebAuthnCredential credential) {
+    private MVCListAdapter.ListItem buildWebAuthnCredentialItem(
+            WebAuthnCredential credential, FillableItemCollectionInfo collectionInfo) {
         return new MVCListAdapter.ListItem(TouchToFillProperties.ItemType.WEBAUTHN_CREDENTIAL,
                 new PropertyModel
                         .Builder(TouchToFillProperties.WebAuthnCredentialProperties.ALL_KEYS)
                         .with(WEBAUTHN_CREDENTIAL, credential)
+                        .with(WEBAUTHN_ITEM_COLLECTION_INFO, collectionInfo)
                         .build());
     }
 
     private MVCListAdapter.ListItem buildConfirmationButton(
             Credential credential, boolean showSubmitButton) {
-        return buildSheetItem(TouchToFillProperties.ItemType.FILL_BUTTON, credential,
-                mCredentialCallback, showSubmitButton);
-    }
-
-    private static MVCListAdapter.ListItem buildSheetItem(
-            @TouchToFillProperties.ItemType int itemType, Credential credential,
-            Callback<Credential> callback, boolean showSubmitButton) {
-        return new MVCListAdapter.ListItem(itemType,
+        return new MVCListAdapter.ListItem(TouchToFillProperties.ItemType.FILL_BUTTON,
                 new PropertyModel.Builder(TouchToFillProperties.CredentialProperties.ALL_KEYS)
                         .with(CREDENTIAL, credential)
-                        .with(ON_CLICK_LISTENER, callback)
+                        .with(ON_CLICK_LISTENER, mCredentialCallback)
                         .with(FORMATTED_ORIGIN, credential.getDisplayName())
                         .with(SHOW_SUBMIT_BUTTON, showSubmitButton)
+                        .build());
+    }
+
+    private MVCListAdapter.ListItem buildMorePasskeysItem() {
+        return new MVCListAdapter.ListItem(TouchToFillProperties.ItemType.MORE_PASSKEYS,
+                new PropertyModel.Builder(TouchToFillProperties.MorePasskeysProperties.ALL_KEYS)
+                        .with(TouchToFillProperties.MorePasskeysProperties.ON_CLICK,
+                                () -> mMorePasskeysClicked.set(true))
                         .build());
     }
 

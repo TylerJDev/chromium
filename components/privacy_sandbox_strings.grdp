@@ -1,39 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <grit-part>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_INVALID" desc="A message shown in place of the user's FLoC ID if the ID is invalid and will not be recomputed">
-    None
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_DESCRIPTION" desc="Description of how FLoC works displayed to the user.">
-    {NUM_DAYS, plural,
-     =0 {When this control is on and the status is active, Chrome determines which large group of people, or "cohort," your recent browsing activity is most similar to. Advertisers can select ads for the group and your browsing activity is kept private on your device. Your group is updated every day.}
-     =1 {When this control is on and the status is active, Chrome determines which large group of people, or "cohort," your recent browsing activity is most similar to. Advertisers can select ads for the group and your browsing activity is kept private on your device. Your group is updated every day.}
-     other {When this control is on and the status is active, Chrome determines which large group of people, or "cohort," your recent browsing activity is most similar to. Advertisers can select ads for the group and your browsing activity is kept private on your device. Your group is updated every {NUM_DAYS} days.}}
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_TIME_TO_NEXT_COMPUTE" desc="Description of how long until the user's FLoC ID is recomputed, in days.">
-    {NUM_DAYS, plural,
-     =0 {In less than a day}
-     =1 {In a day}
-     other {In {NUM_DAYS} days}}
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_TIME_TO_NEXT_COMPUTE_INVALID" desc="A message shown in place of when the user's FLoC ID will be next computed if the user's ID will not be recomputed for any reason, such as having FLoC disabled">
-    Not applicable
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_RESET_EXPLANATION" desc="Description of what happens when a user chooses to reset their Federated Learning of Cohorts (FLoC) identifier">
-    {NUM_DAYS, plural,
-     =0 {You can reset your group at any time. It takes about a day to join a new group.}
-     =1 {You can reset your group at any time. It takes about a day to join a new group.}
-     other {You can reset your group at any time. It takes {NUM_DAYS} days to join a new group.}}
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_STATUS_ACTIVE" desc="Description of the user's FLoC status when they have the FLoC setting enabled, and the Origin Trial feature enabled, and so FLoC is fully active.">
-    Trial is active
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_STATUS_ELIGIBLE_NOT_ACTIVE" desc="Description of the user's FLoC status when FLoC is not operational because the user was not placed in the origin trial. When the user is placed in the trial, because their FLoC setting is enabled, FLoC will become operational">
-    Eligible for trial but not active
-  </message>
-  <message name="IDS_PRIVACY_SANDBOX_FLOC_STATUS_NOT_ACTIVE" desc="Description of the user's FLoC status when FLoC is not operational, either because the user does not have the FLoC setting enabled, or the user was not placed in the origin trial, or both.">
-    Off
-  </message>
-
     <!-- Privacy Sandbox v4 - Consent EEA. -->
   <message name="IDS_PRIVACY_SANDBOX_M1_CONSENT_TITLE" desc="This string is a page title. It needs to serve 2 purposes: 1) it needs to encompass 3 settings: one of which appears on this screen and two others on a second screen. 2) it also tries to give a sense for a bigger project, Privacy Sandbox described at www.privacysandbox.com. * 'ad privacy' is also the name of a new page in Chrome settings called 'Ad settings'. We mean privacy associated with ads, and not privacy from ads. That new page includes 3 settings: Ad topics, Site-suggested ads, and Ad measurement. Those are also the same 3 settings associated with this 2-screen moment. * The new ad settings appear in the privacy section of Chrome settings: chrome://settings/adSettings **** CONTEXT PRIVACY SANDBOX **** Chrome’s Privacy Sandbox initiative 1) deprecates third-party cookies in Chrome, 2) supports free and open content on the web (by finding better ways to support ads online), 3) while providing stronger privacy protections for users. You can see a high-level description of this public project at www.privacysanbox.com. **** CONTEXT EEA CONSENT **** 1) This screen is a Consent moment for Chrome users in the European Economic Area (EEA). It follows guidelines established by the GDPR. 2) This screen is 1 of 2 screens. This first screen describes the “Ad topics” setting. The second screen describes 2 other settings: “Site-suggested ads” and “Ad measurement”. " formatter_data="android_java">
     Turn on an ad privacy feature
@@ -2193,5 +2159,71 @@
   </message>
   <message name="IDS_PRIVACY_SANDBOX_TOPICS_TAXONOMY_V2_TOPIC_ID_629" desc="Taxonomy Member. Meaning: [holiday &amp; vacation packages, these typically include transportation &amp; accommodation and sometimes meals; also theme or activity-based travel packages] Existing Ref: http://tc-message/message/FatCatTaxonomy_Verticals4/3495940381581141578">
     Vacation Offers
+  </message>
+
+  <!-- Tracking Protection -->
+  <!-- TODO(b/295926938: finalize the strings. -->
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_TITLE" desc="" translateable="false" formatter_data="android_java">
+    Tracking Protection
+  </message>
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_DESCRIPTION" desc="" translateable="false" formatter_data="android_java">
+    Chrome limits the amount of information sites can use to track you as you browse. You can change your settings to choose your own level of protection.
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_ONBOARDING_NOTICE_TITLE" desc="Title of the tracking protection onboarding notice" translateable="false">
+    Browse with more privacy
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_ONBOARDING_NOTICE_BODY" desc="Content of the tracking protection notice, informing the user that they now have their third party cookies disabled by default" translateable="false">
+    You’re one of the first to experience Tracking Protection, which limits sites from using third-party cookies to track you as you browse.
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_ONBOARDING_NOTICE_SETTINGS_BUTTON_LABEL" desc="The user can choose to click “Settings“ to visit chrome://settings/cookies. If they do, they will find the cookie controls reflecting the new tracking protections." translateable="false">
+    Settings
+  </message>
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_BULLET_ONE_TITLE" desc="" translateable="false" formatter_data="android_java">
+    Chrome automatically limits third-party cookies
+  </message>
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_BULLET_ONE_DESCRIPTION" desc="" translateable="false" formatter_data="android_java">
+    Most sites can’t use third-party cookies to track you as you browse, and sites can’t use third-party cookies in Incognito mode.
+  </message>
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_BULLET_TWO_TITLE" desc="" translateable="false" formatter_data="android_java">
+    Most sites should work as expected
+  </message>
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_BULLET_TWO_DESCRIPTION" desc="" translateable="false" formatter_data="android_java">
+    If a site isn’t working, you can try giving it temporary permission to use third-party cookies. Learn more
+  </message>
+  <message name="IDS_PRIVACY_SANDBOX_TRACKING_PROTECTION_ADVANCED_CATEGORY" desc="" translateable="false" formatter_data="android_java">
+    Advanced
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_BLOCK_COOKIES_TOGGLE_TITLE" desc="" translateable="false" formatter_data="android_java">
+    Block all third-party cookies
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_BLOCK_COOKIES_TOGGLE_SUMMARY" desc="" translateable="false" formatter_data="android_java">
+    Features on some sites may not work. Learn more
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_DNT_TOGGLE_TITLE" desc="" translateable="false" formatter_data="android_java">
+    Send a “Do Not Track” request with your browsing traffic
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_DNT_TOGGLE_SUMMARY" desc="" translateable="false" formatter_data="android_java">
+    Sites use their discretion when responding to this request
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_ALLOWED_GROUP_TITLE" desc="" translateable="false" formatter_data="android_java">
+    Sites allowed to use third-party cookies
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_ALLOWED_GROUP_DESCRIPTION" desc="" translateable="false" formatter_data="android_java">
+    Affects the sites listed here and their subdomains. For example, adding “google.com” means that third-party cookies can also be active for mail.google.com, because it’s part of google.com.
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_NEVER_EXPIRES_LABEL" desc="" translateable="false" formatter_data="android_java">
+    Does not expire
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_EXPIRES_TODAY_LABEL" desc="" translateable="false" formatter_data="android_java">
+    Expires today
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_EXPIRES_LABEL" desc="" translateable="false" formatter_data="android_java">
+    {COUNT, plural,
+      =1 {Expires tomorrow}
+      other {Expires in # days}
+    }
+  </message>
+  <message name="IDS_TRACKING_PROTECTION_DELETE_SITE_LABEL" desc="" translateable="false" formatter_data="android_java">
+    Delete site
   </message>
 </grit-part>

@@ -169,6 +169,10 @@ build_recipe(
 )
 
 build_recipe(
+    name = "recipe:chromium_licenses/scan",
+)
+
+build_recipe(
     name = "recipe:chromium_polymorphic/launcher",
 )
 
@@ -203,6 +207,10 @@ build_recipe(
 
 build_recipe(
     name = "recipe:chromium_rts/create_model",
+)
+
+build_recipe(
+    name = "recipe:chromium_rts/rts_analyze",
 )
 
 build_recipe(
@@ -263,10 +271,6 @@ build_recipe(
 
 build_recipe(
     name = "recipe:swarming/deterministic_build",
-)
-
-build_recipe(
-    name = "recipe:swarming/staging",
 )
 
 build_recipe(

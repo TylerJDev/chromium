@@ -28,6 +28,7 @@
 #include "components/autofill/core/browser/payments/virtual_card_enrollment_flow.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "url/origin.h"
 
 namespace signin {
 class AccessTokenFetcher;
@@ -130,6 +131,10 @@ class PaymentsClient {
     // A vector of signals used to share client behavior with the Payments
     // server.
     std::vector<ClientBehaviorConstants> client_behavior_signals;
+    // The origin of the primary main frame where the unmasking happened. Should
+    // only be populated when the client is not in incognito mode since it will
+    // be used for personalization.
+    absl::optional<url::Origin> merchant_domain_for_footprints;
   };
 
   // Information retrieved from an UnmaskRequest.
@@ -536,12 +541,6 @@ class PaymentsClient {
   void set_url_loader_factory_for_testing(
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
   void set_access_token_for_testing(std::string access_token);
-
-  // TODO(crbug.com/1409158): Remove this function, as it should not be the
-  // PaymentsClient's responsibility to check if the user is off the record. The
-  // sole responsibility of the PaymentsClient is to send requests to the Google
-  // payments server.
-  bool is_off_the_record() { return is_off_the_record_; }
 
  private:
   friend class PaymentsClientTest;

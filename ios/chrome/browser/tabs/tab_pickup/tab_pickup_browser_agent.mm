@@ -14,9 +14,9 @@
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
-#import "ios/chrome/browser/sync/session_sync_service_factory.h"
-#import "ios/chrome/browser/synced_sessions/distant_session.h"
-#import "ios/chrome/browser/synced_sessions/synced_sessions.h"
+#import "ios/chrome/browser/sync/model/session_sync_service_factory.h"
+#import "ios/chrome/browser/synced_sessions/model/distant_session.h"
+#import "ios/chrome/browser/synced_sessions/model/synced_sessions.h"
 #import "ios/chrome/browser/tabs/tab_pickup/features.h"
 #import "ios/chrome/browser/tabs/tab_pickup/tab_pickup_infobar_delegate.h"
 #import "ios/web/public/web_state.h"
@@ -133,16 +133,21 @@ void TabPickupBrowserAgent::ForeignSessionsChanged() {
 
   auto const synced_sessions =
       std::make_unique<synced_sessions::SyncedSessions>(session_sync_service_);
-  if (synced_sessions->GetSessionCount()) {
-    // Get the last synced session.
-    session_ = synced_sessions->GetSession(0);
 
-    // Check that the last synced tab is younger than the tab pickup time
-    // threshold.
+  for (size_t i = 0; i < synced_sessions->GetSessionCount(); ++i) {
+    const synced_sessions::DistantSession* session =
+        synced_sessions->GetSession(i);
+    // Check if the synced tab meets tab pickup time
+    // thresholds.
     const base::TimeDelta modified_time =
-        base::Time::Now() - session_->modified_time;
-    if (modified_time < TabPickupTimeThreshold()) {
+        base::Time::Now() - session->modified_time;
+    if (modified_time > TabPickupMaxTimeThreshold()) {
+      return;
+    }
+    if (modified_time > TabPickupMinTimeThreshold()) {
+      session_ = session;
       SetupInfoBarDelegate();
+      return;
     }
   }
 }

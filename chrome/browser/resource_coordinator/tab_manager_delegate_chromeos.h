@@ -121,6 +121,7 @@ class TabManagerDelegate : public wm::ActivationChangeObserver,
   FRIEND_TEST_ALL_PREFIXES(TabManagerDelegateTest, IsRecentlyKilledArcProcess);
   FRIEND_TEST_ALL_PREFIXES(TabManagerDelegateTest, KillMultipleProcesses);
   FRIEND_TEST_ALL_PREFIXES(TabManagerDelegateTest, SetOomScoreAdj);
+  FRIEND_TEST_ALL_PREFIXES(TabManagerDelegateTest, TestDiscardedTabsAreSkipped);
 
   using OptionalArcProcessList = arc::ArcProcessService::OptionalArcProcessList;
 
@@ -162,6 +163,21 @@ class TabManagerDelegate : public wm::ActivationChangeObserver,
                          ::mojom::LifecycleUnitDiscardReason reason,
                          TabManager::TabDiscardDoneCB tab_discard_done,
                          OptionalArcProcessList arc_processes);
+
+  // Processes a specific candidate for a low memory kill.
+  int ProcessCandidate(::mojom::LifecycleUnitDiscardReason reason,
+                       base::TimeTicks kill_start_time,
+                       Candidate& candidate,
+                       int target_memory_to_free_kb);
+
+  // Processes an app candidate for a low memory kill.
+  int ProcessAppCandidate(base::TimeTicks kill_start_time,
+                          Candidate& candidate);
+
+  // Processes a lifecycle unit candidate for a low memory kill.
+  int ProcessLifecycleUnitCandidate(Candidate& candidate,
+                                    int target_memory_to_free_kb,
+                                    ::mojom::LifecycleUnitDiscardReason reason);
 
   // Sets a newly focused tab the highest priority process if it wasn't.
   void AdjustFocusedTabScore(base::ProcessHandle pid);

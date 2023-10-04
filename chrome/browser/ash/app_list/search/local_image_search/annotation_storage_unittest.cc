@@ -65,7 +65,7 @@ TEST_F(AnnotationStorageTest, Insert) {
 
   auto time = base::Time::Now();
   ImageInfo bar_image({"test"}, test_directory_.AppendASCII("bar.jpg"), time,
-                      /*is_ignored=*/false);
+                      /*file_size=*/1);
 
   storage_->Insert(bar_image);
 
@@ -74,7 +74,7 @@ TEST_F(AnnotationStorageTest, Insert) {
   task_environment_.RunUntilIdle();
 
   ImageInfo bar_image1({"test1"}, test_directory_.AppendASCII("bar.jpg"),
-                       std::move(time), /*is_ignored=*/false);
+                       std::move(time), 1);
 
   storage_->Insert(bar_image1);
 
@@ -83,7 +83,7 @@ TEST_F(AnnotationStorageTest, Insert) {
   task_environment_.RunUntilIdle();
 
   ImageInfo foo_image({"test1"}, test_directory_.AppendASCII("foo.png"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), 2);
 
   storage_->Insert(foo_image);
 
@@ -99,11 +99,11 @@ TEST_F(AnnotationStorageTest, Remove) {
 
   auto time = base::Time::Now();
   ImageInfo bar_image({"test"}, test_directory_.AppendASCII("bar.jpg"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), /*file_size=*/1);
   ImageInfo foo_image({"test"}, test_directory_.AppendASCII("foo.png"), time,
-                      /*is_ignored=*/false);
+                      2);
   ImageInfo foo_image1({"test1"}, test_directory_.AppendASCII("foo.png"),
-                       std::move(time), /*is_ignored=*/false);
+                       std::move(time), 2);
   storage_->Insert(bar_image);
   storage_->Insert(foo_image);
   storage_->Insert(foo_image1);
@@ -132,9 +132,9 @@ TEST_F(AnnotationStorageTest, FindImagePath) {
   task_environment_.RunUntilIdle();
 
   ImageInfo bar_image({"test"}, test_directory_.AppendASCII("bar.jpg"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), /*file_size=*/1);
   ImageInfo foo_image({"test1"}, test_directory_.AppendASCII("foo.png"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), 2);
   storage_->Insert(bar_image);
   storage_->Insert(foo_image);
 
@@ -156,18 +156,15 @@ TEST_F(AnnotationStorageTest, SearchAnnotations) {
 
   ImageInfo document_image1({"test", "bar", "test1"},
                             test_directory_.AppendASCII("document1.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), /*file_size=*/1);
   ImageInfo document_image2({"testing", "testing_long"},
                             test_directory_.AppendASCII("document2.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), 2);
   ImageInfo document_image3({"testing_long"},
                             test_directory_.AppendASCII("document3.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), 3);
   ImageInfo foo_image({"test1"}, test_directory_.AppendASCII("foo.png"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), 4);
   storage_->Insert(document_image1);
   storage_->Insert(document_image2);
   storage_->Insert(document_image3);
@@ -247,18 +244,15 @@ TEST_F(AnnotationStorageTest, MaxResult) {
 
   ImageInfo document_image1({"test", "bar", "test1"},
                             test_directory_.AppendASCII("document1.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), /*file_size=*/1);
   ImageInfo document_image2({"bar", "test1"},
                             test_directory_.AppendASCII("document2.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), 2);
   ImageInfo document_image3({"bar", "test1"},
                             test_directory_.AppendASCII("document3.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), 3);
   ImageInfo foo_image({"test1"}, test_directory_.AppendASCII("foo.png"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), 4);
 
   storage_->Insert(document_image1);
   storage_->Insert(document_image2);
@@ -312,12 +306,10 @@ TEST_F(AnnotationStorageTest, QueryWithStopWords) {
 
   ImageInfo document_image1({"test", "bar", "test1"},
                             test_directory_.AppendASCII("document1.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), /*file_size=*/1);
   ImageInfo document_image2({"bar", "test1"},
                             test_directory_.AppendASCII("document2.jpg"),
-                            base::Time::Now(),
-                            /*is_ignored=*/false);
+                            base::Time::Now(), 2);
 
   storage_->Insert(document_image1);
   storage_->Insert(document_image2);
@@ -368,7 +360,7 @@ TEST_F(AnnotationStorageTest, SchemaMigration) {
   task_environment_.RunUntilIdle();
 
   ImageInfo bar_image({"test"}, test_directory_.AppendASCII("bar.jpg"),
-                      base::Time::Now(), /*is_ignored=*/false);
+                      base::Time::Now(), /*file_size=*/1);
 
   storage_->Insert(bar_image);
   EXPECT_THAT(storage_->GetAllAnnotations(),

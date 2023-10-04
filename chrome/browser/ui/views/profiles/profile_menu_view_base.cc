@@ -232,6 +232,7 @@ class CircularImageButton : public views::ImageButton {
     if (features::IsChromeRefresh2023() && has_background_color_) {
       SetBackground(views::CreateThemedRoundedRectBackground(
           kColorProfileMenuIconButtonBackground, kButtonRadius));
+      views::FocusRing::Get(this)->SetOutsetFocusRingDisabled(false);
       views::InkDrop::Get(this)->GetInkDrop()->SetShowHighlightOnHover(true);
       views::InkDrop::Get(this)->SetLayerRegion(views::LayerRegion::kAbove);
       views::InkDrop::Get(this)->SetCreateHighlightCallback(base::BindRepeating(
@@ -1201,3 +1202,7 @@ class ProfileMenuViewBase::AXMenuWidgetObserver : public views::WidgetObserver {
   base::ScopedObservation<views::Widget, views::WidgetObserver> observation_{
       this};
 };
+
+BEGIN_METADATA(ProfileMenuViewBase, views::BubbleDialogDelegateView)
+ADD_READONLY_PROPERTY_METADATA(gfx::ImageSkia, SyncIcon)
+END_METADATA

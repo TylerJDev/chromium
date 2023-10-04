@@ -9,8 +9,8 @@
 #include <ostream>
 #include <type_traits>
 
-#include "base/allocator/partition_allocator/pointers/raw_ptr.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "ui/base/interaction/element_identifier.h"
 
@@ -170,10 +170,11 @@ extern std::ostream& operator<<(std::ostream& os,
 
 #define DECLARE_STATE_IDENTIFIER_VALUE(ObserverType, Name) \
   DECLARE_ELEMENT_IDENTIFIER_VALUE(Name##Impl);            \
-  constexpr ui::test::StateIdentifier<ObserverType> Name(Name##Impl)
+  extern const ui::test::StateIdentifier<ObserverType> Name
 
-#define DEFINE_STATE_IDENTIFIER_VALUE(Name) \
-  DEFINE_ELEMENT_IDENTIFIER_VALUE(Name##Impl)
+#define DEFINE_STATE_IDENTIFIER_VALUE(ObserverType, Name) \
+  DEFINE_ELEMENT_IDENTIFIER_VALUE(Name##Impl);            \
+  constexpr ui::test::StateIdentifier<ObserverType> Name(Name##Impl)
 
 #define DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(ObserverType, Name) \
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(Name##Impl);            \

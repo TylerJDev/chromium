@@ -21,42 +21,26 @@
 #import "base/task/thread_pool.h"
 #import "base/threading/scoped_blocking_call.h"
 #import "base/time/time.h"
+#import "ios/chrome/browser/sessions/session_constants.h"
+#import "ios/chrome/browser/sessions/session_internal_util.h"
 #import "ios/chrome/browser/sessions/session_ios.h"
-#import "ios/chrome/browser/sessions/session_ios_factory.h"
 #import "ios/chrome/browser/sessions/session_window_ios.h"
+#import "ios/chrome/browser/sessions/session_window_ios_factory.h"
 #import "ios/web/public/session/crw_navigation_item_storage.h"
 #import "ios/web/public/session/crw_session_certificate_policy_cache_storage.h"
 #import "ios/web/public/session/crw_session_storage.h"
 
 namespace {
 const NSTimeInterval kSaveDelay = 2.5;     // Value taken from Desktop Chrome.
-NSString* const kRootObjectKey = @"root";  // Key for the root object.
-
-// Directory containing session files.
-const base::FilePath::CharType kSessions[] = FILE_PATH_LITERAL("Sessions");
-
-// Name of the file storing the list of tabs.
-const base::FilePath::CharType kSessionFileName[] =
-    FILE_PATH_LITERAL("session.plist");
 }
-
-@implementation NSKeyedUnarchiver (CrLegacySessionCompatibility)
-
-// When adding a new compatibility alias here, create a new crbug to track its
-// removal and mark it with a release at least one year after the introduction
-// of the alias.
-- (void)cr_registerCompatibilityAliases {
-}
-
-@end
 
 @implementation SessionServiceIOS {
   // The SequencedTaskRunner on which File IO operations are performed.
   scoped_refptr<base::SequencedTaskRunner> _taskRunner;
 
   // Maps session path to the pending session factories for the delayed save
-  // behaviour. SessionIOSFactory pointers are weak.
-  NSMapTable<NSString*, SessionIOSFactory*>* _pendingSessions;
+  // behaviour. SessionWindowIOSFactory pointers are weak.
+  NSMapTable<NSString*, SessionWindowIOSFactory*>* _pendingSessions;
 }
 
 #pragma mark - NSObject overrides
@@ -95,7 +79,7 @@ const base::FilePath::CharType kSessionFileName[] =
   _taskRunner->PostTask(FROM_HERE, base::BindOnce(completion));
 }
 
-- (void)saveSession:(__weak SessionIOSFactory*)factory
+- (void)saveSession:(__weak SessionWindowIOSFactory*)factory
           sessionID:(NSString*)sessionID
           directory:(const base::FilePath&)directory
         immediately:(BOOL)immediately {
@@ -115,63 +99,26 @@ const base::FilePath::CharType kSessionFileName[] =
   }
 }
 
-- (SessionIOS*)loadSessionWithSessionID:(NSString*)sessionID
-                              directory:(const base::FilePath&)directory {
+- (SessionWindowIOS*)loadSessionWithSessionID:(NSString*)sessionID
+                                    directory:(const base::FilePath&)directory {
   NSString* sessionPath = [[self class] sessionPathForSessionID:sessionID
                                                       directory:directory];
   base::TimeTicks start_time = base::TimeTicks::Now();
-  SessionIOS* session = [self loadSessionFromPath:sessionPath];
+  SessionWindowIOS* session = [self loadSessionFromPath:sessionPath];
   UmaHistogramTimes("Session.WebStates.ReadFromFileTime",
                     base::TimeTicks::Now() - start_time);
   return session;
 }
 
-- (SessionIOS*)loadSessionFromPath:(NSString*)sessionPath {
-  NSObject<NSCoding>* rootObject = nil;
-  @try {
-    NSData* data = [NSData dataWithContentsOfFile:sessionPath];
-    if (!data)
-      return nil;
-
-    NSError* error = nil;
-    NSKeyedUnarchiver* unarchiver =
-        [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
-    if (!unarchiver || error) {
-      DLOG(WARNING) << "Error creating unarchiver, session file: "
-                    << base::SysNSStringToUTF8(sessionPath) << ": "
-                    << base::SysNSStringToUTF8([error description]);
-      return nil;
-    }
-
-    unarchiver.requiresSecureCoding = NO;
-
-    // Register compatibility aliases to support legacy saved sessions.
-    [unarchiver cr_registerCompatibilityAliases];
-    rootObject = [unarchiver decodeObjectForKey:kRootObjectKey];
-  } @catch (NSException* exception) {
-    NOTREACHED() << "Error loading session file: "
-                 << base::SysNSStringToUTF8(sessionPath) << ": "
-                 << base::SysNSStringToUTF8([exception reason]);
-  }
-
-  if (!rootObject)
-    return nil;
-
-  // Support for legacy saved session that contained a single SessionWindowIOS
-  // object as the root object (pre-M-59).
-  if ([rootObject isKindOfClass:[SessionWindowIOS class]]) {
-    return [[SessionIOS alloc] initWithWindows:@[
-      base::apple::ObjCCastStrict<SessionWindowIOS>(rootObject)
-    ]];
-  }
-
-  return base::apple::ObjCCastStrict<SessionIOS>(rootObject);
+- (SessionWindowIOS*)loadSessionFromPath:(NSString*)sessionPath {
+  return ios::sessions::ReadSessionWindow(
+      base::apple::NSStringToFilePath(sessionPath));
 }
 
 - (void)deleteAllSessionFilesInDirectory:(const base::FilePath&)directory
                               completion:(base::OnceClosure)callback {
   NSString* sessionsDirectory =
-      base::apple::FilePathToNSString(directory.Append(kSessions));
+      base::apple::FilePathToNSString(directory.Append(kLegacySessionFilename));
   NSArray<NSString*>* allSessionIDs = [[NSFileManager defaultManager]
       contentsOfDirectoryAtPath:sessionsDirectory
                           error:nil];
@@ -197,9 +144,9 @@ const base::FilePath::CharType kSessionFileName[] =
                            directory:(const base::FilePath&)directory {
   DCHECK(sessionID.length != 0);
   return base::apple::FilePathToNSString(
-      directory.Append(kSessions)
+      directory.Append(kLegacySessionsDirname)
           .Append(base::SysNSStringToUTF8(sessionID))
-          .Append(kSessionFileName));
+          .Append(kLegacySessionFilename));
 }
 
 + (NSString*)filePathForTabID:(NSString*)tabID
@@ -277,24 +224,27 @@ const base::FilePath::CharType kSessionFileName[] =
 
   // Serialize to NSData on the main thread to avoid accessing potentially
   // non-threadsafe objects on a background thread.
-  SessionIOSFactory* factory = [_pendingSessions objectForKey:sessionPath];
+  SessionWindowIOSFactory* factory =
+      [_pendingSessions objectForKey:sessionPath];
   [_pendingSessions removeObjectForKey:sessionPath];
-  SessionIOS* session = [factory sessionForSaving];
+  SessionWindowIOS* sessionWindow = [factory sessionForSaving];
 
   // Because the factory may be called asynchronously after the underlying
   // web state list is destroyed, the session may be nil; if so, do nothing.
   // Do not record the time spent calling -sessionForSaving: as it not
   // interesting in that case.
-  if (!session)
+  if (!sessionWindow) {
     return;
+  }
 
   @try {
     NSError* error = nil;
     size_t previous_cert_policy_bytes = web::GetCertPolicyBytesEncoded();
     const base::TimeTicks archiving_start_time = base::TimeTicks::Now();
-    NSData* sessionData = [NSKeyedArchiver archivedDataWithRootObject:session
-                                                requiringSecureCoding:NO
-                                                                error:&error];
+    NSData* sessionData =
+        [NSKeyedArchiver archivedDataWithRootObject:sessionWindow
+                              requiringSecureCoding:NO
+                                              error:&error];
 
     // Store end_time to avoid counting the time spent recording the first
     // metric as part of the second metric recorded (probably negligible).

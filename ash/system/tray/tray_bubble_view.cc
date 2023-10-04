@@ -157,8 +157,6 @@ bool TrayBubbleView::Delegate::ShouldEnableExtraKeyboardAccessibility() {
   return false;
 }
 
-void TrayBubbleView::Delegate::HideBubble(const TrayBubbleView* bubble_view) {}
-
 base::WeakPtr<TrayBubbleView::Delegate> TrayBubbleView::Delegate::GetWeakPtr() {
   return weak_ptr_factory_.GetWeakPtr();
 }
@@ -643,6 +641,14 @@ void TrayBubbleView::NotifyTrayBubbleClosed() {
                                                         /*visible=*/false);
 }
 
+void TrayBubbleView::CloseBubbleView() {
+  if (!delegate_) {
+    return;
+  }
+
+  delegate_->HideBubble(this);
+}
+
 void TrayBubbleView::ChildPreferredSizeChanged(View* child) {
   SizeToContents();
 }
@@ -651,14 +657,6 @@ void TrayBubbleView::SetBubbleBorderInsets(gfx::Insets insets) {
   if (GetBubbleFrameView()->bubble_border()) {
     GetBubbleFrameView()->bubble_border()->set_insets(insets);
   }
-}
-
-void TrayBubbleView::CloseBubbleView() {
-  if (!delegate_) {
-    return;
-  }
-
-  delegate_->HideBubble(this);
 }
 
 BEGIN_METADATA(TrayBubbleView, views::BubbleDialogDelegateView)

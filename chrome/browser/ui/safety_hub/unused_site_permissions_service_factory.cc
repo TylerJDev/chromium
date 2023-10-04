@@ -8,6 +8,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/safety_hub/unused_site_permissions_service.h"
+#include "components/prefs/pref_service.h"
 
 // static
 UnusedSitePermissionsServiceFactory*
@@ -28,9 +29,6 @@ UnusedSitePermissionsServiceFactory::UnusedSitePermissionsServiceFactory()
           "UnusedSitePermissionsService",
           ProfileSelections::Builder()
               .WithRegular(ProfileSelection::kOriginalOnly)
-              // TODO(crbug.com/1418376): Check if this service is needed in
-              // Guest mode.
-              .WithGuest(ProfileSelection::kOriginalOnly)
               .Build()) {
   DependsOn(HostContentSettingsMapFactory::GetInstance());
 }
@@ -40,8 +38,9 @@ UnusedSitePermissionsServiceFactory::~UnusedSitePermissionsServiceFactory() =
 
 KeyedService* UnusedSitePermissionsServiceFactory::BuildServiceInstanceFor(
     content::BrowserContext* context) const {
+  Profile* profile = Profile::FromBrowserContext(context);
   auto* service = new UnusedSitePermissionsService(
-      HostContentSettingsMapFactory::GetForProfile(context));
-  service->StartRepeatedUpdates();
+      HostContentSettingsMapFactory::GetForProfile(context),
+      profile->GetPrefs());
   return service;
 }

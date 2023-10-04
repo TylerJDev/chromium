@@ -29,7 +29,7 @@
 #include "chrome/browser/ash/input_method/ui/input_method_menu_manager.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/settings_window_manager_chromeos.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_tag_registry.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
 #include "chrome/common/pref_names.h"
 #include "chromeos/ash/services/ime/public/cpp/autocorrect.h"
 #include "chromeos/ash/services/ime/public/mojom/input_method.mojom.h"
@@ -1109,6 +1109,9 @@ void NativeInputMethodEngineObserver::OnSurroundingTextChanged(
     ime_base_observer_->OnSurroundingTextChanged(engine_id, text,
                                                  selection_range, offset_pos);
   }
+  if (editor_event_sink_) {
+    editor_event_sink_->OnSurroundingTextChanged(text, selection_range);
+  }
 }
 
 void NativeInputMethodEngineObserver::OnCandidateClicked(
@@ -1131,7 +1134,7 @@ void NativeInputMethodEngineObserver::OnAssistiveWindowButtonClicked(
           "ChromeOS.Settings.SmartInputs.PersonalInfoSuggestions.Open"));
       chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
           ProfileManager::GetActiveUserProfile(),
-          chromeos::settings::mojom::kSmartInputsSubpagePath);
+          chromeos::settings::mojom::kInputSubpagePath);
       break;
     case ui::ime::ButtonId::kLearnMore:
       if (button.window_type ==
@@ -1142,7 +1145,7 @@ void NativeInputMethodEngineObserver::OnAssistiveWindowButtonClicked(
         chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
             ProfileManager::GetActiveUserProfile(),
             SettingToQueryString(
-                chromeos::settings::mojom::kSmartInputsSubpagePath,
+                chromeos::settings::mojom::kInputSubpagePath,
                 chromeos::settings::mojom::Setting::kShowEmojiSuggestions));
       }
       if (button.window_type ==

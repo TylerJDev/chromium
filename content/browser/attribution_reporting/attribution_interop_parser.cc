@@ -113,6 +113,8 @@ class AttributionInteropParser {
 
   base::expected<AttributionSimulationEvents, std::string> ParseInput(
       base::Value::Dict input) && {
+    std::vector<AttributionSimulationEvent> events;
+
     static constexpr char kKeySources[] = "sources";
     if (base::Value* sources = input.Find(kKeySources)) {
       auto context = PushContext(kKeySources);
@@ -120,7 +122,8 @@ class AttributionInteropParser {
         ParseRegistration(std::move(source),
                           /*context_origin_key=*/"source_origin",
                           /*parse_source_type=*/true,
-                          /*header=*/"Attribution-Reporting-Register-Source");
+                          /*header=*/"Attribution-Reporting-Register-Source",
+                          events);
       });
     }
 
@@ -131,7 +134,8 @@ class AttributionInteropParser {
         ParseRegistration(std::move(trigger),
                           /*context_origin_key=*/"destination_origin",
                           /*parse_source_type=*/false,
-                          /*header=*/"Attribution-Reporting-Register-Trigger");
+                          /*header=*/"Attribution-Reporting-Register-Trigger",
+                          events);
       });
     }
 
@@ -139,8 +143,8 @@ class AttributionInteropParser {
       return base::unexpected(error_stream_.str());
     }
 
-    base::ranges::sort(events_);
-    return std::move(events_);
+    base::ranges::sort(events);
+    return events;
   }
 
   [[nodiscard]] std::string ParseConfig(const base::Value::Dict& dict,
@@ -158,15 +162,23 @@ class AttributionInteropParser {
     ParseInt(dict, "max_destinations_per_rate_limit_window",
              config.destination_rate_limit.max_total, required);
 
+    int destination_rate_limit_window_in_minutes;
+    if (ParseInt(dict, "destination_rate_limit_window_in_minutes",
+                 destination_rate_limit_window_in_minutes, required)) {
+      config.destination_rate_limit.rate_limit_window =
+          base::Minutes(destination_rate_limit_window_in_minutes);
+    }
+
     ParseDouble(dict, "max_navigation_info_gain",
                 config.event_level_limit.max_navigation_info_gain, required);
     ParseDouble(dict, "max_event_info_gain",
                 config.event_level_limit.max_event_info_gain, required);
 
-    int rate_limit_time_window;
-    if (ParseInt(dict, "rate_limit_time_window", rate_limit_time_window,
-                 required)) {
-      config.rate_limit.time_window = base::Days(rate_limit_time_window);
+    int rate_limit_time_window_in_days;
+    if (ParseInt(dict, "rate_limit_time_window_in_days",
+                 rate_limit_time_window_in_days, required)) {
+      config.rate_limit.time_window =
+          base::Days(rate_limit_time_window_in_days);
     }
 
     ParseInt64(dict, "rate_limit_max_source_registration_reporting_origins",
@@ -180,14 +192,15 @@ class AttributionInteropParser {
              config.rate_limit.max_reporting_origins_per_source_reporting_site,
              required);
 
+    int rate_limit_origins_per_site_window_in_days;
+    if (ParseInt(dict, "rate_limit_origins_per_site_window_in_days",
+                 rate_limit_origins_per_site_window_in_days, required)) {
+      config.rate_limit.origins_per_site_window =
+          base::Days(rate_limit_origins_per_site_window_in_days);
+    }
+
     ParseInt(dict, "max_event_level_reports_per_destination",
              config.event_level_limit.max_reports_per_destination, required);
-    ParseInt(dict, "max_attributions_per_navigation_source",
-             config.event_level_limit.max_attributions_per_navigation_source,
-             required);
-    ParseInt(dict, "max_attributions_per_event_source",
-             config.event_level_limit.max_attributions_per_event_source,
-             required);
     ParseUint64(
         dict, "navigation_source_trigger_data_cardinality",
         config.event_level_limit.navigation_source_trigger_data_cardinality,
@@ -230,8 +243,6 @@ class AttributionInteropParser {
 
   ContextPath context_path_;
   bool has_error_ = false;
-
-  std::vector<AttributionSimulationEvent> events_;
 
   [[nodiscard]] ScopedContext PushContext(Context context) {
     return ScopedContext(context_path_, context);
@@ -290,8 +301,9 @@ class AttributionInteropParser {
   void ParseRegistration(base::Value::Dict dict,
                          const base::StringPiece context_origin_key,
                          const bool parse_source_type,
-                         const base::StringPiece header) {
-    const base::Time time = ParseDistinctTime(dict);
+                         const base::StringPiece header,
+                         std::vector<AttributionSimulationEvent>& events) {
+    const base::Time time = ParseDistinctTime(dict, events);
 
     absl::optional<SuitableOrigin> context_origin;
     absl::optional<SuitableOrigin> reporting_origin;
@@ -332,8 +344,8 @@ class AttributionInteropParser {
                   return;
                 }
 
-                auto& event = events_.emplace_back(std::move(*reporting_origin),
-                                                   std::move(*context_origin));
+                auto& event = events.emplace_back(std::move(*reporting_origin),
+                                                  std::move(*context_origin));
                 event.source_type = source_type;
                 event.registration = std::move(*registration);
                 event.time = time;
@@ -359,7 +371,9 @@ class AttributionInteropParser {
     return origin;
   }
 
-  base::Time ParseDistinctTime(const base::Value::Dict& dict) {
+  base::Time ParseDistinctTime(
+      const base::Value::Dict& dict,
+      const std::vector<AttributionSimulationEvent>& events) {
     static constexpr char kTimestampKey[] = "timestamp";
 
     auto context = PushContext(kTimestampKey);
@@ -370,9 +384,9 @@ class AttributionInteropParser {
     if (v && base::StringToInt64(*v, &milliseconds)) {
       base::Time time = offset_time_ + base::Milliseconds(milliseconds);
       if (!time.is_null() && !time.is_inf()) {
-        auto iter = base::ranges::find(
-            events_, time, [](const auto& event) { return event.time; });
-        if (iter != events_.end()) {
+        auto iter =
+            base::ranges::find(events, time, &AttributionSimulationEvent::time);
+        if (iter != events.end()) {
           *Error() << "must be distinct from all others: " << milliseconds;
         }
         return time;

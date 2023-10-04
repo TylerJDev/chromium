@@ -12,6 +12,7 @@
 #include "content/browser/service_worker/embedded_worker_test_helper.h"
 #include "content/browser/service_worker/service_worker_hid_delegate_observer.h"
 #include "content/browser/service_worker/service_worker_test_utils.h"
+#include "content/browser/service_worker/service_worker_usb_delegate_observer.h"
 #include "content/public/test/test_browser_context.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -61,6 +62,12 @@ void EmbeddedWorkerInstanceTestHarness::CreateAndStartWorker(
       hid_delegate && hid_delegate->IsServiceWorkerAllowedForOrigin(
                           url::Origin::Create(origin)));
 
+  content::UsbDelegate* usb_delegate =
+      content::GetContentClientForTesting()->browser()->GetUsbDelegate();
+  worker_version_->set_has_usb_event_handlers(
+      usb_delegate && usb_delegate->IsServiceWorkerAllowedForOrigin(
+                          url::Origin::Create(origin)));
+
   worker_version_->SetStatus(ServiceWorkerVersion::Status::ACTIVATED);
   pair.first->SetActiveVersion(worker_version_);
 
@@ -72,14 +79,14 @@ void EmbeddedWorkerInstanceTestHarness::CreateAndStartWorker(
 
   StartServiceWorker(worker_version_.get());
   ASSERT_EQ(worker_version_->embedded_worker()->status(),
-            content::EmbeddedWorkerStatus::RUNNING);
+            blink::EmbeddedWorkerStatus::kRunning);
 }
 
 void EmbeddedWorkerInstanceTestHarness::StopAndResetWorker() {
   EXPECT_NE(worker_version_, nullptr);
   StopServiceWorker(worker_version_.get());
   ASSERT_EQ(worker_version_->embedded_worker()->status(),
-            EmbeddedWorkerStatus::STOPPED);
+            blink::EmbeddedWorkerStatus::kStopped);
   worker_version_.reset();
 }
 

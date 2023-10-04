@@ -109,17 +109,8 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
 
   // InputHandlerProxyClient overrides.
   void WillShutdown() override;
-  void DispatchNonBlockingEventToMainThread(
-      std::unique_ptr<WebCoalescedInputEvent> event,
-      const WebInputEventAttribution& attribution,
-      std::unique_ptr<cc::EventMetrics> metrics) override;
-
   void DidAnimateForInput() override;
   void DidStartScrollingViewport() override;
-  void GenerateScrollBeginAndSendToMainThread(
-      const WebGestureEvent& update_event,
-      const WebInputEventAttribution& attribution,
-      const cc::EventMetrics* update_metrics) override;
   void SetAllowedTouchAction(cc::TouchAction touch_action) override;
   bool AllowsScrollResampling() override { return allow_scroll_resampling_; }
 
@@ -189,6 +180,11 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
   base::SingleThreadTaskRunner* main_task_runner_for_testing() const {
     return main_thread_task_runner_.get();
   }
+
+  // Immediately dispatches all queued events in both the main and compositor
+  // queues such that the queues are emptied. Invokes the passed closure when
+  // both main and compositor thread queues have been processed.
+  void FlushEventQueuesForTesting(base::OnceClosure done_callback);
 
  protected:
   friend class base::RefCountedThreadSafe<WidgetInputHandlerManager>;
@@ -289,6 +285,10 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
   void LogInputTimingUMA();
 
   void RecordMetricsForDroppedEventsBeforePaint(const base::TimeTicks&);
+
+  // Helpers for FlushEventQueuesForTesting.
+  void FlushCompositorQueueForTesting();
+  void FlushMainThreadQueueForTesting(base::OnceClosure done);
 
   // Only valid to be called on the main thread.
   base::WeakPtr<WidgetBase> widget_;

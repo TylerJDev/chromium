@@ -248,7 +248,7 @@
             var pointerInteractablePaintTree = getPointerInteractablePaintTree(element, frame);
             if (pointerInteractablePaintTree.length === 0 ||
                 !element.contains(pointerInteractablePaintTree[0])) {
-              return Promise.reject(new Error("element click intercepted error"));
+              return Promise.reject(new Error("element event-dispatch intercepted error"));
             }
 
             var rect = element.getClientRects()[0];
@@ -540,6 +540,10 @@
 
   window.test_driver_internal.cancel_fedcm_dialog = async function() {
     return internals.dismissFedCmDialog();
+  }
+
+  window.test_driver_internal.confirm_idp_login = async function() {
+    return internals.confirmIdpLogin();
   }
 
   // Enable automation so we don't wait for user input on unimplemented APIs

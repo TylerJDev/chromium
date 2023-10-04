@@ -58,7 +58,9 @@ default_args = {
   # Overwrite default args declared in the Fuchsia sdk
   fuchsia_sdk_readelf_exec =
       "//third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
-  fuchsia_target_api_level = 11
+
+  # Overwrite default args declared in the pdfium library
+  pdf_use_partition_alloc_new_location = true
 
   devtools_visibility = [ "*" ]
 }

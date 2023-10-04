@@ -6,9 +6,15 @@
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_SYSTEM_PREFERENCES_SECTION_H_
 
 #include "base/values.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/date_time/date_time_section.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/files/files_section.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/system_preferences/startup_section.h"
+#include "chrome/browser/ui/webui/settings/ash/languages_section.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_section.h"
+#include "chrome/browser/ui/webui/settings/ash/power_section.h"
 #include "chrome/browser/ui/webui/settings/ash/reset_section.h"
 #include "chrome/browser/ui/webui/settings/ash/search_section.h"
+#include "chrome/browser/ui/webui/settings/ash/storage_section.h"
 
 namespace content {
 class WebUIDataSource;
@@ -19,11 +25,13 @@ namespace ash::settings {
 class SearchTagRegistry;
 
 // Provides UI strings and search tags for System Preferences settings.
-// Includes the Reset and Search sections.
+// Includes the Date & Time, Files, Languages, Power, Reset, Search, Startup,
+// and Storage sections.
 class SystemPreferencesSection : public OsSettingsSection {
  public:
   SystemPreferencesSection(Profile* profile,
-                           SearchTagRegistry* search_tag_registry);
+                           SearchTagRegistry* search_tag_registry,
+                           PrefService* pref_service);
   ~SystemPreferencesSection() override;
 
   // OsSettingsSection:
@@ -38,8 +46,14 @@ class SystemPreferencesSection : public OsSettingsSection {
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
 
  private:
+  DateTimeSection date_time_subsection_;
+  FilesSection files_subsection_;
+  LanguagesSection languages_subsection_;
+  PowerSection power_subsection_;
   ResetSection reset_subsection_;
   SearchSection search_subsection_;
+  StartupSection startup_subsection_;
+  StorageSection storage_subsection_;
 };
 
 }  // namespace ash::settings

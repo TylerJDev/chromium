@@ -430,7 +430,7 @@ class OriginIsolationPrerenderOptInHeaderTest
 
   void SetUpCommandLine(base::CommandLine* command_line) override {
     // This must be called prior to starting the test server.
-    prerender_helper_.SetUp(https_server());
+    prerender_helper_.RegisterServerRequestMonitor(https_server());
     OriginIsolationOptInHeaderTest::SetUpCommandLine(command_line);
   }
 
@@ -5646,7 +5646,8 @@ IN_PROC_BROWSER_TEST_F(DynamicIsolatedOriginTest,
   // Now that the process only contains a BrowsingInstance where bar.com is
   // considered isolated and cannot reuse the old process, it should lose access
   // to bar.com's data due to citadel enforcement in CanAccessDataForOrigin.
-  if (base::FeatureList::IsEnabled(kSiteIsolationCitadelEnforcement)) {
+  if (base::FeatureList::IsEnabled(
+          features::kSiteIsolationCitadelEnforcement)) {
     EXPECT_FALSE(policy->CanAccessDataForOrigin(old_process_id,
                                                 url::Origin::Create(bar_url)));
   } else {

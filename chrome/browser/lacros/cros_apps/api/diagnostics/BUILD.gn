@@ -1,4 +1,4 @@
-# Copyright 2023 The Chromium Authors. All rights reserved.
+# Copyright 2023 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -12,7 +12,26 @@ source_set("diagnostics") {
     "cros_diagnostics_impl.h",
   ]
   deps = [
+    "//chromeos/crosapi/mojom",
+    "//chromeos/lacros",
     "//content/public/browser",
     "//content/public/common",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+
+  sources = [ "cros_apps_diagnostics_api_browsertest.cc" ]
+
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  deps = [
+    "//chrome/browser/chromeos/telemetry:test_support",
+    "//chrome/browser/lacros/cros_apps/api:test_support",
+    "//chrome/browser/ui",
+    "//chromeos/lacros",
+    "//content/test:test_support",
+    "//testing/gtest",
   ]
 }

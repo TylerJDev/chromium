@@ -1,4 +1,4 @@
-// Copyright 2023 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,14 @@ namespace blink::bindings {
 v8::Local<v8::Promise> AsyncIteratorBase::next(
     ScriptState* script_state,
     ExceptionState& exception_state) {
-  return iteration_source_->Next(script_state, kind_, exception_state);
+  return iteration_source_->Next(script_state, exception_state);
 }
 
 v8::Local<v8::Promise> AsyncIteratorBase::returnForBinding(
     ScriptState* script_state,
     v8::Local<v8::Value> value,
     ExceptionState& exception_state) {
-  return iteration_source_->Return(script_state, kind_, value, exception_state);
+  return iteration_source_->Return(script_state, value, exception_state);
 }
 
 void AsyncIteratorBase::Trace(Visitor* visitor) const {

@@ -6,6 +6,7 @@
 
 #include "base/command_line.h"
 #include "base/metrics/field_trial_params.h"
+#include "content/common/features.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 
@@ -56,12 +57,16 @@ bool IsWebIdentityMDocsEnabled() {
   return base::FeatureList::IsEnabled(features::kWebIdentityMDocs);
 }
 
-bool IsFedCmAutoReauthnFlagEnabled() {
-  return base::FeatureList::IsEnabled(features::kFedCmAutoReauthnFlag);
+bool IsFedCmAccountAutoSelectedFlagEnabled() {
+  return base::FeatureList::IsEnabled(features::kFedCmAccountAutoSelectedFlag);
 }
 
 bool IsFedCmHostedDomainEnabled() {
   return base::FeatureList::IsEnabled(features::kFedCmHostedDomain);
+}
+
+bool IsFedCmErrorEnabled() {
+  return base::FeatureList::IsEnabled(features::kFedCmError);
 }
 
 }  // namespace content

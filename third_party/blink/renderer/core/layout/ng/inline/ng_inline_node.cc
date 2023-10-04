@@ -18,8 +18,8 @@
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
 #include "third_party/blink/renderer/core/layout/layout_text.h"
+#include "third_party/blink/renderer/core/layout/layout_text_combine.h"
 #include "third_party/blink/renderer/core/layout/list_marker.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text_combine.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_bidi_paragraph.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_initial_letter_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_break_token.h"
@@ -29,7 +29,7 @@
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_line_breaker.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_line_info.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_offset_mapping.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/text_auto_space.h"
+#include "third_party/blink/renderer/core/layout/ng/inline/ng_text_auto_space.h"
 #include "third_party/blink/renderer/core/layout/ng/legacy_layout_tree_walking.h"
 #include "third_party/blink/renderer/core/layout/ng/list/layout_ng_inline_list_item.h"
 #include "third_party/blink/renderer/core/layout/ng/list/layout_ng_list_item.h"
@@ -41,8 +41,8 @@
 #include "third_party/blink/renderer/core/layout/ng/ng_positioned_float.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_space_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_unpositioned_float.h"
-#include "third_party/blink/renderer/core/layout/ng/svg/ng_svg_text_layout_attributes_builder.h"
-#include "third_party/blink/renderer/core/layout/ng/svg/svg_inline_node_data.h"
+#include "third_party/blink/renderer/core/layout/svg/svg_inline_node_data.h"
+#include "third_party/blink/renderer/core/layout/svg/svg_text_layout_attributes_builder.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/computed_style_base_constants.h"
 #include "third_party/blink/renderer/platform/fonts/font_performance.h"
@@ -529,11 +529,6 @@ void NGInlineNode::PrepareLayout(NGInlineNodeData* previous_data) const {
   ShapeTextIncludingFirstLine(
       data, previous_data ? &previous_data->text_content : nullptr, nullptr);
 
-  // TODO(https://crbug.com/1463890): Update the likelihood condition.
-  if (UNLIKELY(RuntimeEnabledFeatures::CSSTextAutoSpaceEnabled())) {
-    TextAutoSpace::ApplyIfNeeded(*data);
-  }
-
   AssociateItemsWithInlines(data);
   DCHECK_EQ(data, MutableData());
 
@@ -585,8 +580,9 @@ class NGInlineNodeDataEditor final {
 
     // For "text-combine-upright:all", we choose font to fit layout result in
     // 1em, so font can be different than original font.
-    if (UNLIKELY(IsA<LayoutNGTextCombine>(block_flow_)))
+    if (UNLIKELY(IsA<LayoutTextCombine>(block_flow_))) {
       return nullptr;
+    }
 
     // Because of current text content has secured text, e.g. whole text is
     // "***", all characters including collapsed white spaces are marker, and
@@ -1034,7 +1030,7 @@ void NGInlineNode::CollectInlines(NGInlineNodeData* data,
   block->WillCollectInlines();
 
   const SvgTextChunkOffsets* chunk_offsets = nullptr;
-  if (block->IsNGSVGText()) {
+  if (block->IsSVGText()) {
     // SVG <text> doesn't support reusing the previous result now.
     previous_data = nullptr;
     data->svg_node_data_ = nullptr;
@@ -1052,8 +1048,8 @@ void NGInlineNode::CollectInlines(NGInlineNodeData* data,
   data->items.reserve(EstimateInlineItemsCount(*block));
   NGInlineItemsBuilder builder(block, &data->items, chunk_offsets);
   CollectInlinesInternal(&builder, previous_data);
-  if (block->IsNGSVGText() && !data->svg_node_data_) {
-    NGSvgTextLayoutAttributesBuilder svg_attr_builder(*this);
+  if (block->IsSVGText() && !data->svg_node_data_) {
+    SvgTextLayoutAttributesBuilder svg_attr_builder(*this);
     svg_attr_builder.Build(builder.ToString(), data->items);
     data->svg_node_data_ = svg_attr_builder.CreateSvgInlineNodeData();
   }
@@ -1068,7 +1064,7 @@ const SvgTextChunkOffsets* NGInlineNode::FindSvgTextChunks(
     NGInlineNodeData& data) const {
   TRACE_EVENT0("blink", "NGInlineNode::FindSvgTextChunks");
   // Build NGInlineItems and NGOffsetMapping first.  They are used only by
-  // NGSVGTextLayoutAttributesBuilder, and are discarded because they might
+  // SVGTextLayoutAttributesBuilder, and are discarded because they might
   // be different from final ones.
   HeapVector<NGInlineItem> items;
   ClearCollectionScope<HeapVector<NGInlineItem>> clear_scope(&items);
@@ -1080,7 +1076,7 @@ const SvgTextChunkOffsets* NGInlineNode::FindSvgTextChunks(
   CollectInlinesInternal(&items_builder, nullptr);
   String ifc_text_content = items_builder.ToString();
 
-  NGSvgTextLayoutAttributesBuilder svg_attr_builder(*this);
+  SvgTextLayoutAttributesBuilder svg_attr_builder(*this);
   svg_attr_builder.Build(ifc_text_content, items);
   data.svg_node_data_ = svg_attr_builder.CreateSvgInlineNodeData();
 
@@ -1090,7 +1086,7 @@ const SvgTextChunkOffsets* NGInlineNode::FindSvgTextChunks(
   StringView ifc_text_view(ifc_text_content);
   for (wtf_size_t i = 0; i < data.svg_node_data_->character_data_list.size();
        ++i) {
-    const std::pair<unsigned, NGSvgCharacterData>& char_data =
+    const std::pair<unsigned, SvgCharacterData>& char_data =
         data.svg_node_data_->character_data_list[i];
     if (!char_data.second.anchored_chunk)
       continue;
@@ -1287,9 +1283,11 @@ void NGInlineNode::ShapeText(NGInlineItemsData* data,
   HeapVector<NGInlineItem>* items = &data->items;
 
   ShapeResultSpacing<String> spacing(text_content, IsSvgText());
+  NGTextAutoSpace auto_space(*data);
 
   const bool allow_shape_cache =
-      IsNGShapeCacheAllowed(text_content, override_font, *items, spacing);
+      IsNGShapeCacheAllowed(text_content, override_font, *items, spacing) &&
+      !auto_space.MayApply();
 
   // Provide full context of the entire node to the shaper.
   ReusingTextShaper shaper(data, previous_items, allow_shape_cache);
@@ -1313,7 +1311,7 @@ void NGInlineNode::ShapeText(NGInlineItemsData* data,
     } else {
       DCHECK_EQ(font.GetFontDescription().Orientation(),
                 FontOrientation::kHorizontal);
-      LayoutNGTextCombine::AssertStyleIsValid(start_style);
+      LayoutTextCombine::AssertStyleIsValid(start_style);
       DCHECK(!override_font ||
              font.GetFontDescription().WidthVariant() != kRegularWidth);
     }
@@ -1480,6 +1478,8 @@ void NGInlineNode::ShapeText(NGInlineItemsData* data,
     shape_result->CopyRanges(text_item_ranges.data(), text_item_ranges.size());
   }
 
+  auto_space.ApplyIfNeeded(*data);
+
 #if DCHECK_IS_ON()
   for (const NGInlineItem& item : *items) {
     if (item.Type() == NGInlineItem::kText && item.Length()) {
@@ -1528,6 +1528,9 @@ void NGInlineNode::ShapeTextForFirstLineIfNeeded(NGInlineNodeData* data) const {
   first_line_items->items.AppendVector(data->items);
   for (auto& item : first_line_items->items) {
     item.SetStyleVariant(NGStyleVariant::kFirstLine);
+  }
+  if (data->segments) {
+    first_line_items->segments = data->segments->Clone();
   }
 
   // Re-shape if the font is different.
@@ -1689,7 +1692,7 @@ static LayoutUnit ComputeContentSize(
       EFloat previous_float_type = EFloat::kNone;
       for (const auto& floating_object : floating_objects_) {
         const EClear float_clear =
-            floating_object.float_style.Clear(floating_object.style);
+            floating_object.float_style->Clear(*floating_object.style);
 
         // If this float clears the previous float we start a new "line".
         // This is subtly different to block layout which will only reset either
@@ -1708,7 +1711,7 @@ static LayoutUnit ComputeContentSize(
         floats_inline_size_ += floating_object.float_inline_max_size_with_margin
                                    .ClampNegativeToZero();
         previous_float_type =
-            floating_object.float_style.Floating(floating_object.style);
+            floating_object.float_style->Floating(*floating_object.style);
       }
       max_inline_size =
           std::max(max_inline_size, line_inline_size + floats_inline_size_);
@@ -1929,8 +1932,9 @@ static LayoutUnit ComputeContentSize(
       // widths and the sum of NGInlineItemResult widths can be different.
     }
     *max_size_out = max_size_from_min_size.Finish(items_data.items.end());
+
+#if EXPENSIVE_DCHECKS_ARE_ON()
     // Check the max size matches to the value computed from 2 pass.
-#if DCHECK_IS_ON()
     LayoutUnit content_size = ComputeContentSize(
         node, container_writing_mode, space, float_input,
         NGLineBreakerMode::kMaxContent, max_size_cache, nullptr, nullptr);
@@ -1992,7 +1996,7 @@ void NGInlineNode::CheckConsistency() const {
 #endif
 }
 
-const Vector<std::pair<unsigned, NGSvgCharacterData>>&
+const Vector<std::pair<unsigned, SvgCharacterData>>&
 NGInlineNode::SvgCharacterDataList() const {
   DCHECK(IsSvgText());
   return Data().svg_node_data_->character_data_list;
@@ -2017,7 +2021,7 @@ void NGInlineNode::AdjustFontForTextCombineUprightAll() const {
   const float content_width = CalculateWidthForTextCombine(ItemsData(false));
   if (UNLIKELY(content_width == 0.0f))
     return;  // See "fast/css/zero-font-size-crash.html".
-  auto& text_combine = *To<LayoutNGTextCombine>(GetLayoutBlockFlow());
+  auto& text_combine = *To<LayoutTextCombine>(GetLayoutBlockFlow());
   const float desired_width = text_combine.DesiredWidth();
   text_combine.ResetLayout();
   if (UNLIKELY(desired_width == 0.0f)) {

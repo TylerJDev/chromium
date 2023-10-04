@@ -19,6 +19,7 @@
 #include "chrome/browser/ui/cocoa/fullscreen/fullscreen_toolbar_controller.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
+#include "chrome/browser/ui/fullscreen_util_mac.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/view_ids.h"
@@ -91,7 +92,8 @@ BrowserNonClientFrameViewMac::BrowserNonClientFrameViewMac(
         [[FullscreenToolbarController alloc] initWithBrowserView:browser_view];
     [fullscreen_toolbar_controller_
         setToolbarStyle:GetUserPreferredToolbarStyle(
-                            AlwaysShowToolbarInFullscreen())];
+                            fullscreen_utils::IsAlwaysShowToolbarEnabled(
+                                browser_view->browser()))];
   }
 
   if (browser_view->GetIsWebAppType()) {
@@ -115,11 +117,8 @@ BrowserNonClientFrameViewMac::~BrowserNonClientFrameViewMac() {
 void BrowserNonClientFrameViewMac::OnFullscreenStateChanged() {
   // Record the start of a browser fullscreen session. Content fullscreen is
   // ignored.
-  FullscreenController* controller =
-      browser_view()->GetExclusiveAccessManager()->fullscreen_controller();
   if (browser_view()->IsFullscreen() &&
-      !controller->IsWindowFullscreenForTabOrPending() &&
-      !controller->IsExtensionFullscreenOrPending()) {
+      !fullscreen_utils::IsInContentFullscreen(browser_view()->browser())) {
     fullscreen_session_start_ = base::TimeTicks::Now();
 
     // Add a backstop to emit the metric 24 hours from now. Any session lasting
@@ -219,7 +218,7 @@ void BrowserNonClientFrameViewMac::LayoutWebAppWindowTitle(
 }
 
 int BrowserNonClientFrameViewMac::GetTopInset(bool restored) const {
-  if (!browser_view()->GetTabStripVisible()) {
+  if (!browser_view()->ShouldDrawTabStrip()) {
     return 0;
   }
 
@@ -262,21 +261,16 @@ int BrowserNonClientFrameViewMac::GetTopInset(bool restored) const {
   return y_offset + top_inset;
 }
 
-int BrowserNonClientFrameViewMac::GetThemeBackgroundXInset() const {
-  return 0;
-}
-
 void BrowserNonClientFrameViewMac::UpdateFullscreenTopUI() {
+  Browser* browser = browser_view()->browser();
   // Update to the new toolbar style if needed.
   FullscreenToolbarStyle new_style;
-  FullscreenController* controller =
-      browser_view()->GetExclusiveAccessManager()->fullscreen_controller();
-  if ((controller->IsWindowFullscreenForTabOrPending() ||
-       controller->IsExtensionFullscreenOrPending())) {
+  if (fullscreen_utils::IsInContentFullscreen(browser)) {
     browser_view()->HideDownloadShelf();
     new_style = FullscreenToolbarStyle::TOOLBAR_NONE;
   } else {
-    new_style = GetUserPreferredToolbarStyle(AlwaysShowToolbarInFullscreen());
+    bool always_show = fullscreen_utils::IsAlwaysShowToolbarEnabled(browser);
+    new_style = GetUserPreferredToolbarStyle(always_show);
     browser_view()->UnhideDownloadShelf();
   }
 
@@ -314,7 +308,7 @@ void BrowserNonClientFrameViewMac::UpdateFullscreenTopUI() {
 
   // Notify browser that top ui state has been changed so that we can update
   // the bookmark bar state as well.
-  browser_view()->browser()->FullscreenTopUIStateChanged();
+  browser->FullscreenTopUIStateChanged();
 
   // Re-layout if toolbar style changes in fullscreen mode.
   if (frame()->IsFullscreen()) {
@@ -323,7 +317,7 @@ void BrowserNonClientFrameViewMac::UpdateFullscreenTopUI() {
 }
 
 void BrowserNonClientFrameViewMac::OnAlwaysShowToolbarInFullscreenChanged(
-    const web_app::AppId& app_id,
+    const webapps::AppId& app_id,
     bool show) {
   if (web_app::AppBrowserController::IsForWebApp(browser_view()->browser(),
                                                  app_id)) {
@@ -392,15 +386,6 @@ int BrowserNonClientFrameViewMac::NonClientHitTest(const gfx::Point& point) {
                                                               : component;
 }
 
-void BrowserNonClientFrameViewMac::GetWindowMask(const gfx::Size& size,
-                                                 SkPath* window_mask) {}
-
-void BrowserNonClientFrameViewMac::UpdateWindowIcon() {
-}
-
-void BrowserNonClientFrameViewMac::SizeConstraintsChanged() {
-}
-
 void BrowserNonClientFrameViewMac::UpdateMinimumSize() {
   GetWidget()->OnSizeConstraintsChanged();
 }
@@ -453,7 +438,7 @@ void BrowserNonClientFrameViewMac::PaintChildren(const views::PaintInfo& info) {
 
 gfx::Insets BrowserNonClientFrameViewMac::GetCaptionButtonInsets() const {
   const int kCaptionButtonInset =
-      base::mac::IsOS10_15()
+      base::mac::MacOSMajorVersion() < 11
           ? kCaptionButtonsInsetsCatalinaOrOlder
           : (kCaptionButtonsWidth + (kCaptionButtonsLeadingPadding * 2) -
              TabStyle::Get()->GetBottomCornerRadius());
@@ -507,9 +492,17 @@ gfx::Rect BrowserNonClientFrameViewMac::GetCenteredTitleBounds(
 }
 
 void BrowserNonClientFrameViewMac::PaintThemedFrame(gfx::Canvas* canvas) {
+  // On macOS the origin of the BrowserNonClientFrameViewMac is (0,0) so no
+  // further modification is necessary. See
+  // TopContainerBackground::PaintThemeCustomImage for details.
+  gfx::Point theme_image_offset =
+      browser_view()->GetThemeOffsetFromBrowserView();
+
   gfx::ImageSkia image = GetFrameImage();
-  canvas->TileImageInt(image, 0, TopUIFullscreenYOffset(), width(),
-                       image.height());
+  canvas->TileImageInt(image, theme_image_offset.x(), theme_image_offset.y(), 0,
+                       TopUIFullscreenYOffset(), width(), image.height(),
+                       /*tile_scale=*/1.0f, SkTileMode::kRepeat,
+                       SkTileMode::kMirror);
   gfx::ImageSkia overlay = GetFrameOverlayImage();
   canvas->DrawImageInt(overlay, 0, 0);
 }
@@ -519,8 +512,9 @@ CGFloat BrowserNonClientFrameViewMac::FullscreenBackingBarHeight() const {
   DCHECK(browser_view->IsFullscreen());
 
   CGFloat total_height = 0;
-  if (browser_view->GetTabStripVisible())
+  if (browser_view->ShouldDrawTabStrip()) {
     total_height += browser_view->GetTabStripHeight();
+  }
 
   if (browser_view->IsToolbarVisible())
     total_height += browser_view->toolbar()->bounds().height();
@@ -529,8 +523,11 @@ CGFloat BrowserNonClientFrameViewMac::FullscreenBackingBarHeight() const {
 }
 
 int BrowserNonClientFrameViewMac::TopUIFullscreenYOffset() const {
-  if (!browser_view()->GetTabStripVisible() || !browser_view()->IsFullscreen())
+  if (!browser_view()->GetTabStripVisible() ||
+      !browser_view()->IsFullscreen() ||
+      browser_view()->UsesImmersiveFullscreenMode()) {
     return 0;
+  }
 
   CGFloat menu_bar_height =
       [[[NSApplication sharedApplication] mainMenu] menuBarHeight];
@@ -588,16 +585,6 @@ void BrowserNonClientFrameViewMac::
     caption_button_placeholder_container_->SetBackground(
         views::CreateSolidBackground(
             GetFrameColor(BrowserFrameActiveState::kUseCurrent)));
-  }
-}
-
-bool BrowserNonClientFrameViewMac::AlwaysShowToolbarInFullscreen() const {
-  if (web_app::AppBrowserController::IsWebApp(browser_view()->browser())) {
-    web_app::AppBrowserController* controller =
-        browser_view()->browser()->app_controller();
-    return controller->AlwaysShowToolbarInFullscreen();
-  } else {
-    return *show_fullscreen_toolbar_;
   }
 }
 

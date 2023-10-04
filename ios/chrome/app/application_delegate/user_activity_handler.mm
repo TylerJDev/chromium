@@ -61,6 +61,23 @@ NSString* const kShortcutLensFromSpotlight = @"OpenLensFromSpotlight";
 NSString* const kSiriShortcutOpenInChrome = @"OpenInChromeIntent";
 NSString* const kSiriShortcutSearchInChrome = @"SearchInChromeIntent";
 NSString* const kSiriShortcutOpenInIncognito = @"OpenInChromeIncognitoIntent";
+NSString* const kSiriOpenReadingList = @"OpenReadingListIntent";
+NSString* const kSiriOpenBookmarks = @"OpenBookmarksIntent";
+NSString* const kSiriOpenRecentTabs = @"OpenRecentTabsIntent";
+NSString* const kSiriOpenTabGrid = @"OpenTabGridIntent";
+NSString* const kSiriVoiceSearch = @"SearchWithVoiceIntent";
+NSString* const kSiriOpenNewTab = @"OpenNewTabIntent";
+NSString* const kSiriPlayDinoGame = @"PlayDinoGameIntent";
+NSString* const kSiriSetChromeDefaultBrowser = @"SetChromeDefaultBrowserIntent";
+NSString* const kSiriViewHistory = @"ViewHistoryIntent";
+NSString* const kSiriOpenNewIncognitoTab = @"OpenNewIncognitoTabIntent";
+NSString* const kSiriManagePaymentMethods = @"ManagePaymentMethodsIntent";
+NSString* const kSiriRunSafetyCheck = @"RunSafetyCheckIntent";
+NSString* const kSiriManagePasswords = @"ManagePasswordsIntent";
+NSString* const kSiriManageSettings = @"ManageSettingsIntent";
+NSString* const kSiriOpenLatestTab = @"OpenLatestTabIntent";
+NSString* const kSiriOpenLensFromIntents = @"OpenLensIntent";
+NSString* const kSiriClearBrowsingData = @"ClearBrowsingDataIntent";
 
 // Constants for compatible mode for user activities.
 NSString* const kRegularMode = @"RegularMode";
@@ -299,7 +316,87 @@ NSArray* CompatibleModeForActivityType(NSString* activityType) {
                                 Incognito:YES
                                 initStage:initStage];
 
-  } else {
+  } else if ([userActivity.activityType isEqualToString:kSiriOpenLatestTab]) {
+    AppStartupParameters* startupParams = [[AppStartupParameters alloc]
+        initWithExternalURL:GURL()
+                completeURL:GURL()
+            applicationMode:ApplicationModeForTabOpening::NORMAL];
+
+    startupParams.postOpeningAction = OPEN_LATEST_TAB;
+    connectionInformation.startupParameters = startupParams;
+  } else if ([userActivity.activityType isEqualToString:kSiriOpenReadingList]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       OPEN_READING_LIST]];
+  } else if ([userActivity.activityType isEqualToString:kSiriOpenBookmarks]) {
+    [connectionInformation
+        setStartupParameters:
+            [self startupParametersForOpeningNewTabWithAction:OPEN_BOOKMARKS]];
+  } else if ([userActivity.activityType isEqualToString:kSiriOpenRecentTabs]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       OPEN_RECENT_TABS]];
+  } else if ([userActivity.activityType isEqualToString:kSiriOpenTabGrid]) {
+    [connectionInformation
+        setStartupParameters:
+            [self startupParametersForOpeningNewTabWithAction:OPEN_TAB_GRID]];
+  } else if ([userActivity.activityType isEqualToString:kSiriVoiceSearch]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       START_VOICE_SEARCH]];
+  } else if ([userActivity.activityType isEqualToString:kSiriOpenNewTab]) {
+    [connectionInformation
+        setStartupParameters:
+            [self startupParametersForOpeningNewTabWithAction:NO_ACTION]];
+  } else if ([userActivity.activityType isEqualToString:kSiriPlayDinoGame]) {
+    webpageURL =
+        [NSURL URLWithString:base::SysUTF8ToNSString(kChromeDinoGameURL)];
+  } else if ([userActivity.activityType
+                 isEqualToString:kSiriSetChromeDefaultBrowser]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       SET_CHROME_DEFAULT_BROWSER]];
+  } else if ([userActivity.activityType isEqualToString:kSiriViewHistory]) {
+    [connectionInformation
+        setStartupParameters:
+            [self startupParametersForOpeningNewTabWithAction:VIEW_HISTORY]];
+  } else if ([userActivity.activityType
+                 isEqualToString:kSiriOpenNewIncognitoTab]) {
+    AppStartupParameters* startupParams = [[AppStartupParameters alloc]
+        initWithExternalURL:GURL(kChromeUINewTabURL)
+                completeURL:GURL(kChromeUINewTabURL)
+            applicationMode:ApplicationModeForTabOpening::INCOGNITO];
+    [connectionInformation setStartupParameters:startupParams];
+  } else if ([userActivity.activityType
+                 isEqualToString:kSiriManagePaymentMethods]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       OPEN_PAYMENT_METHODS]];
+  } else if ([userActivity.activityType isEqualToString:kSiriRunSafetyCheck]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       RUN_SAFETY_CHECK]];
+  } else if ([userActivity.activityType isEqualToString:kSiriManagePasswords]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       MANAGE_PASSWORDS]];
+  } else if ([userActivity.activityType isEqualToString:kSiriManageSettings]) {
+    [connectionInformation
+        setStartupParameters:
+            [self startupParametersForOpeningNewTabWithAction:MANAGE_SETTINGS]];
+  } else if ([userActivity.activityType
+                 isEqualToString:kSiriOpenLensFromIntents]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       START_LENS_FROM_INTENTS]];
+  } else if ([userActivity.activityType
+                 isEqualToString:kSiriClearBrowsingData]) {
+    [connectionInformation
+        setStartupParameters:[self startupParametersForOpeningNewTabWithAction:
+                                       OPEN_CLEAR_BROWSING_DATA_DIALOG]];
+  }
+
+  else {
     // Do nothing for unknown activity type.
     return NO;
   }
@@ -464,13 +561,6 @@ NSArray* CompatibleModeForActivityType(NSString* activityType) {
   }
 }
 
-+ (BOOL)willContinueUserActivityWithType:(NSString*)userActivityType {
-  return
-      [userActivityType isEqualToString:handoff::kChromeHandoffActivityType] ||
-      (spotlight::IsSpotlightAvailable() &&
-       [userActivityType isEqualToString:CSSearchableItemActionType]);
-}
-
 + (GURL)generateResultGURLFromSearchQuery:(NSString*)searchQuery
                              browserState:(ChromeBrowserState*)browserState {
   TemplateURLService* templateURLService =
@@ -614,6 +704,18 @@ NSArray* CompatibleModeForActivityType(NSString* activityType) {
 }
 
 #pragma mark - Internal methods.
+
+// Returns an app startup parameter for opening a new tab with a post action.
++ (AppStartupParameters*)startupParametersForOpeningNewTabWithAction:
+    (TabOpeningPostOpeningAction)action {
+  AppStartupParameters* startupParams = [[AppStartupParameters alloc]
+      initWithExternalURL:GURL(kChromeUINewTabURL)
+              completeURL:GURL(kChromeUINewTabURL)
+          applicationMode:ApplicationModeForTabOpening::NORMAL];
+
+  startupParams.postOpeningAction = action;
+  return startupParams;
+}
 
 + (BOOL)handleShortcutItem:(UIApplicationShortcutItem*)shortcutItem
      connectionInformation:(id<ConnectionInformation>)connectionInformation

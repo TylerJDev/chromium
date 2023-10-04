@@ -36,8 +36,8 @@
 #import "ios/chrome/browser/search_engines/template_url_service_factory.h"
 #import "ios/chrome/browser/sessions/live_tab_context_browser_agent.h"
 #import "ios/chrome/browser/sessions/session_util.h"
-#import "ios/chrome/browser/settings/sync/utils/sync_presenter.h"
-#import "ios/chrome/browser/settings/sync/utils/sync_util.h"
+#import "ios/chrome/browser/settings/model/sync/utils/sync_presenter.h"
+#import "ios/chrome/browser/settings/model/sync/utils/sync_util.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
@@ -63,19 +63,20 @@
 #import "ios/chrome/browser/signin/authentication_service.h"
 #import "ios/chrome/browser/signin/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/chrome_account_manager_service_factory.h"
-#import "ios/chrome/browser/sync/enterprise_utils.h"
-#import "ios/chrome/browser/sync/session_sync_service_factory.h"
-#import "ios/chrome/browser/sync/sync_observer_bridge.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
-#import "ios/chrome/browser/synced_sessions/distant_session.h"
-#import "ios/chrome/browser/synced_sessions/distant_tab.h"
-#import "ios/chrome/browser/synced_sessions/synced_sessions.h"
-#import "ios/chrome/browser/tabs_search/tabs_search_service.h"
-#import "ios/chrome/browser/tabs_search/tabs_search_service_factory.h"
+#import "ios/chrome/browser/sync/model/enterprise_utils.h"
+#import "ios/chrome/browser/sync/model/session_sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_observer_bridge.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/synced_sessions/model/distant_session.h"
+#import "ios/chrome/browser/synced_sessions/model/distant_tab.h"
+#import "ios/chrome/browser/synced_sessions/model/synced_sessions.h"
+#import "ios/chrome/browser/tabs_search/model/tabs_search_service.h"
+#import "ios/chrome/browser/tabs_search/model/tabs_search_service_factory.h"
 #import "ios/chrome/browser/ui/authentication/cells/signin_promo_view_configurator.h"
 #import "ios/chrome/browser/ui/authentication/cells/signin_promo_view_consumer.h"
 #import "ios/chrome/browser/ui/authentication/cells/table_view_signin_promo_item.h"
 #import "ios/chrome/browser/ui/authentication/enterprise/enterprise_utils.h"
+#import "ios/chrome/browser/ui/authentication/history_sync/history_sync_coordinator.h"
 #import "ios/chrome/browser/ui/authentication/signin/signin_utils.h"
 #import "ios/chrome/browser/ui/authentication/signin_presenter.h"
 #import "ios/chrome/browser/ui/authentication/signin_promo_view_mediator.h"
@@ -92,7 +93,7 @@
 #import "ios/chrome/common/ui/favicon/favicon_attributes.h"
 #import "ios/chrome/common/ui/favicon/favicon_view.h"
 #import "ios/chrome/common/ui/table_view/table_view_cells_constants.h"
-#import "ios/chrome/grit/ios_chromium_strings.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/public/provider/chrome/browser/modals/modals_api.h"
 #import "ios/web/public/web_state.h"
@@ -187,7 +188,7 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
 @property(nonatomic, strong) TableViewURLDragDropHandler* dragDropHandler;
 @end
 
-@implementation RecentTabsTableViewController : ChromeTableViewController
+@implementation RecentTabsTableViewController
 
 #pragma mark - Public Interface
 
@@ -197,7 +198,6 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
   if (self) {
     _sessionState = SessionsSyncUserState::USER_SIGNED_OUT;
     _syncedSessions.reset(new synced_sessions::SyncedSessions());
-    _restoredTabDisposition = WindowOpenDisposition::CURRENT_TAB;
     _preventUpdates = YES;
   }
   return self;
@@ -1044,7 +1044,7 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
     // Update the TableView and TableViewModel sections to match the new
     // sessionState.
     // Turn Off animations since UITableViewRowAnimationNone still animates.
-    BOOL animationsWereEnabled = [UIView areAnimationsEnabled];
+    const BOOL animationsWereEnabled = [UIView areAnimationsEnabled];
     [UIView setAnimationsEnabled:NO];
     if (newSessionState ==
         SessionsSyncUserState::USER_SIGNED_IN_SYNC_ON_WITH_SESSIONS) {
@@ -1214,9 +1214,10 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
     }
     // Disable animations when setting the background color to prevent flash on
     // rotation.
+    const BOOL animationsWereEnabled = [UIView areAnimationsEnabled];
     [UIView setAnimationsEnabled:NO];
     signinPromoCell.backgroundColor = nil;
-    [UIView setAnimationsEnabled:YES];
+    [UIView setAnimationsEnabled:animationsWereEnabled];
   }
   // Retrieve favicons for closed tabs and remote sessions.
   if (itemTypeSelected == ItemTypeRecentlyClosed ||
@@ -1234,7 +1235,7 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
     TableViewIllustratedCell* illustratedCell =
         base::apple::ObjCCastStrict<TableViewIllustratedCell>(cell);
     [illustratedCell.button addTarget:self
-                               action:@selector(updateSyncState)
+                               action:@selector(didTapPromoActionButton)
                      forControlEvents:UIControlEventTouchUpInside];
     illustratedCell.button.accessibilityIdentifier =
         kRecentTabsTabSyncOffButtonAccessibilityIdentifier;
@@ -1561,21 +1562,10 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
         session_util::CreateWebStateWithNavigationEntries(
             self.browserState, toLoad->current_navigation_index,
             toLoad->navigations);
-    switch (self.restoredTabDisposition) {
-      case WindowOpenDisposition::CURRENT_TAB:
-        self.webStateList->ReplaceWebStateAt(self.webStateList->active_index(),
-                                             std::move(web_state));
-        break;
-      case WindowOpenDisposition::NEW_FOREGROUND_TAB:
-        self.webStateList->InsertWebState(
-            self.webStateList->count(), std::move(web_state),
-            (WebStateList::INSERT_FORCE_INDEX | WebStateList::INSERT_ACTIVATE),
-            WebStateOpener());
-        break;
-      default:
-        NOTREACHED();
-        break;
-    }
+    self.webStateList->InsertWebState(
+        self.webStateList->count(), std::move(web_state),
+        (WebStateList::INSERT_FORCE_INDEX | WebStateList::INSERT_ACTIVATE),
+        WebStateOpener());
   }
   [self.presentationDelegate showActiveRegularTabFromRecentTabs];
 }
@@ -1603,13 +1593,7 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
       self.isIncognito, self.webStateList->GetActiveWebState(),
       new_tab_page_uma::ACTION_OPENED_RECENTLY_CLOSED_ENTRY);
 
-  // If RecentTabs is being displayed from incognito, the resulting tab will
-  // open in the corresponding normal BVC. Change the disposition to avoid
-  // clobbering any tabs.
-  WindowOpenDisposition disposition =
-      self.isIncognito ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                       : self.restoredTabDisposition;
-  RestoreTab(entry_id, disposition, self.browser);
+  RestoreTab(entry_id, WindowOpenDisposition::NEW_FOREGROUND_TAB, self.browser);
   [self.presentationDelegate showActiveRegularTabFromRecentTabs];
 }
 
@@ -1868,7 +1852,7 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
 
 #pragma mark - Private Helpers
 
-- (void)updateSyncState {
+- (void)didTapPromoActionButton {
   syncer::SyncService* const syncService = self.syncService;
   if (!syncService) {
     return;
@@ -1877,33 +1861,43 @@ typedef std::pair<SessionID, TableViewURLItem*> RecentlyClosedTableViewItemPair;
       syncService->GetUserActionableError();
   if (error == syncer::SyncService::UserActionableError::kSignInNeedsUpdate) {
     [self showPrimaryAccountReauth];
+  } else if ([self shouldShowHistorySyncOnPromoAction]) {
+    [self.presentationDelegate showHistorySyncOptInAfterDedicatedSignIn:NO];
   } else if (ShouldShowSyncSettings(error)) {
-    [self showSyncSettingsOrHistoryOptIn];
+    [self.handler showSyncSettingsFromViewController:self];
   } else if (error ==
              syncer::SyncService::UserActionableError::kNeedsPassphrase) {
     [self showSyncPassphraseSettings];
   }
 }
 
-// Show the History Sync Opt-In screen if the sync-related UI is disabled, and
-// the account is not syncing. Otherwise, show the sync settings screen.
-- (void)showSyncSettingsOrHistoryOptIn {
-  // TODO(crbug.com/1462326): This logic should be moved outside of the
-  // ViewController.
-  BOOL isSyncUIDisabled =
-      base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos);
+// Returns YES if the History Sync Opt-In should be shown when the promo action
+// button is tapped.
+// TODO(crbug.com/1462326): This logic should be moved outside of the
+// ViewController.
+- (BOOL)shouldShowHistorySyncOnPromoAction {
+  if (!base::FeatureList::IsEnabled(
+          syncer::kReplaceSyncPromosWithSignInPromos)) {
+    return NO;
+  }
   AuthenticationService* authenticationService =
       AuthenticationServiceFactory::GetForBrowserState(_browserState);
   // TODO(crbug.com/1466884): Delete the usage of ConsentLevel::kSync after
   // Phase 2 on iOS is launched. See ConsentLevel::kSync documentation for
   // details.
-  BOOL hasSyncingAccount =
-      authenticationService->HasPrimaryIdentity(signin::ConsentLevel::kSync);
-  if (!isSyncUIDisabled || hasSyncingAccount) {
-    [self.handler showSyncSettingsFromViewController:self];
-  } else {
-    [self.presentationDelegate showHistorySyncOptInAfterDedicatedSignIn:NO];
+  if (authenticationService->HasPrimaryIdentity(signin::ConsentLevel::kSync)) {
+    return NO;
   }
+  // Check if History Sync Opt-In should be skipped.
+  // In case it's not necessary to show the history opt-in, but the promo action
+  // button is still available, sync errors should be checked to show the
+  // correct screen to handle the error (ex. passphrase screen).
+  HistorySyncSkipReason skipReason = [HistorySyncCoordinator
+      getHistorySyncOptInSkipReason:self.syncService
+              authenticationService:authenticationService
+                        prefService:_browserState->GetPrefs()
+              isHistorySyncOptional:NO];
+  return skipReason == HistorySyncSkipReason::kNone;
 }
 
 @end

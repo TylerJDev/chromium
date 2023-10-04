@@ -11,6 +11,8 @@
 
 #include "base/compiler_specific.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
@@ -102,15 +104,16 @@ class AutofillAgent : public content::RenderFrameObserver,
   void TriggerFormExtraction() override;
   void TriggerFormExtractionWithResponse(
       base::OnceCallback<void(bool)> callback) override;
-  void FillOrPreviewForm(
-      const FormData& form,
-      mojom::AutofillActionPersistence action_persistence) override;
-  void UndoAutofill(
-      const FormData& form,
-      mojom::AutofillActionPersistence action_persistence) override;
+  void ApplyAutofillAction(mojom::AutofillActionType action_type,
+                           mojom::AutofillActionPersistence action_persistence,
+                           const FormData& form) override;
   void FieldTypePredictionsAvailable(
       const std::vector<FormDataPredictions>& forms) override;
   void ClearSection() override;
+  // Besides cases that "actually" clear the form, this function needs to be
+  // called before all filling operations. This is because filled fields are no
+  // longer considered previewed - and any state tied to the preview needs to
+  // be reset.
   void ClearPreviewedForm() override;
   void TriggerSuggestions(
       FieldRendererId field_id,
@@ -167,7 +170,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   bool IsPrerendering() const;
 
   const blink::WebFormControlElement& focused_element() const {
-    return element_;
+    return last_queried_element_;
   }
 
  protected:
@@ -207,7 +210,7 @@ class AutofillAgent : public content::RenderFrameObserver,
     FieldRendererId focused_field_id_;
     mojom::FocusedFieldType focused_field_type_ =
         mojom::FocusedFieldType::kUnknown;
-    AutofillAgent& agent_;
+    const raw_ref<AutofillAgent, ExperimentalRenderer> agent_;
   };
 
   // content::RenderFrameObserver:
@@ -269,7 +272,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   std::vector<blink::WebAutofillClient::FormIssue>
   ProccessFormsAndReturnIssues() override;
 
-  void HandleFocusChangeComplete();
+  void HandleFocusChangeComplete(bool focused_node_was_last_clicked);
   void SendFocusedInputChangedNotificationToBrowser(
       const blink::WebElement& node);
 
@@ -302,12 +305,6 @@ class AutofillAgent : public content::RenderFrameObserver,
   void DoFillFieldWithValue(const std::u16string& value,
                             blink::WebFormControlElement& element,
                             blink::WebAutofillState autofill_state);
-
-  // Set |node| to display the given |value| as a preview.  The preview is
-  // visible on screen to the user, but not visible to the page via the DOM or
-  // JavaScript.
-  void DoPreviewFieldWithValue(const std::u16string& value,
-                               blink::WebInputElement& node);
 
   // Notifies the AutofillDriver in the browser process of new and/or removed
   // forms, modulo throttling.
@@ -358,15 +355,17 @@ class AutofillAgent : public content::RenderFrameObserver,
   // the direction to traverse in.
   blink::WebNode NextWebNode(const blink::WebNode& current_node, bool next);
 
-  // Contains the form of the document. Does not survive navigations and is
+  // Contains the form of the document. Does not survive navigation and is
   // reset when the AutofillAgent is pending deletion.
   std::unique_ptr<FormCache> form_cache_;
 
-  PasswordAutofillAgent* password_autofill_agent_;      // Weak reference.
-  PasswordGenerationAgent* password_generation_agent_;  // Weak reference.
+  raw_ptr<PasswordAutofillAgent, DanglingUntriaged>
+      password_autofill_agent_;  // Weak reference.
+  raw_ptr<PasswordGenerationAgent, DanglingUntriaged>
+      password_generation_agent_;  // Weak reference.
 
   // The element corresponding to the last request sent for form field Autofill.
-  blink::WebFormControlElement element_;
+  blink::WebFormControlElement last_queried_element_;
 
   // The elements that currently are being previewed.
   std::vector<blink::WebFormControlElement> previewed_elements_;
@@ -374,7 +373,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   // Records the last autofill action (Fill or Undo) done by the agent. Used in
   // ClearPreviewedForm to get the default state of previewed fields
   // post-clearing.
-  mojom::AutofillActionType last_autofill_action_ =
+  mojom::AutofillActionType last_action_type_ =
       mojom::AutofillActionType::kFill;
 
   // Last form which was interacted with by the user.
@@ -420,7 +419,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   // doesn't use PasswordAutofillAgent to handle password form.
   bool query_password_suggestion_ = false;
 
-  bool focused_node_was_last_clicked_ = false;
+  bool last_left_mouse_down_or_gesture_tap_in_node_caused_focus_ = false;
   FieldRendererId last_clicked_form_control_element_for_testing_;
 
   FormTracker form_tracker_;

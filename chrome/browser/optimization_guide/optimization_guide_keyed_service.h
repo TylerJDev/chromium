@@ -14,6 +14,7 @@
 #include "chrome/browser/profiles/profile_observer.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/optimization_guide/core/optimization_guide_decider.h"
+#include "components/optimization_guide/core/optimization_guide_model_executor.h"
 #include "components/optimization_guide/core/optimization_guide_model_provider.h"
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/optimization_guide/proto/models.pb.h"
@@ -35,6 +36,7 @@ namespace android {
 class OptimizationGuideBridge;
 }  // namespace android
 class ChromeHintsManager;
+class ModelExecutionManager;
 class ModelInfo;
 class OptimizationGuideStore;
 class PredictionManager;
@@ -63,6 +65,7 @@ class OptimizationGuideKeyedService
     : public KeyedService,
       public optimization_guide::OptimizationGuideDecider,
       public optimization_guide::OptimizationGuideModelProvider,
+      public optimization_guide::OptimizationGuideModelExecutor,
       public ProfileObserver {
  public:
   explicit OptimizationGuideKeyedService(
@@ -96,6 +99,13 @@ class OptimizationGuideKeyedService
       optimization_guide::proto::OptimizationTarget optimization_target,
       optimization_guide::OptimizationTargetModelObserver* observer) override;
 
+  // optimization_guide::OptimizationGuideModelExecutor implementation:
+  void ExecuteModel(
+      optimization_guide::proto::ModelExecutionFeature feature,
+      const google::protobuf::MessageLite& request_metadata,
+      optimization_guide::OptimizationGuideModelExecutionResultCallback
+          callback) override;
+
   // Adds hints for a URL with provided metadata to the optimization guide.
   // For testing purposes only. This will flush any callbacks for |url| that
   // were registered via |CanApplyOptimization|. If no applicable callbacks
@@ -121,6 +131,12 @@ class OptimizationGuideKeyedService
     return optimization_guide_logger_.get();
   }
 
+ protected:
+  // Protected so that tests can stub out the implementation.
+  // TODO(b/303103198): Implement better testing support for model execution
+  // users and make that function private.
+  virtual bool ComponentUpdatesEnabledProvider() const;
+
  private:
   friend class ChromeBrowserMainExtraPartsOptimizationGuide;
   friend class ChromeBrowsingDataRemoverDelegate;
@@ -133,6 +149,7 @@ class OptimizationGuideKeyedService
   friend class optimization_guide::PredictionModelDownloadClient;
   friend class optimization_guide::PredictionModelStoreBrowserTestBase;
   friend class optimization_guide::android::OptimizationGuideBridge;
+  friend class PersonalizedHintsFetcherBrowserTest;
 
   // Initializes |this|.
   void Initialize();
@@ -177,8 +194,6 @@ class OptimizationGuideKeyedService
 
   download::BackgroundDownloadService* BackgroundDownloadServiceProvider();
 
-  bool ComponentUpdatesEnabledProvider() const;
-
   raw_ptr<content::BrowserContext> browser_context_;
 
   // The store of hints.
@@ -209,6 +224,10 @@ class OptimizationGuideKeyedService
   // The tab URL provider to use for fetching information for the user's active
   // tabs. Will be null if the user is off the record.
   std::unique_ptr<optimization_guide::TabUrlProvider> tab_url_provider_;
+
+  // Manages the model execution. Not created for off the record profiles.
+  std::unique_ptr<optimization_guide::ModelExecutionManager>
+      model_execution_manager_;
 
   // Used to observe profile initialization event.
   base::ScopedObservation<Profile, ProfileObserver> profile_observation_{this};

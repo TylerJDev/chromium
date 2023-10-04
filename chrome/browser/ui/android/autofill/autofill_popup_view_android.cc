@@ -18,11 +18,11 @@
 #include "base/types/cxx23_to_underlying.h"
 #include "chrome/android/chrome_jni_headers/AutofillPopupBridge_jni.h"
 #include "chrome/browser/android/resource_mapper.h"
-#include "chrome/browser/autofill/autofill_popup_controller_utils.h"
 #include "chrome/browser/ui/android/autofill/autofill_accessibility_utils.h"
 #include "chrome/browser/ui/android/autofill/autofill_keyboard_accessory_view.h"
 #include "chrome/browser/ui/autofill/autofill_keyboard_accessory_adapter.h"
 #include "chrome/browser/ui/autofill/autofill_popup_controller.h"
+#include "components/autofill/core/browser/ui/autofill_resource_utils.h"
 #include "components/autofill/core/browser/ui/popup_item_ids.h"
 #include "components/autofill/core/browser/ui/suggestion.h"
 #include "components/autofill/core/common/autofill_features.h"
@@ -66,7 +66,6 @@ void AutofillPopupViewAndroid::Hide() {
 }
 
 bool AutofillPopupViewAndroid::OverlapsWithPictureInPictureWindow() const {
-  // TODO(crbug.com/1395164): Find out if pip window can hide the keyboard.
   return false;
 }
 
@@ -173,6 +172,12 @@ base::WeakPtr<AutofillPopupView> AutofillPopupViewAndroid::GetWeakPtr() {
   return weak_ptr_factory_.GetWeakPtr();
 }
 
+base::WeakPtr<AutofillPopupView> AutofillPopupViewAndroid::CreateSubPopupView(
+    base::WeakPtr<AutofillPopupController> controller) {
+  NOTIMPLEMENTED() << "No sub-popups on Android";
+  return nullptr;
+}
+
 void AutofillPopupViewAndroid::SuggestionSelected(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj,
@@ -182,7 +187,7 @@ void AutofillPopupViewAndroid::SuggestionSelected(
     return;
   }
 
-  controller_->AcceptSuggestion(list_index);
+  controller_->AcceptSuggestion(list_index, base::TimeTicks::Now());
 }
 
 void AutofillPopupViewAndroid::DeletionRequested(

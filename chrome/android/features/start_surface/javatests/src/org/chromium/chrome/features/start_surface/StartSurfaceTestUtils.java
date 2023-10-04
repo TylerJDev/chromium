@@ -38,16 +38,17 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.UiDevice;
 
 import org.hamcrest.Matcher;
+import org.hamcrest.Matchers;
 import org.junit.Assert;
 
 import org.chromium.base.CommandLine;
 import org.chromium.base.ContextUtils;
-import org.chromium.base.NativeLibraryLoadedStatus;
 import org.chromium.base.StreamUtil;
 import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.test.params.ParameterProvider;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.util.CallbackHelper;
+import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider;
@@ -84,7 +85,6 @@ import org.chromium.chrome.test.util.browser.suggestions.mostvisited.FakeMostVis
 import org.chromium.content_public.browser.test.util.TestThreadUtils;
 import org.chromium.content_public.browser.test.util.TestTouchUtils;
 import org.chromium.url.GURL;
-import org.chromium.url.JUnitTestGURLs;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -283,9 +283,6 @@ public class StartSurfaceTestUtils {
 
     public static void startAndWaitNativeInitialization(
             ChromeTabbedActivityTestRule activityTestRule) {
-        Assert.assertTrue(NativeLibraryLoadedStatus.getProviderForTesting() == null
-                || !NativeLibraryLoadedStatus.getProviderForTesting().areNativeMethodsReady());
-
         CommandLine.getInstance().removeSwitch(ChromeSwitches.DISABLE_NATIVE_INITIALIZATION);
         TestThreadUtils.runOnUiThreadBlocking(
                 () -> activityTestRule.getActivity().startDelayedNativeInitializationForTests());
@@ -607,7 +604,7 @@ public class StartSurfaceTestUtils {
      */
     public static void clickTabInCarousel(int position) {
         onViewWaiting(allOf(withParent(withId(R.id.tab_switcher_module_container)),
-                              withId(R.id.tab_list_view)))
+                              withId(R.id.tab_list_recycler_view)))
                 .perform(RecyclerViewActions.actionOnItemAtPosition(position, click()));
     }
 
@@ -658,7 +655,7 @@ public class StartSurfaceTestUtils {
      */
     public static List<SiteSuggestion> createFakeSiteSuggestions() {
         List<SiteSuggestion> siteSuggestions = new ArrayList<>();
-        String urlTemplate = JUnitTestGURLs.getGURL(JUnitTestGURLs.URL_1_NUMERAL).serialize();
+        String urlTemplate = new GURL("https://www.1.com/").serialize();
         for (int i = 0; i < 8; i++) {
             siteSuggestions.add(new SiteSuggestion(String.valueOf(i),
                     // Use pre-serialized GURL to avoid loading native.
@@ -703,11 +700,11 @@ public class StartSurfaceTestUtils {
     }
 
     /**
-     * Gets the "tab_list_view" from the carousel tab switcher module on Start surface.
+     * Gets the "tab_list_recycler_view" from the carousel tab switcher module on Start surface.
      */
     static View getCarouselTabSwitcherTabListView(ChromeTabbedActivity cta) {
         return cta.findViewById(R.id.tab_switcher_module_container)
-                .findViewById(R.id.tab_list_view);
+                .findViewById(R.id.tab_list_recycler_view);
     }
 
     /**
@@ -718,6 +715,13 @@ public class StartSurfaceTestUtils {
         AsyncInitializationActivity.interceptMoveTaskToBackForTesting();
         pressBack(testRule);
         Assert.assertTrue(AsyncInitializationActivity.wasMoveTaskToBackInterceptedForTesting());
+    }
+
+    public static void waitForStatusBarColor(Activity activity, int expectedColor) {
+        CriteriaHelper.pollUiThread(() -> {
+            Criteria.checkThat(
+                    activity.getWindow().getStatusBarColor(), Matchers.is(expectedColor));
+        }, CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL, CriteriaHelper.DEFAULT_POLLING_INTERVAL);
     }
 
     /**

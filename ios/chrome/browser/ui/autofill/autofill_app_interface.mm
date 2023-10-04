@@ -198,8 +198,8 @@ class SaveCardInfobarEGTestHelper
             web_state);
     web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
     return AutofillDriverIOS::FromWebStateAndWebFrame(web_state, main_frame)
-        ->autofill_manager()
-        ->client()
+        ->GetAutofillManager()
+        .client()
         .GetFormDataImporter()
         ->credit_card_save_manager_.get();
   }
@@ -213,8 +213,8 @@ class SaveCardInfobarEGTestHelper
     web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
     DCHECK(web_state);
     return AutofillDriverIOS::FromWebStateAndWebFrame(web_state, main_frame)
-        ->autofill_manager()
-        ->client()
+        ->GetAutofillManager()
+        .client()
         .GetPaymentsClient();
   }
 
@@ -359,13 +359,6 @@ class SaveCardInfobarEGTestHelper
   return personalDataManager->GetProfiles().size();
 }
 
-+ (void)setAutoAcceptAddressImports:(BOOL)autoAccept {
-  autofill::PersonalDataManager* personalDataManager =
-      [self personalDataManager];
-  return personalDataManager->set_auto_accept_address_imports_for_testing(
-      autoAccept);
-}
-
 + (void)clearProfilesStore {
   ChromeBrowserState* browserState =
       chrome_test_util::GetOriginalBrowserState();
@@ -409,7 +402,8 @@ class SaveCardInfobarEGTestHelper
 
   ChromeBrowserState* browserState =
       chrome_test_util::GetOriginalBrowserState();
-  autofill::prefs::SetAutofillCreditCardEnabled(browserState->GetPrefs(), YES);
+  autofill::prefs::SetAutofillPaymentMethodsEnabled(browserState->GetPrefs(),
+                                                    YES);
 }
 
 + (NSString*)saveLocalCreditCard {
@@ -434,7 +428,8 @@ class SaveCardInfobarEGTestHelper
 + (NSString*)saveMaskedCreditCard {
   autofill::PersonalDataManager* personalDataManager =
       [self personalDataManager];
-  autofill::CreditCard card = autofill::test::GetMaskedServerCard();
+  autofill::CreditCard card =
+      autofill::test::WithCvc(autofill::test::GetMaskedServerCard());
   DCHECK(card.record_type() != autofill::CreditCard::RecordType::kLocalCard);
 
   personalDataManager->AddServerCreditCardForTest(
@@ -477,6 +472,17 @@ class SaveCardInfobarEGTestHelper
 + (void)setPaymentsRiskData:(NSString*)riskData {
   return autofill::SaveCardInfobarEGTestHelper::SharedInstance()
       ->SetPaymentsRiskData(base::SysNSStringToUTF8(riskData));
+}
+
++ (void)considerCreditCardFormSecureForTesting {
+  web::WebState* web_state = chrome_test_util::GetCurrentWebState();
+  web::WebFramesManager* frames_manager =
+      autofill::AutofillJavaScriptFeature::GetInstance()->GetWebFramesManager(
+          web_state);
+  web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
+  autofill::AutofillDriverIOS::FromWebStateAndWebFrame(web_state, main_frame)
+      ->GetAutofillManager()
+      .SetConsiderFormAsSecureForTesting(true);
 }
 
 + (NSString*)paymentsRiskData {

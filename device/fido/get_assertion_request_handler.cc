@@ -15,6 +15,7 @@
 #include "base/functional/bind.h"
 #include "base/json/json_writer.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/ranges/algorithm.h"
 #include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/timer/elapsed_timer.h"
@@ -66,7 +67,8 @@ const std::set<pin::Permissions> GetPinTokenPermissionsFor(
 }
 
 absl::optional<GetAssertionStatus> ConvertDeviceResponseCode(
-    CtapDeviceResponseCode device_response_code) {
+    CtapDeviceResponseCode device_response_code,
+    AuthenticatorType auth_type) {
   switch (device_response_code) {
     case CtapDeviceResponseCode::kSuccess:
       return GetAssertionStatus::kSuccess;
@@ -74,7 +76,11 @@ absl::optional<GetAssertionStatus> ConvertDeviceResponseCode(
     // Only returned after the user interacted with the
     // authenticator.
     case CtapDeviceResponseCode::kCtap2ErrNoCredentials:
-      return GetAssertionStatus::kUserConsentButCredentialNotRecognized;
+      if (auth_type == AuthenticatorType::kICloudKeychain) {
+        return GetAssertionStatus::kICloudKeychainNoCredentials;
+      } else {
+        return GetAssertionStatus::kUserConsentButCredentialNotRecognized;
+      }
 
     // The user explicitly denied the operation. Touch ID returns this error
     // when the user cancels the macOS prompt. External authenticators may
@@ -363,6 +369,16 @@ bool AllowListOnlyHybridOrInternal(const CtapGetAssertionRequest& request) {
          base::ranges::all_of(request.allow_list, &IsOnlyHybridOrInternal);
 }
 
+bool AllowListIncludedTransport(const CtapGetAssertionRequest& request,
+                                FidoTransportProtocol transport) {
+  return base::ranges::any_of(
+      request.allow_list,
+      [transport](const PublicKeyCredentialDescriptor& cred) {
+        return cred.transports.empty() ||
+               base::Contains(cred.transports, transport);
+      });
+}
+
 }  // namespace
 
 GetAssertionRequestHandler::GetAssertionRequestHandler(
@@ -391,12 +407,16 @@ GetAssertionRequestHandler::GetAssertionRequestHandler(
   transport_availability_info().is_off_the_record_context =
       options_.is_off_the_record_context;
   transport_availability_info().transport_list_did_include_internal =
-      std::any_of(request_.allow_list.begin(), request_.allow_list.end(),
-                  [](const PublicKeyCredentialDescriptor& cred) {
-                    return cred.transports.empty() ||
-                           base::Contains(cred.transports,
-                                          FidoTransportProtocol::kInternal);
-                  });
+      AllowListIncludedTransport(request_, FidoTransportProtocol::kInternal);
+  transport_availability_info().transport_list_did_include_hybrid =
+      AllowListIncludedTransport(request_, FidoTransportProtocol::kHybrid);
+  transport_availability_info().transport_list_did_include_security_key =
+      AllowListIncludedTransport(
+          request_, FidoTransportProtocol::kUsbHumanInterfaceDevice) ||
+      AllowListIncludedTransport(request_,
+                                 FidoTransportProtocol::kBluetoothLowEnergy) ||
+      AllowListIncludedTransport(
+          request_, FidoTransportProtocol::kNearFieldCommunication);
   transport_availability_info().request_is_internal_only =
       !request_.allow_list.empty() &&
       base::ranges::all_of(
@@ -422,10 +442,8 @@ void GetAssertionRequestHandler::PreselectAccount(
     PublicKeyCredentialDescriptor credential) {
   DCHECK(!preselected_credential_);
   DCHECK(request_.allow_list.empty() ||
-         std::any_of(request_.allow_list.begin(), request_.allow_list.end(),
-                     [&credential](const PublicKeyCredentialDescriptor& desc) {
-                       return desc.id == credential.id;
-                     }));
+         base::Contains(request_.allow_list, credential.id,
+                        &PublicKeyCredentialDescriptor::id));
   preselected_credential_ = std::move(credential);
 }
 
@@ -742,7 +760,7 @@ void GetAssertionRequestHandler::HandleResponse(
   }
 
   const absl::optional<GetAssertionStatus> maybe_result =
-      ConvertDeviceResponseCode(status);
+      ConvertDeviceResponseCode(status, authenticator->GetType());
   if (!maybe_result) {
     if (state_ == State::kWaitingForResponseWithToken) {
       std::move(completion_callback_)

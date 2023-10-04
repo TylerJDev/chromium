@@ -173,6 +173,13 @@ class USER_MANAGER_EXPORT UserManagerBase : public UserManager {
 
   void Initialize() override;
 
+  // Creates and adds a kiosk user for testing with a given `account_id`
+  // and `username_hash` to identify homedir mount point.
+  // Returns a pointer to the user.
+  // Note: call `UserLoggedIn` if the user needs to be logged-in.
+  const User* AddKioskAppUserForTesting(const AccountId& account_id,
+                                        const std::string& username_hash);
+
   // This method updates "User was added to the device in this session nad is
   // not full initialized yet" flag.
   void SetIsCurrentUserNew(bool is_new);
@@ -303,6 +310,11 @@ class USER_MANAGER_EXPORT UserManagerBase : public UserManager {
   virtual void SetPendingUserSwitchId(const AccountId& account_id);
 
   base::ObserverList<UserManager::Observer>::Unchecked observer_list_;
+
+  // A list of User instances taking their ownership.
+  // Following members can refer User instances in this vector.
+  // Thus, they must be listed below to deal with raw_ptr rule.
+  std::vector<std::unique_ptr<User>> user_storage_;
 
   // The logged-in user that is currently active in current session.
   // NULL until a user has logged in, then points to one

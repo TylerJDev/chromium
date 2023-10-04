@@ -5,14 +5,8 @@
 #ifndef IOS_CHROME_BROWSER_TABS_FEATURES_H_
 #define IOS_CHROME_BROWSER_TABS_FEATURES_H_
 
-#import <Foundation/Foundation.h>
-
-#import "base/feature_list.h"
-
-// Feature flag that enables Pinned Tabs.
-BASE_DECLARE_FEATURE(kEnablePinnedTabs);
-
 // Convenience method for determining if Pinned Tabs is enabled.
+// The Pinned Tabs feature is fully enabled on iPhone and disabled on iPad.
 bool IsPinnedTabsEnabled();
 
 #endif  // IOS_CHROME_BROWSER_TABS_FEATURES_H_

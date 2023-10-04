@@ -24,6 +24,7 @@
 using syncer::HasInitialSyncDone;
 using syncer::IsEmptyMetadataBatch;
 using syncer::MetadataBatchContains;
+using testing::_;
 using testing::InSequence;
 using testing::Invoke;
 using testing::IsEmpty;
@@ -52,6 +53,7 @@ class MockPasswordReceiverService : public PasswordReceiverService {
   MOCK_METHOD(base::WeakPtr<syncer::ModelTypeControllerDelegate>,
               GetControllerDelegate,
               ());
+  MOCK_METHOD(void, OnSyncServiceInitialized, (syncer::SyncService*));
 };
 
 sync_pb::IncomingPasswordSharingInvitationSpecifics MakeSpecifics() {
@@ -179,6 +181,9 @@ TEST_F(IncomingPasswordSharingInvitationSyncBridgeTest,
       bridge()->CreateMetadataChangeList();
   syncer::EntityChangeList entity_changes;
   entity_changes.push_back(EntityChangeFromSpecifics(MakeSpecifics()));
+
+  EXPECT_CALL(*mock_processor(),
+              Delete(entity_changes.front()->storage_key(), _));
   bridge()->ApplyIncrementalSyncChanges(std::move(metadata_changes),
                                         std::move(entity_changes));
 
@@ -215,6 +220,9 @@ TEST_F(IncomingPasswordSharingInvitationSyncBridgeTest,
       bridge()->CreateMetadataChangeList();
   syncer::EntityChangeList entity_changes;
   entity_changes.push_back(EntityChangeFromSpecifics(MakeSpecifics()));
+
+  EXPECT_CALL(*mock_processor(),
+              Delete(entity_changes.front()->storage_key(), _));
   bridge()->MergeFullSyncData(std::move(metadata_changes),
                               std::move(entity_changes));
 

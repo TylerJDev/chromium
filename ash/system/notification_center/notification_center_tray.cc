@@ -21,7 +21,6 @@
 #include "ash/system/tray/tray_container.h"
 #include "chromeos/constants/chromeos_features.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 
 namespace ash {
@@ -38,6 +37,8 @@ NotificationCenterTray::NotificationCenterTray(Shelf* shelf)
               /*model=*/nullptr,
               /*notification_center_tray=*/this)) {
   DCHECK(features::IsQsRevampEnabled());
+  SetCallback(base::BindRepeating(&NotificationCenterTray::OnTrayButtonPressed,
+                                  base::Unretained(this)));
   SetID(VIEW_ID_SA_NOTIFICATION_TRAY);
   set_use_bounce_in_animation(false);
 
@@ -82,6 +83,15 @@ void NotificationCenterTray::OnSystemTrayVisibilityChanged(
     bool system_tray_visible) {
   system_tray_visible_ = system_tray_visible;
   UpdateVisibility();
+}
+
+void NotificationCenterTray::OnTrayButtonPressed() {
+  if (GetBubbleWidget()) {
+    CloseBubble();
+    return;
+  }
+
+  ShowBubble();
 }
 
 NotificationListView* NotificationCenterTray::GetNotificationListView() {
@@ -135,6 +145,10 @@ void NotificationCenterTray::HideBubbleWithView(
   if (bubble_->GetBubbleView() == bubble_view) {
     CloseBubble();
   }
+}
+
+void NotificationCenterTray::HideBubble(const TrayBubbleView* bubble_view) {
+  CloseBubble();
 }
 
 void NotificationCenterTray::ClickedOutsideBubble() {

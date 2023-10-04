@@ -27,6 +27,7 @@ export enum Paths {
   GOOGLE_PHOTOS_COLLECTION = '/wallpaper/google-photos',
   LOCAL_COLLECTION = '/wallpaper/local',
   ROOT = '/',
+  SEA_PEN_COLLECTION = '/wallpaper/sea-pen',
   USER = '/user',
 }
 
@@ -41,6 +42,7 @@ export interface QueryParams {
   googlePhotosAlbumIsShared?: 'true';
   topicSource?: string;
   scrollTo?: ScrollableTarget;
+  seaPenTemplateId?: string;
 }
 
 export function isPathValid(path: string|null): boolean {
@@ -59,7 +61,7 @@ export function isAmbientPathNotAllowed(path: string|null): boolean {
   return isAmbientPath(path) && !isAmbientModeAllowed();
 }
 
-export class PersonalizationRouter extends PolymerElement {
+export class PersonalizationRouterElement extends PolymerElement {
   static get is() {
     return 'personalization-router';
   }
@@ -88,9 +90,9 @@ export class PersonalizationRouter extends PolymerElement {
   private query_: string;
   private queryParams_: QueryParams;
 
-  static instance(): PersonalizationRouter {
-    return document.querySelector(PersonalizationRouter.is) as
-        PersonalizationRouter;
+  static instance(): PersonalizationRouterElement {
+    return document.querySelector(PersonalizationRouterElement.is) as
+        PersonalizationRouterElement;
   }
 
   static reloadAtRoot() {
@@ -146,6 +148,10 @@ export class PersonalizationRouter extends PolymerElement {
   /** Navigate to albums subpage of specific topic source. */
   selectAmbientAlbums(topicSource: TopicSource) {
     this.goToRoute(Paths.AMBIENT_ALBUMS, {topicSource: topicSource.toString()});
+  }
+
+  selectSeaPenTemplate(templateId: string) {
+    this.goToRoute(Paths.SEA_PEN_COLLECTION, {seaPenTemplateId: templateId});
   }
 
   goToRoute(path: Paths, queryParams: QueryParams = {}) {
@@ -228,4 +234,5 @@ export class PersonalizationRouter extends PolymerElement {
   }
 }
 
-customElements.define(PersonalizationRouter.is, PersonalizationRouter);
+customElements.define(
+    PersonalizationRouterElement.is, PersonalizationRouterElement);

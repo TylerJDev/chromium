@@ -89,10 +89,10 @@ class MetadataWriter {
     const char* const sql{nullptr};
     struct EventAndMetrics {
       const UkmEventHash event_hash;
-      const raw_ptr<const UkmMetricHash> metrics{nullptr};
+      const raw_ptr<const UkmMetricHash, AllowPtrArithmetic> metrics{nullptr};
       const size_t metrics_size{0};
     };
-    const raw_ptr<const EventAndMetrics> events{nullptr};
+    const raw_ptr<const EventAndMetrics, AllowPtrArithmetic> events{nullptr};
     const size_t events_size{0};
   };
 
@@ -102,7 +102,7 @@ class MetadataWriter {
     const proto::CustomInput::FillPolicy fill_policy{
         proto::CustomInput_FillPolicy_UNKNOWN_FILL_POLICY};
     const size_t default_values_size{0};
-    const raw_ptr<const float> default_values = nullptr;
+    const raw_ptr<const float, AllowPtrArithmetic> default_values = nullptr;
     const char* name{nullptr};
 
     using Arg = std::pair<const char*, const char*>;
@@ -170,6 +170,14 @@ class MetadataWriter {
                                               size_t class_labels_length,
                                               int top_k_outputs,
                                               absl::optional<float> threshold);
+
+  // Adds a MultiClassClassifier with one threshold per label.
+  void AddOutputConfigForMultiClassClassifier(
+      const char* const* class_labels,
+      size_t class_labels_length,
+      int top_k_outputs,
+      const float* per_label_thresholds,
+      size_t per_label_thresholds_length);
 
   // Adds a BinnedClassifier.
   void AddOutputConfigForBinnedClassifier(

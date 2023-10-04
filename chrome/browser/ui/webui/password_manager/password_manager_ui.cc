@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/webui/password_manager/password_manager_ui.h"
 
+#include "base/feature_list.h"
 #include "base/i18n/message_formatter.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -22,8 +23,8 @@
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/browser_resources.h"
-#include "chrome/grit/chromium_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/password_manager_resources.h"
 #include "chrome/grit/password_manager_resources_map.h"
@@ -39,6 +40,7 @@
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "device/fido/features.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -87,9 +89,11 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
       base::make_span(kSettingsSharedResources, kSettingsSharedResourcesSize));
 #endif
 
-  static constexpr webui::LocalizedString kStrings[] = {
+  static const webui::LocalizedString kStrings[] = {
     {"accountStorageToggleLabel",
-     IDS_PASSWORD_MANAGER_UI_ACCOUNT_STORAGE_TOGGLE_LABEL},
+     base::FeatureList::IsEnabled(syncer::kSyncWebauthnCredentials)
+         ? IDS_PASSWORD_MANAGER_UI_ACCOUNT_STORAGE_WITH_PASSKEYS_TOGGLE_LABEL
+         : IDS_PASSWORD_MANAGER_UI_ACCOUNT_STORAGE_TOGGLE_LABEL},
     {"addPassword", IDS_PASSWORD_MANAGER_UI_ADD_PASSWORD_BUTTON},
     {"addPasswordFooter", IDS_PASSWORD_MANAGER_UI_ADD_PASSWORD_FOOTNOTE},
     {"addPasswordStoreOptionAccount",
@@ -242,8 +246,15 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
     {"localPasswordManager",
      IDS_PASSWORD_BUBBLES_PASSWORD_MANAGER_LINK_TEXT_SAVING_ON_DEVICE},
     {"manage", IDS_SETTINGS_MANAGE},
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_WIN)
     {"managePasskeysLabel", IDS_PASSWORD_MANAGER_UI_MANAGE_PASSKEYS_LABEL},
+#elif BUILDFLAG(IS_MAC)
+    {"createPasskeysInICloudKeychainLabel",
+     IDS_PASSWORD_MANAGER_UI_CREATE_PASSKEYS_IN_ICLOUD_KEYCHAIN_LABEL},
+    {"createPasskeysInICloudKeychainSubLabel",
+     IDS_PASSWORD_MANAGER_UI_CREATE_PASSKEYS_IN_ICLOUD_KEYCHAIN_SUBLABEL},
+    {"managePasskeysLabel",
+     IDS_PASSWORD_MANAGER_UI_MANAGE_PASSKEYS_FROM_PROFILE_LABEL},
 #endif
     {"menu", IDS_MENU},
     {"menuButtonLabel", IDS_SETTINGS_MENU_BUTTON_LABEL},
@@ -306,8 +317,16 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
      IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_CANCELED_TITLE},
     {"sharePasswordFamilyPickerDescription",
      IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_FAMILY_PICKER_DESCRIPTION},
-    {"sharePasswordManageFamily",
-     IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_MANAGE_FAMILY},
+    {"sharePasswordConfirmationDescriptionSingleRecipient",
+     IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_CONFIRMATION_DESCRIPTION_SINGLE},
+    {"sharePasswordConfirmationDescriptionMultipleRecipients",
+     IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_CONFIRMATION_DESCRIPTION_MULTIPLE},
+    {"sharePasswordConfirmationFooterWebsite",
+     IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_CONFIRMATION_FOOTER_WEBSITE},
+    {"sharePasswordConfirmationFooterAndroidApp",
+     IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_CONFIRMATION_FOOTER_ANDROID_APP},
+    {"sharePasswordViewFamily",
+     IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_VIEW_FAMILY},
     {"sharePasswordMemeberUnavailable",
      IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_MEMBER_UNAVAILABLE},
     {"sharePasswordNotAvailable",
@@ -375,12 +394,18 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
           base::ASCIIToUTF16(chrome::kPasswordManagerLearnMoreURL)));
 
   source->AddString(
-      "sharePasswordNoMembersDescription",
+      "sharePasswordNotFamilyMember",
       l10n_util::GetStringFUTF16(
-          IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_NO_MEMBERS_DESCRIPTION,
-          base::ASCIIToUTF16(chrome::kFamilyGroupSiteURL)));
+          IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_NOT_FAMILY_MEMBER,
+          base::ASCIIToUTF16(chrome::kFamilyGroupCreateURL)));
 
-  source->AddString("familyGroupSiteURL", chrome::kFamilyGroupSiteURL);
+  source->AddString(
+      "sharePasswordNoOtherFamilyMembers",
+      l10n_util::GetStringFUTF16(
+          IDS_PASSWORD_MANAGER_UI_SHARE_PASSWORD_NO_OTHER_FAMILY_MEMBERS,
+          base::ASCIIToUTF16(chrome::kFamilyGroupViewURL)));
+
+  source->AddString("familyGroupViewURL", chrome::kFamilyGroupViewURL);
 
   source->AddString(
       "checkupUrl",
@@ -395,6 +420,11 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
                          ShouldBiometricAuthenticationForFillingToggleBeVisible(
                              g_browser_process->local_state()));
 #endif
+#if BUILDFLAG(IS_MAC)
+  source->AddBoolean(
+      "createPasskeysInICloudKeychainToggleVisible",
+      base::FeatureList::IsEnabled(device::kWebAuthnICloudKeychain));
+#endif
 
   source->AddBoolean("enablePasswordsImportM2",
                      base::FeatureList::IsEnabled(
@@ -403,6 +433,12 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
   source->AddBoolean(
       "enableSendPasswords",
       base::FeatureList::IsEnabled(password_manager::features::kSendPasswords));
+
+  source->AddString("passwordSharingLearnMoreURL",
+                    chrome::kPasswordSharingLearnMoreURL);
+
+  source->AddString("passwordSharingTroubleshootURL",
+                    chrome::kPasswordSharingTroubleshootURL);
 
   source->AddString("passwordManagerLearnMoreURL",
                     chrome::kPasswordManagerLearnMoreURL);

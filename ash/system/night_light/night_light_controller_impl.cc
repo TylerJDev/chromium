@@ -19,6 +19,7 @@
 #include "ash/session/session_controller_impl.h"
 #include "ash/shell.h"
 #include "ash/strings/grit/ash_strings.h"
+#include "ash/system/geolocation/geolocation_controller.h"
 #include "ash/system/model/system_tray_model.h"
 #include "base/functional/bind.h"
 #include "base/i18n/time_formatting.h"
@@ -118,13 +119,11 @@ class NightLightControllerDelegateImpl
   base::Time GetNow() const override { return base::Time::Now(); }
   base::Time GetSunsetTime() const override { return GetSunRiseSet(false); }
   base::Time GetSunriseTime() const override { return GetSunRiseSet(true); }
-  bool SetGeoposition(
-      const NightLightController::SimpleGeoposition& position) override {
+  bool SetGeoposition(const SimpleGeoposition& position) override {
     if (geoposition_ && *geoposition_ == position)
       return false;
 
-    geoposition_ =
-        std::make_unique<NightLightController::SimpleGeoposition>(position);
+    geoposition_ = std::make_unique<SimpleGeoposition>(position);
     return true;
   }
   bool HasGeoposition() const override { return !!geoposition_; }
@@ -138,8 +137,15 @@ class NightLightControllerDelegateImpl
     if (!HasGeoposition()) {
       LOG(ERROR) << "Invalid geoposition. Using default time for "
                  << (sunrise ? "sunrise." : "sunset.");
-      return sunrise ? TimeOfDay(kDefaultEndTimeOffsetMinutes).ToTimeToday()
-                     : TimeOfDay(kDefaultStartTimeOffsetMinutes).ToTimeToday();
+      return sunrise ? TimeOfDay(kDefaultEndTimeOffsetMinutes)
+                           .ToTimeToday()
+                           // TODO(b/289276024): `ToTimeToday()` failures will
+                           // be handled properly when night light has migrated
+                           // to use `GeolocationController`.
+                           .value_or(base::Time())
+                     : TimeOfDay(kDefaultStartTimeOffsetMinutes)
+                           .ToTimeToday()
+                           .value_or(base::Time());
     }
 
     icu::CalendarAstronomer astro(geoposition_->longitude,
@@ -151,13 +157,13 @@ class NightLightControllerDelegateImpl
     // Note that the icu calendar works with milliseconds since epoch, and
     // base::Time::FromDoubleT() / ToDoubleT() work with seconds since epoch.
     const double midday_today_sec =
-        TimeOfDay(12 * 60).ToTimeToday().ToDoubleT();
+        TimeOfDay(12 * 60).ToTimeToday().value_or(base::Time()).ToDoubleT();
     astro.setTime(midday_today_sec * 1000.0);
     const double sun_rise_set_ms = astro.getSunRiseSet(sunrise);
     return base::Time::FromDoubleT(sun_rise_set_ms / 1000.0);
   }
 
-  std::unique_ptr<NightLightController::SimpleGeoposition> geoposition_;
+  std::unique_ptr<SimpleGeoposition> geoposition_;
 };
 
 // Returns the color temperature range bucket in which |temperature| resides.
@@ -547,8 +553,7 @@ void NightLightControllerImpl::UpdateAmbientRgbScalingFactors() {
           ambient_temperature_);
 }
 
-NightLightController::ScheduleType NightLightControllerImpl::GetScheduleType()
-    const {
+ScheduleType NightLightControllerImpl::GetScheduleType() const {
   if (active_user_pref_service_) {
     return static_cast<ScheduleType>(
         active_user_pref_service_->GetInteger(prefs::kNightLightScheduleType));
@@ -1064,7 +1069,8 @@ void NightLightControllerImpl::Refresh(
 
     case ScheduleType::kCustom:
       RefreshScheduleTimer(
-          GetCustomStartTime().ToTimeToday(), GetCustomEndTime().ToTimeToday(),
+          GetCustomStartTime().ToTimeToday().value_or(base::Time()),
+          GetCustomEndTime().ToTimeToday().value_or(base::Time()),
           did_schedule_change, keep_manual_toggles_during_schedules);
       return;
   }

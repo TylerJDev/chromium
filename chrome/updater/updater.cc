@@ -15,7 +15,9 @@
 #include "base/logging.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/process/memory.h"
+#include "base/process/process_handle.h"
 #include "base/ranges/algorithm.h"
+#include "base/system/sys_info.h"
 #include "base/task/single_thread_task_executor.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/threading/platform_thread.h"
@@ -113,6 +115,20 @@ int HandleUpdaterCommands(UpdaterScope updater_scope,
   base::EnableTerminationOnHeapCorruption();
   base::EnableTerminationOnOutOfMemory();
 
+  InitializeThreadPool("updater");
+  const base::ScopedClosureRunner shutdown_thread_pool(base::BindOnce([] {
+    // For the updater, it is important to join all threads before `UpdaterMain`
+    // exits, otherwise the behavior of the program is undefined. The threads
+    // in the pool can still run after shutdown to handle CONTINUE_ON_SHUTDOWN
+    // tasks, for example. In Chrome, the thread pool is leaked for this reason
+    // and there is no way to join its threads in production code. The updater
+    // has no such requirements (crbug.com/1484776).
+    base::ThreadPoolInstance* thread_pool = base::ThreadPoolInstance::Get();
+    thread_pool->Shutdown();
+    thread_pool->JoinForTesting();  // IN-TEST
+    base::ThreadPoolInstance::Set(nullptr);
+  }));
+
 #if BUILDFLAG(IS_WIN)
   base::win::ScopedCOMInitializer com_initializer(
       base::win::ScopedCOMInitializer::kMTA);
@@ -128,11 +144,6 @@ int HandleUpdaterCommands(UpdaterScope updater_scope,
   VLOG(1) << GetUACState();
 #endif
 
-  InitializeThreadPool("updater");
-  const base::ScopedClosureRunner shutdown_thread_pool(
-      base::BindOnce([] { base::ThreadPoolInstance::Get()->Shutdown(); }));
-  base::SingleThreadTaskExecutor main_task_executor(base::MessagePumpType::UI);
-
   // Records a backtrace in the log, crashes the program, saves a crash dump,
   // and reports the crash.
   CHECK(!command_line->HasSwitch(kCrashMeSwitch)) << "--crash-me was used.";
@@ -143,6 +154,18 @@ int HandleUpdaterCommands(UpdaterScope updater_scope,
   // continue to function.
   ScopedIPCSupportWrapper ipc_support;
 #endif
+  // TODO(crbug.com/1476296) - eliminate the need to have a UI message type
+  // on the main sequence by refactoring the splash screen and the rest of UI.
+  const bool is_app_install_mode = command_line->HasSwitch(kInstallSwitch) ||
+                                   command_line->HasSwitch(kTagSwitch) ||
+                                   command_line->HasSwitch(kRuntimeSwitch) ||
+                                   command_line->HasSwitch(kHandoffSwitch);
+  base::SingleThreadTaskExecutor main_task_executor(
+      is_app_install_mode ? base::MessagePumpType::UI
+                          : base::MessagePumpType::DEFAULT);
+  if (is_app_install_mode) {
+    return MakeAppInstall(command_line->HasSwitch(kSilentSwitch))->Run();
+  }
 
   if (command_line->HasSwitch(kServerSwitch)) {
     return MakeAppServer()->Run();
@@ -159,13 +182,6 @@ int HandleUpdaterCommands(UpdaterScope updater_scope,
     return kErrorOk;
   }
 #endif  // BUILDFLAG(IS_WIN)
-
-  if (command_line->HasSwitch(kInstallSwitch) ||
-      command_line->HasSwitch(kTagSwitch) ||
-      command_line->HasSwitch(kRuntimeSwitch) ||
-      command_line->HasSwitch(kHandoffSwitch)) {
-    return MakeAppInstall(command_line->HasSwitch(kSilentSwitch))->Run();
-  }
 
   if (command_line->HasSwitch(kUninstallSwitch) ||
       command_line->HasSwitch(kUninstallIfUnusedSwitch)) {
@@ -267,9 +283,11 @@ int UpdaterMain(int argc, const char* const* argv) {
 
   const UpdaterScope updater_scope = GetUpdaterScope();
   InitLogging(updater_scope);
-
   VLOG(1) << "Version " << kUpdaterVersion << ", " << BuildFlavor() << ", "
           << BuildArch() << ", command line: " << GetCommandLineString();
+  VLOG(1) << "System uptime (seconds): " << base::SysInfo::Uptime().InSeconds()
+          << ", parent pid: "
+          << base::GetParentProcessId(base::GetCurrentProcessHandle());
   const int retval = HandleUpdaterCommands(updater_scope, command_line);
   VLOG(1) << __func__ << " (--" << GetUpdaterCommand(command_line) << ")"
           << " returned " << retval << ".";

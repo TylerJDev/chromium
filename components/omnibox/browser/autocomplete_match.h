@@ -622,6 +622,12 @@ struct AutocompleteMatch {
     return it != actions.end() ? it->get() : nullptr;
   }
 
+  // Create a new match from scratch based on this match and its action at
+  // given `action_index`. The content and takeover match on the returned
+  // match will be set up to execute the action, and only a minimum of
+  // data is shared from this source match.
+  AutocompleteMatch CreateActionMatch(size_t action_index) const;
+
   // The provider of this match, used to remember which provider the user had
   // selected when the input changes. This may be NULL, in which case there is
   // no provider (or memory of the user's selection).
@@ -640,10 +646,6 @@ struct AutocompleteMatch {
   // its value is -1.  At the time of writing this comment, it is only
   // set for matches from HistoryURL and HistoryQuickProvider.
   int typed_count = -1;
-
-  // The percentage deducted from the relevance score by the history fuzzy
-  // provider.  This is currently used to re-apply the penalty after ML scoring.
-  int fuzzy_match_penalty = 0;
 
   // True if the user should be able to delete this match.
   bool deletable = false;

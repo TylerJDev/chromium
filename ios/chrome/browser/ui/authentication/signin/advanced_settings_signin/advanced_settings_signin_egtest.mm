@@ -6,6 +6,7 @@
 #import "base/ios/ios_util.h"
 #import "base/test/ios/wait_util.h"
 #import "base/time/time.h"
+#import "build/branding_buildflags.h"
 #import "components/bookmarks/common/bookmark_features.h"
 #import "components/bookmarks/common/storage_type.h"
 #import "components/strings/grit/components_strings.h"
@@ -21,7 +22,6 @@
 #import "ios/chrome/browser/ui/content_suggestions/content_suggestions_feature.h"
 #import "ios/chrome/browser/ui/recent_tabs/recent_tabs_constants.h"
 #import "ios/chrome/browser/ui/settings/google_services/manage_sync_settings_constants.h"
-#import "ios/chrome/browser/ui/settings/signin_settings_app_interface.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
@@ -76,12 +76,14 @@ void WaitForSettingDoneButton() {
 
 - (AppLaunchConfiguration)appConfigurationForTestCase {
   AppLaunchConfiguration config;
+  // When kReplaceSyncPromosWithSignInPromos is enabled, the advanced sync
+  // setup view doesn't exist.
+  // All tests in AdvancedSettingsSigninTestCase are for this view.
+  config.features_disabled.push_back(
+      syncer::kReplaceSyncPromosWithSignInPromos);
+
   if ([self isRunningTest:@selector
             (testInterruptAdvancedSigninBookmarksFromAdvancedSigninSettings)]) {
-    // When kReplaceSyncPromosWithSignInPromos is enabled, the advanced sync
-    // setup doesn't exist.
-    config.features_disabled.push_back(
-        syncer::kReplaceSyncPromosWithSignInPromos);
     // TODO(crbug.com/1455018): Re-enable the flag for non-legacy tests.
     config.features_disabled.push_back(syncer::kEnableBookmarksAccountStorage);
   }
@@ -93,8 +95,6 @@ void WaitForSettingDoneButton() {
 
   [BookmarkEarlGrey waitForBookmarkModelsLoaded];
   [BookmarkEarlGrey clearBookmarks];
-  // TODO(crbug.com/1450472): Remove when kHideSettingsSyncPromo is launched.
-  [SigninSettingsAppInterface setSettingsSigninPromoDisplayedCount:INT_MAX];
 }
 
 - (void)tearDown {
@@ -106,7 +106,13 @@ void WaitForSettingDoneButton() {
 // Tests that signing in, tapping the Settings link on the confirmation screen
 // and closing the advanced sign-in settings correctly leaves the user signed
 // in.
-- (void)testSignInOpenSyncSettings {
+// TODO(crbug.com/1487981): Test fails on official builds.
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#define MAYBE_testSignInOpenSyncSettings DISABLED_testSignInOpenSyncSettings
+#else
+#define MAYBE_testSignInOpenSyncSettings testSignInOpenSyncSettings
+#endif
+- (void)MAYBE_testSignInOpenSyncSettings {
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
   [SigninEarlGrey addFakeIdentity:fakeIdentity];
 
@@ -159,7 +165,15 @@ void WaitForSettingDoneButton() {
 // Tests that a user that signs in and gives sync consent can sign
 // out through the "Sign out and Turn Off Sync" > "Clear Data" option in Sync
 // settings.
-- (void)testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithClearData {
+// TODO(crbug.com/1487981): Test fails on official builds.
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#define MAYBE_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithClearData \
+  DISABLED_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithClearData
+#else
+#define MAYBE_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithClearData \
+  testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithClearData
+#endif
+- (void)MAYBE_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithClearData {
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
   [SigninEarlGrey addFakeIdentity:fakeIdentity];
 
@@ -208,7 +222,15 @@ void WaitForSettingDoneButton() {
 // Tests that a user that signs in and gives sync consent can sign
 // out through the "Sign out and Turn Off Sync" > "Keep Data" option in Sync
 // setting.
-- (void)testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithKeepData {
+// TODO(crbug.com/1487981): Test fails on official builds.
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#define MAYBE_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithKeepData \
+  DISABLED_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithKeepData
+#else
+#define MAYBE_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithKeepData \
+  testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithKeepData
+#endif
+- (void)MAYBE_testSignInOpenSyncSettingsSignOutAndTurnOffSyncWithKeepData {
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
   [SigninEarlGrey addFakeIdentity:fakeIdentity];
 
@@ -274,7 +296,15 @@ void WaitForSettingDoneButton() {
 
 // Tests that a user account with a sync password displays a sync error
 // message after sign-in.
-- (void)testSigninOpenSyncSettingsWithPasswordError {
+// TODO(crbug.com/1487981): Test fails on official builds.
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#define MAYBE_testSigninOpenSyncSettingsWithPasswordError \
+  DISABLED_testSigninOpenSyncSettingsWithPasswordError
+#else
+#define MAYBE_testSigninOpenSyncSettingsWithPasswordError \
+  testSigninOpenSyncSettingsWithPasswordError
+#endif
+- (void)MAYBE_testSigninOpenSyncSettingsWithPasswordError {
   [ChromeEarlGrey addBookmarkWithSyncPassphrase:kPassphrase];
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
   [SigninEarlGrey addFakeIdentity:fakeIdentity];
@@ -368,7 +398,6 @@ void WaitForSettingDoneButton() {
 // Tests interrupting sign-in by opening an URL from another app.
 // Sign-in opened from: bookmark view.
 // Interrupted at: advanced sign-in.
-// kReplaceSyncPromosWithSignInPromos is disabled.
 - (void)testInterruptAdvancedSigninBookmarksFromAdvancedSigninSettings {
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
   [SigninEarlGrey addFakeIdentity:fakeIdentity];

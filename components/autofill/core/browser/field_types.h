@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "base/strings/string_piece_forward.h"
+#include "base/types/cxx23_to_underlying.h"
 #include "components/autofill/core/common/dense_set.h"
 #include "components/autofill/core/common/html_field_types.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -124,7 +125,6 @@ namespace autofill {
 //
 // A Java counterpart will be generated for this enum.
 // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.autofill
-//
 enum ServerFieldType {
   // Server indication that it has no data for the requested field.
   NO_SERVER_DATA = 0,
@@ -304,16 +304,12 @@ enum ServerFieldType {
   // Type to catch name additions like "Mr.", "Ms." or "Dr.".
   NAME_HONORIFIC_PREFIX = 110,
 
-  // Type that corresponds to the name of a place or a building below the
-  // granularity of a street.
-  ADDRESS_HOME_PREMISE_NAME = 111,
+  // ADDRESS_HOME_PREMISE_NAME value 111 is deprecated.
 
-  // Type that describes a crossing street as it is used in some countries to
-  // describe a location.
-  ADDRESS_HOME_DEPENDENT_STREET_NAME = 112,
+  // ADDRESS_HOME_DEPENDENT_STREET_NAME value 112 is deprecated.
 
   // Compound type to join the street and dependent street names.
-  ADDRESS_HOME_STREET_AND_DEPENDENT_STREET_NAME = 113,
+  // ADDRESS_HOME_STREET_AND_DEPENDENT_STREET_NAME  value 113 is deprecated.
 
   // The complete formatted address as it would be written on an envelope or in
   // a clear-text field without the name.
@@ -426,13 +422,10 @@ enum ServerFieldType {
 enum class FieldTypeGroup {
   kNoGroup,
   kName,
-  kNameBilling,
   kEmail,
   kCompany,
-  kAddressHome,
-  kAddressBilling,
-  kPhoneHome,
-  kPhoneBilling,
+  kAddress,
+  kPhone,
   kCreditCard,
   kPasswordField,
   kTransaction,
@@ -452,33 +445,110 @@ struct DenseSetTraits<ServerFieldType> {
 
 using ServerFieldTypeSet = DenseSet<ServerFieldType>;
 
-std::ostream& operator<<(std::ostream& o, ServerFieldTypeSet field_type_set);
+using HtmlFieldTypeSet = DenseSet<HtmlFieldType>;
 
-// Returns |raw_value| if it corresponds to a non-deprecated enumeration
-// constant of ServerFieldType other than MAX_VALID_FIELD_TYPE. Otherwise,
-// returns |fallback_value|.
-ServerFieldType ToSafeServerFieldType(
-    std::underlying_type_t<ServerFieldType> raw_value,
-    ServerFieldType fallback_value);
+std::ostream& operator<<(std::ostream& o, ServerFieldTypeSet field_type_set);
 
 // Returns whether the field can be filled with data.
 bool IsFillableFieldType(ServerFieldType field_type);
 
 // Returns a StringPiece describing |type|. As the StringPiece points to a
-// static string, you don't need to worry about memory deallocation.
-base::StringPiece FieldTypeToStringPiece(ServerFieldType type);
+// static string, you don't need to worry about dangling pointers.
+std::string_view FieldTypeToStringPiece(ServerFieldType type);
+
+// Inverse FieldTypeToStringPiece(). Checks that only valid ServerFieldType
+// string representations are being passed.
+ServerFieldType TypeNameToFieldType(std::string_view type_name);
 
 // Returns a StringPiece describing `type`. The devtools UI uses this string to
 // give developers feedback about autofill's filling decision. Note that
 // different field types can map to the same string representation for
 // simplicity of the feedback. Returns an empty string if the type is not
 // supported.
-base::StringPiece FieldTypeToDeveloperRepresentationString(
-    ServerFieldType type);
+std::string_view FieldTypeToDeveloperRepresentationString(ServerFieldType type);
 
-// Inverse map of FieldTypeToStringPiece. Checks that only valid ServerFieldType
-// string representations are being passed.
-ServerFieldType TypeNameToFieldType(base::StringPiece type_name);
+// There's a one-to-many relationship between FieldTypeGroup and
+// ServerFieldType as well as HtmlFieldType.
+ServerFieldTypeSet GetServerFieldTypesOfGroup(FieldTypeGroup group);
+FieldTypeGroup GroupTypeOfServerFieldType(ServerFieldType field_type);
+FieldTypeGroup GroupTypeOfHtmlFieldType(HtmlFieldType field_type);
+
+// Not all HtmlFieldTypes have a corresponding ServerFieldType.
+ServerFieldType HtmlFieldTypeToBestCorrespondingServerFieldType(
+    HtmlFieldType field_type);
+
+// Returns |raw_value| if it corresponds to a non-deprecated enumeration
+// constant of ServerFieldType other than MAX_VALID_FIELD_TYPE. Otherwise,
+// returns |fallback_value|.
+constexpr ServerFieldType ToSafeServerFieldType(
+    std::underlying_type_t<ServerFieldType> raw_value,
+    ServerFieldType fallback_value) {
+  auto IsValid = [](std::underlying_type_t<ServerFieldType> t) {
+    return NO_SERVER_DATA <= t && t < MAX_VALID_FIELD_TYPE &&
+           // Work phone numbers (values [15,19]) are deprecated.
+           !(15 <= t && t <= 19) &&
+           // Cell phone numbers (values [25,29]) are deprecated.
+           !(25 <= t && t <= 29) &&
+           // Shipping addresses (values [44,50]) are deprecated.
+           !(44 <= t && t <= 50) &&
+           // Probably-account creation password (value 94) is deprecated.
+           t != 94 &&
+           // Billing addresses (values [37,43], 78, 80, 82, 84) are deprecated.
+           !(37 <= t && t <= 43) && t != 78 && t != 80 && t != 82 && t != 84 &&
+           // Billing phone numbers (values [62,66]) are deprecated.
+           !(62 <= t && t <= 66) &&
+           // Billing names (values [67,72]) are deprecated.
+           !(67 <= t && t <= 72) &&
+           // Fax numbers (values [20,24]) are deprecated.
+           !(20 <= t && t <= 24) &&
+           // Reserved for server-side only use.
+           !(111 <= t && t <= 113) && t != 127 && !(130 <= t && t <= 132) &&
+           t != 134 && !(137 <= t && t <= 139) && !(145 <= t && t <= 150) &&
+           t != 153 && t != 155;
+  };
+  return IsValid(raw_value) ? static_cast<ServerFieldType>(raw_value)
+                            : fallback_value;
+}
+
+constexpr HtmlFieldType ToSafeHtmlFieldType(
+    std::underlying_type_t<HtmlFieldType> raw_value,
+    HtmlFieldType fallback_value) {
+  using underlying_type_t = std::underlying_type_t<HtmlFieldType>;
+  auto IsValid = [](underlying_type_t t) {
+    return static_cast<underlying_type_t>(HtmlFieldType::kMinValue) <= t &&
+           t <= static_cast<underlying_type_t>(HtmlFieldType::kMaxValue) &&
+           // Full address is deprecated.
+           t != 17;
+  };
+  return IsValid(raw_value) ? static_cast<HtmlFieldType>(raw_value)
+                            : fallback_value;
+}
+
+constexpr ServerFieldTypeSet kAllServerFieldTypes = [] {
+  ServerFieldTypeSet fields;
+  for (std::underlying_type_t<ServerFieldType> i = 0; i < MAX_VALID_FIELD_TYPE;
+       ++i) {
+    if (ServerFieldType field_type = ToSafeServerFieldType(i, NO_SERVER_DATA);
+        field_type != NO_SERVER_DATA) {
+      fields.insert(field_type);
+    }
+  }
+  return fields;
+}();
+
+constexpr HtmlFieldTypeSet kAllHtmlFieldTypes = [] {
+  HtmlFieldTypeSet fields;
+  using underlying_type_t = std::underlying_type_t<HtmlFieldType>;
+  for (underlying_type_t i = base::to_underlying(HtmlFieldType::kMinValue);
+       i < base::to_underlying(HtmlFieldType::kMaxValue); ++i) {
+    if (HtmlFieldType field_type =
+            ToSafeHtmlFieldType(i, HtmlFieldType::kUnrecognized);
+        field_type != HtmlFieldType::kUnrecognized) {
+      fields.insert(field_type);
+    }
+  }
+  return fields;
+}();
 
 }  // namespace autofill
 

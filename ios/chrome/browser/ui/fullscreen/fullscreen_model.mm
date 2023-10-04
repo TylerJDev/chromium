@@ -9,6 +9,7 @@
 #import "base/check_op.h"
 #import "ios/chrome/browser/ui/fullscreen/fullscreen_model_observer.h"
 #import "ios/chrome/common/ui/util/ui_util.h"
+#import "ios/web/common/features.h"
 
 namespace {
 // Object that increments `counter` by 1 for its lifetime.
@@ -26,6 +27,14 @@ class ScopedIncrementer {
 
 FullscreenModel::FullscreenModel() = default;
 FullscreenModel::~FullscreenModel() = default;
+
+void FullscreenModel::AddObserver(FullscreenModelObserver* observer) {
+  observers_.AddObserver(observer);
+}
+
+void FullscreenModel::RemoveObserver(FullscreenModelObserver* observer) {
+  observers_.RemoveObserver(observer);
+}
 
 void FullscreenModel::IncrementDisabledCounter() {
   if (++disabled_counter_ == 1U) {
@@ -385,6 +394,7 @@ void FullscreenModel::SetProgress(CGFloat progress) {
 }
 
 void FullscreenModel::OnScrollViewSizeBroadcasted(CGSize scroll_view_size) {
+  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
   SetScrollViewHeight(scroll_view_size.height);
 }
 
@@ -394,22 +404,27 @@ void FullscreenModel::OnScrollViewContentSizeBroadcasted(CGSize content_size) {
 
 void FullscreenModel::OnScrollViewContentInsetBroadcasted(
     UIEdgeInsets content_inset) {
+  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
   SetTopContentInset(content_inset.top);
 }
 
 void FullscreenModel::OnContentScrollOffsetBroadcasted(CGFloat offset) {
+  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
   SetYContentOffset(offset);
 }
 
 void FullscreenModel::OnScrollViewIsScrollingBroadcasted(bool scrolling) {
+  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
   SetScrollViewIsScrolling(scrolling);
 }
 
 void FullscreenModel::OnScrollViewIsZoomingBroadcasted(bool zooming) {
+  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
   SetScrollViewIsZooming(zooming);
 }
 
 void FullscreenModel::OnScrollViewIsDraggingBroadcasted(bool dragging) {
+  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
   SetScrollViewIsDragging(dragging);
 }
 

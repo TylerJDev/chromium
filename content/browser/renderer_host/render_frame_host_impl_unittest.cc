@@ -11,10 +11,11 @@
 #include "content/browser/renderer_host/input/timeout_monitor.h"
 #include "content/browser/renderer_host/navigation_controller_impl.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/common/content_navigation_policy.h"
+#include "content/common/features.h"
 #include "content/public/browser/cors_origin_pattern_setter.h"
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/browser/web_contents_delegate.h"
-#include "content/public/common/content_features.h"
 #include "content/public/test/back_forward_cache_util.h"
 #include "content/public/test/fake_local_frame.h"
 #include "content/public/test/test_utils.h"
@@ -114,10 +115,10 @@ TEST_F(RenderFrameHostImplTest, ExpectedMainWorldOrigin) {
   // This test is for a bug that only happens when there is no RFH swap on
   // same-site navigations, so we should disable same-site proactive
   // BrowsingInstance for |initial_rfh| before continiung.
-  // Note: this will not disable RenderDocument.
-  // TODO(crbug.com/936696): Skip this test when main-frame RenderDocument is
-  // enabled.
   DisableProactiveBrowsingInstanceSwapFor(initial_rfh);
+  if (ShouldCreateNewHostForAllFrames()) {
+    GTEST_SKIP();
+  }
   // Verify expected main world origin in a steady state - after a commit it
   // should be the same as the last committed origin.
   EXPECT_EQ(url::Origin::Create(initial_url),
@@ -204,12 +205,9 @@ TEST_F(RenderFrameHostImplTest, CrossSiteAncestorInFrameTree) {
   blink::StorageKey expected_final_storage_key = blink::StorageKey::Create(
       expected_final_origin, net::SchemefulSite(expected_final_origin),
       blink::mojom::AncestorChainBit::kCrossSite);
-  // Set should contain the set of sites between the current and top frame.
-  std::set<net::SchemefulSite> party_context = {
-      net::SchemefulSite(child_url_1)};
   net::IsolationInfo expected_final_isolation_info = net::IsolationInfo::Create(
       net::IsolationInfo::RequestType::kOther, expected_final_origin,
-      expected_final_origin, net::SiteForCookies(), party_context);
+      expected_final_origin, net::SiteForCookies());
 
   EXPECT_EQ(expected_final_origin, child_rfh_2->GetLastCommittedOrigin());
   EXPECT_EQ(expected_final_storage_key, child_rfh_2->GetStorageKey());
@@ -235,8 +233,7 @@ TEST_F(RenderFrameHostImplTest, IsolationInfoDuringCommit) {
       net::IsolationInfo::Create(
           net::IsolationInfo::RequestType::kOther, expected_initial_origin,
           expected_initial_origin,
-          net::SiteForCookies::FromOrigin(expected_initial_origin),
-          std::set<net::SchemefulSite>());
+          net::SiteForCookies::FromOrigin(expected_initial_origin));
 
   GURL final_url = GURL("https://final.example.test/");
   url::Origin expected_final_origin = url::Origin::Create(final_url);
@@ -245,8 +242,7 @@ TEST_F(RenderFrameHostImplTest, IsolationInfoDuringCommit) {
   net::IsolationInfo expected_final_isolation_info = net::IsolationInfo::Create(
       net::IsolationInfo::RequestType::kOther, expected_final_origin,
       expected_final_origin,
-      net::SiteForCookies::FromOrigin(expected_final_origin),
-      std::set<net::SchemefulSite>());
+      net::SiteForCookies::FromOrigin(expected_final_origin));
 
   // Start the test with a simple navigation.
   {
@@ -259,6 +255,9 @@ TEST_F(RenderFrameHostImplTest, IsolationInfoDuringCommit) {
   // This test is targetted at the case an RFH is reused between navigations.
   RenderFrameHost* initial_rfh = main_rfh();
   DisableProactiveBrowsingInstanceSwapFor(main_rfh());
+  if (ShouldCreateNewHostForAllFrames()) {
+    GTEST_SKIP();
+  }
 
   // Check values for the initial commit.
   EXPECT_EQ(expected_initial_origin, main_rfh()->GetLastCommittedOrigin());

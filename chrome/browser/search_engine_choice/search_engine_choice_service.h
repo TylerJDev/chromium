@@ -13,6 +13,8 @@
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/browser_list_observer.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/search_engines/template_url_service.h"
 
 class Browser;
 class BrowserListObserver;
@@ -20,7 +22,8 @@ class BrowserListObserver;
 // Service handling the Search Engine Choice dialog.
 class SearchEngineChoiceService : public KeyedService {
  public:
-  SearchEngineChoiceService();
+  SearchEngineChoiceService(Profile& profile,
+                            TemplateURLService& template_url_service);
   ~SearchEngineChoiceService() override;
 
   // Informs the service that a Search Engine Choice dialog has been opened
@@ -31,9 +34,12 @@ class SearchEngineChoiceService : public KeyedService {
 
   // This function is called when the user makes a search engine choice. It
   // closes the dialogs that are open on other browser windows that
-  // have the same profile as the one on which the choice was made.
+  // have the same profile as the one on which the choice was made and sets the
+  // corresponding preferences.
+  // `prepopulate_id` is the `prepopulate_id` of the search engine found in
+  // `components/search_engines/template_url_data.h`. It will always be > 0.
   // Virtual to be able to mock in tests.
-  virtual void NotifyChoiceMade();
+  virtual void NotifyChoiceMade(int prepopulate_id);
 
   // Informs the service that a Search Engine Choice dialog has been closed for
   // `browser`.
@@ -43,15 +49,41 @@ class SearchEngineChoiceService : public KeyedService {
   // `browser`.
   bool IsShowingDialog(Browser* browser);
 
-  // Returns whether the Search Engine Choice dialog should be displayed or not.
-  static bool ShouldDisplayDialog(Browser& browser);
+  // Returns whether the Search Engine Choice dialog can be shown or not.
+  // This will return false if the dialog is currently showing.
+  bool CanShowDialog(Browser& browser);
+
+  // Returns whether the dialog should be displayed over the passed URL.
+  bool IsUrlSuitableForDialog(GURL url);
+
+  // Returns whether the Search Engine Choice dialog is either shown or
+  // pending to be shown.
+  bool HasPendingDialog(Browser& browser);
+
+  // Returns whether the user has already made a choice or not.
+  bool HasUserMadeChoice() const;
+
+  // Returns whether the user made the search engine choice during the first run
+  // experience.
+  bool WasChoiceMadeInFRE() const;
+
+  // Returns the list of search engines.
+  // The search engine details returned by this function will be the canonical
+  // ones and will not be affected by changes in search engine details from the
+  // settings page.
+  // Virtual to be able to mock in tests.
+  virtual std::vector<std::unique_ptr<TemplateURL>> GetSearchEngines();
 
   // Disables the display of the Search Engine Choice dialog for testing. When
-  // `dialog_disabled` is true, `ShouldDisplayDialog` will return false.
+  // `dialog_disabled` is true, `CanShowDialog` will return false.
   // NOTE: This is set to true in InProcessBrowserTest::SetUp, disabling the
   // dialog for those tests. If you set this outside of that context, you should
   // ensure it is reset at the end of your test.
   static void SetDialogDisabledForTests(bool dialog_disabled);
+
+  // Registers the local state preferences used by the search engine choice
+  // screen.
+  static void RegisterLocalStatePrefs(PrefRegistrySimple* registry);
 
  private:
   // Observes the BrowserList to make sure that closed browsers are correctly
@@ -78,6 +110,12 @@ class SearchEngineChoiceService : public KeyedService {
   // Observes the browser list for closed browsers.
   BrowserObserver browser_observer_{*this};
 
+  // To know whether the choice was made during the FRE or not.
+  bool choice_made_in_fre_ = false;
+
+  // The `KeyedService` lifetime is expected to exceed the profile's.
+  const raw_ref<Profile> profile_;
+  const raw_ref<TemplateURLService> template_url_service_;
   base::WeakPtrFactory<SearchEngineChoiceService> weak_ptr_factory_{this};
 };
 

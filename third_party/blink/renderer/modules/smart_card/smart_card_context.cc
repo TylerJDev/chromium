@@ -7,7 +7,8 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_connect_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_connect_result.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_get_status_change_options.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_reader_state_flags.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_reader_state_flags_in.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_reader_state_flags_out.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_reader_state_in.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_smart_card_reader_state_out.h"
 #include "third_party/blink/renderer/modules/smart_card/smart_card_cancel_algorithm.h"
@@ -23,12 +24,10 @@ constexpr char kContextBusy[] =
     "An operation is already in progress in this smart card context.";
 
 device::mojom::blink::SmartCardReaderStateFlagsPtr ToMojomStateFlags(
-    const SmartCardReaderStateFlags& flags) {
+    const SmartCardReaderStateFlagsIn& flags) {
   auto mojom_flags = device::mojom::blink::SmartCardReaderStateFlags::New();
   mojom_flags->unaware = flags.unaware();
   mojom_flags->ignore = flags.ignore();
-  mojom_flags->changed = flags.changed();
-  mojom_flags->unknown = flags.unknown();
   mojom_flags->unavailable = flags.unavailable();
   mojom_flags->empty = flags.empty();
   mojom_flags->present = flags.present();
@@ -55,10 +54,9 @@ Vector<device::mojom::blink::SmartCardReaderStateInPtr> ToMojomReaderStatesIn(
   return mojom_reader_states;
 }
 
-SmartCardReaderStateFlags* ToV8ReaderStateFlags(
+SmartCardReaderStateFlagsOut* ToV8ReaderStateFlagsOut(
     const device::mojom::blink::SmartCardReaderStateFlags& mojom_state_flags) {
-  auto* state_flags = SmartCardReaderStateFlags::Create();
-  state_flags->setUnaware(mojom_state_flags.unaware);
+  auto* state_flags = SmartCardReaderStateFlagsOut::Create();
   state_flags->setIgnore(mojom_state_flags.ignore);
   state_flags->setChanged(mojom_state_flags.changed);
   state_flags->setUnknown(mojom_state_flags.unknown);
@@ -82,7 +80,7 @@ HeapVector<Member<SmartCardReaderStateOut>> ToV8ReaderStatesOut(
     auto* state_out = SmartCardReaderStateOut::Create();
     state_out->setReaderName(mojom_state_out->reader);
     state_out->setEventState(
-        ToV8ReaderStateFlags(*mojom_state_out->event_state));
+        ToV8ReaderStateFlagsOut(*mojom_state_out->event_state));
     state_out->setEventCount(mojom_state_out->event_count);
     state_out->setAnswerToReset(
         DOMArrayBuffer::Create(mojom_state_out->answer_to_reset.data(),
@@ -193,6 +191,7 @@ ScriptPromise SmartCardContext::connect(ScriptState* script_state,
 void SmartCardContext::Trace(Visitor* visitor) const {
   visitor->Trace(scard_context_);
   visitor->Trace(request_);
+  visitor->Trace(connections_);
   ScriptWrappable::Trace(visitor);
   ExecutionContextClient::Trace(visitor);
 }
@@ -245,6 +244,15 @@ void SmartCardContext::ClearOperationInProgress(
   CHECK_EQ(request_, resolver);
   CHECK(!is_connection_request_);
   request_ = nullptr;
+
+  for (auto& connection : connections_) {
+    connection->OnOperationInProgressCleared();
+    // If that connection started a new operation, refrain from notifying the
+    // others.
+    if (request_) {
+      break;
+    }
+  }
 }
 
 bool SmartCardContext::IsOperationInProgress() const {
@@ -296,8 +304,7 @@ void SmartCardContext::OnListReadersDone(
       return;
     }
 
-    auto* error = SmartCardError::Create(mojom_error);
-    resolver->Reject(error);
+    SmartCardError::Reject(resolver, mojom_error);
     return;
   }
 
@@ -321,7 +328,7 @@ void SmartCardContext::OnGetStatusChangeDone(
             device::mojom::blink::SmartCardError::kCancelled) {
       RejectWithAbortionReason(resolver, signal);
     } else {
-      resolver->Reject(SmartCardError::Create(result->get_error()));
+      SmartCardError::Reject(resolver, result->get_error());
     }
     return;
   }
@@ -342,8 +349,7 @@ void SmartCardContext::OnConnectDone(
   ClearOperationInProgress(resolver);
 
   if (result->is_error()) {
-    auto* error = SmartCardError::Create(result->get_error());
-    resolver->Reject(error);
+    SmartCardError::Reject(resolver, result->get_error());
     return;
   }
 
@@ -353,6 +359,9 @@ void SmartCardContext::OnConnectDone(
   auto* connection = MakeGarbageCollected<SmartCardConnection>(
       std::move(success->connection), success->active_protocol, this,
       GetExecutionContext());
+  // Being a weak member, it will be automatically removed from the set when
+  // garbage-collected.
+  connections_.insert(connection);
 
   auto* blink_result = SmartCardConnectResult::Create();
   blink_result->setConnection(connection);

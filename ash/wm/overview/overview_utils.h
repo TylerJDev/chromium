@@ -8,7 +8,7 @@
 #include <memory>
 
 #include "ash/ash_export.h"
-#include "ash/wm/overview/overview_highlightable_view.h"
+#include "ash/wm/overview/overview_focusable_view.h"
 #include "ash/wm/overview/overview_types.h"
 #include "ash/wm/splitview/split_view_drag_indicators.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -24,6 +24,13 @@ class Widget;
 }  // namespace views
 
 namespace ash {
+
+// Returns true if an overview session is active.
+bool IsInOverviewSession();
+
+// Returns the overview session if overview mode is active, otherwise returns
+// nullptr.
+ASH_EXPORT OverviewSession* GetOverviewSession();
 
 // Returns true if `window` can cover available workspace.
 bool CanCoverAvailableWorkspace(aura::Window* window);
@@ -49,8 +56,9 @@ void FadeOutWidgetFromOverview(std::unique_ptr<views::Widget> widget,
 // Takes ownership of `widget`, closes and destroys it without any animations.
 void ImmediatelyCloseWidgetOnExit(std::unique_ptr<views::Widget> widget);
 
-// Returns the original target bounds of `window`. The bounds are a union of all
-// regular (normal and panel) windows in the window's transient hierarchy.
+// Returns the original bounds of `window` outside of overview. The bounds are a
+// union of all regular (normal and panel) windows in the window's transient
+// hierarchy.
 gfx::RectF GetTargetBoundsInScreen(aura::Window* window);
 
 // Applies the `transform` to `window` and all of its transient children. Note
@@ -87,7 +95,7 @@ bool ShouldUseTabletModeGridLayout();
 // returns the same size for SizeF regardless of its origin.
 ASH_EXPORT gfx::Rect ToStableSizeRoundedRect(const gfx::RectF& rect);
 
-void UpdateOverviewHighlightForFocus(OverviewHighlightableView* target_view);
+void MoveFocusToView(OverviewFocusableView* target_view);
 
 }  // namespace ash
 

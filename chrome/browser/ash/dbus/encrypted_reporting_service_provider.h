@@ -45,7 +45,6 @@ class EncryptedReportingServiceProvider
       const EncryptedReportingServiceProvider& other) = delete;
   ~EncryptedReportingServiceProvider() override;
 
-  // Returns true if the current thread is on the origin thread.
   // CrosDBusService::ServiceProviderInterface overrides:
   void Start(scoped_refptr<dbus::ExportedObject> exported_object) override;
 
@@ -66,6 +65,8 @@ class EncryptedReportingServiceProvider
   GetReportSuccessUploadCallback();
   static ::reporting::UploadClient::EncryptionKeyAttachedCallback
   GetEncryptionKeyAttachedCallback();
+  static ::reporting::UploadClient::UpdateConfigInMissiveCallback
+  GetUpdateConfigInMissiveCallback();
 
   // Returns true if called on the origin thread.
   bool OnOriginThread() const;

@@ -29,6 +29,11 @@ struct CONTENT_EXPORT ClientMetadata {
   GURL privacy_policy_url;
 };
 
+struct CONTENT_EXPORT IdentityCredentialTokenError {
+  std::string code;
+  GURL url;
+};
+
 struct CONTENT_EXPORT IdentityProviderMetadata {
   IdentityProviderMetadata();
   IdentityProviderMetadata(const IdentityProviderMetadata& other);
@@ -37,7 +42,7 @@ struct CONTENT_EXPORT IdentityProviderMetadata {
   absl::optional<SkColor> brand_text_color;
   absl::optional<SkColor> brand_background_color;
   GURL brand_icon_url;
-  GURL idp_signin_url;
+  GURL idp_login_url;
   // The URL of the configuration endpoint. This is stored in
   // IdentityProviderMetadata so that the UI code can pass it along when an
   // Account is selected by the user.
@@ -77,8 +82,10 @@ class CONTENT_EXPORT IdentityRequestDialogController {
     kCloseButton = 1,
     kSwipe = 2,
     kVirtualKeyboardShown = 3,
+    kGotItButton = 4,
+    kMoreDetailsButton = 5,
 
-    kMaxValue = kVirtualKeyboardShown,
+    kMaxValue = kMoreDetailsButton,
   };
 
   using AccountSelectionCallback =
@@ -90,6 +97,7 @@ class CONTENT_EXPORT IdentityRequestDialogController {
   using DismissCallback =
       base::OnceCallback<void(DismissReason dismiss_reason)>;
   using SigninToIdPCallback = base::OnceCallback<void()>;
+  using MoreDetailsCallback = base::OnceCallback<void()>;
 
   IdentityRequestDialogController() = default;
 
@@ -134,6 +142,17 @@ class CONTENT_EXPORT IdentityRequestDialogController {
       const IdentityProviderMetadata& idp_metadata,
       DismissCallback dismiss_callback,
       SigninToIdPCallback signin_callback);
+
+  // Shows an error UI when the user's sign-in attempt failed.
+  virtual void ShowErrorDialog(
+      const std::string& top_frame_for_display,
+      const absl::optional<std::string>& iframe_for_display,
+      const std::string& idp_for_display,
+      const blink::mojom::RpContext& rp_context,
+      const IdentityProviderMetadata& idp_metadata,
+      const absl::optional<IdentityCredentialTokenError>& error,
+      DismissCallback dismiss_callback,
+      MoreDetailsCallback more_details_callback);
 
   // Only to be called after a dialog is shown.
   virtual std::string GetTitle() const;

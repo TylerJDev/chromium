@@ -45,6 +45,7 @@ class TestGpuChannelHost : public GpuChannelHost {
       : GpuChannelHost(0 /* channel_id */,
                        GPUInfo(),
                        GpuFeatureInfo(),
+                       SharedImageCapabilities(),
                        mojo::ScopedMessagePipeHandle(
                            mojo::MessagePipeHandle(mojo::kInvalidHandleValue))),
         gpu_channel_(gpu_channel) {}
@@ -83,7 +84,7 @@ class CommandBufferProxyImplTest : public testing::Test {
   std::unique_ptr<CommandBufferProxyImpl> CreateAndInitializeProxy(
       MockCommandBuffer* mock_command_buffer = nullptr) {
     auto proxy = std::make_unique<CommandBufferProxyImpl>(
-        channel_, nullptr /* gpu_memory_buffer_manager */, 0 /* stream_id */,
+        channel_, 0 /* stream_id */,
         base::SingleThreadTaskRunner::GetCurrentDefault());
 
     // The Initialize() call below synchronously requests a new CommandBuffer

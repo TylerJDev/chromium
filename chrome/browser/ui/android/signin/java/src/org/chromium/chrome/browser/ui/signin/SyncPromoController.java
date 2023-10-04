@@ -4,7 +4,6 @@
 
 package org.chromium.chrome.browser.ui.signin;
 
-import android.accounts.Account;
 import android.content.Context;
 import android.graphics.drawable.Drawable;
 import android.text.format.DateUtils;
@@ -22,9 +21,10 @@ import org.chromium.base.BuildInfo;
 import org.chromium.base.Promise;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.signin.services.DisplayableProfileData;
 import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
@@ -148,24 +148,24 @@ public class SyncPromoController {
     public static void resetNTPSyncPromoLimitsIfHiddenForTooLong() {
         final long currentTime = System.currentTimeMillis();
         final long resetAfterMs = getNTPSyncPromoResetAfterMillis();
-        final long lastShownTime = SharedPreferencesManager.getInstance().readLong(
+        final long lastShownTime = ChromeSharedPreferences.getInstance().readLong(
                 ChromePreferenceKeys.SIGNIN_PROMO_NTP_LAST_SHOWN_TIME, 0L);
         if (resetAfterMs <= 0 || lastShownTime <= 0) return;
 
         if (currentTime - lastShownTime >= resetAfterMs) {
-            SharedPreferencesManager.getInstance().writeInt(
+            ChromeSharedPreferences.getInstance().writeInt(
                     getPromoShowCountPreferenceName(SigninAccessPoint.NTP_CONTENT_SUGGESTIONS), 0);
-            SharedPreferencesManager.getInstance().removeKey(
+            ChromeSharedPreferences.getInstance().removeKey(
                     ChromePreferenceKeys.SIGNIN_PROMO_NTP_FIRST_SHOWN_TIME);
-            SharedPreferencesManager.getInstance().removeKey(
+            ChromeSharedPreferences.getInstance().removeKey(
                     ChromePreferenceKeys.SIGNIN_PROMO_NTP_LAST_SHOWN_TIME);
         }
     }
 
     private static boolean canShowBookmarkPromo() {
-        boolean isPromoDismissed = SharedPreferencesManager.getInstance().readBoolean(
+        boolean isPromoDismissed = ChromeSharedPreferences.getInstance().readBoolean(
                 ChromePreferenceKeys.SIGNIN_PROMO_BOOKMARKS_DECLINED, false);
-        return SharedPreferencesManager.getInstance().readInt(
+        return ChromeSharedPreferences.getInstance().readInt(
                        getPromoShowCountPreferenceName(SigninAccessPoint.BOOKMARK_MANAGER))
                 < MAX_IMPRESSIONS_BOOKMARKS
                 && !isPromoDismissed;
@@ -179,7 +179,7 @@ public class SyncPromoController {
         if (timeSinceFirstShownLimitMs <= 0) return false;
 
         final long currentTime = System.currentTimeMillis();
-        final long firstShownTime = SharedPreferencesManager.getInstance().readLong(
+        final long firstShownTime = ChromeSharedPreferences.getInstance().readLong(
                 ChromePreferenceKeys.SIGNIN_PROMO_NTP_FIRST_SHOWN_TIME, 0L);
         return firstShownTime > 0 && currentTime - firstShownTime >= timeSinceFirstShownLimitMs;
     }
@@ -195,7 +195,7 @@ public class SyncPromoController {
     }
 
     private static boolean canShowNTPPromo() {
-        int promoShowCount = SharedPreferencesManager.getInstance().readInt(
+        int promoShowCount = ChromeSharedPreferences.getInstance().readInt(
                 getPromoShowCountPreferenceName(SigninAccessPoint.NTP_CONTENT_SUGGESTIONS));
         if (promoShowCount >= getNTPMaxImpressions()) {
             return false;
@@ -205,7 +205,7 @@ public class SyncPromoController {
             return false;
         }
 
-        if (SharedPreferencesManager.getInstance().readBoolean(
+        if (ChromeSharedPreferences.getInstance().readBoolean(
                     ChromePreferenceKeys.SIGNIN_PROMO_NTP_PROMO_DISMISSED, false)) {
             return false;
         }
@@ -213,12 +213,12 @@ public class SyncPromoController {
         if (ChromeFeatureList.isEnabled(ChromeFeatureList.FORCE_DISABLE_EXTENDED_SYNC_PROMOS)) {
             return false;
         }
-        final @Nullable Account visibleAccount = getVisibleAccount();
+        final @Nullable CoreAccountInfo visibleAccount = getVisibleAccount();
         if (visibleAccount == null) {
             return true;
         }
         final Promise<AccountInfo> visibleAccountPromise =
-                AccountInfoServiceProvider.get().getAccountInfoByEmail(visibleAccount.name);
+                AccountInfoServiceProvider.get().getAccountInfoByEmail(visibleAccount.getEmail());
         return visibleAccountPromise.isFulfilled()
                 && visibleAccountPromise.getResult()
                            .getAccountCapabilities()
@@ -227,7 +227,7 @@ public class SyncPromoController {
     }
 
     private static boolean canShowSettingsPromo() {
-        SharedPreferencesManager preferencesManager = SharedPreferencesManager.getInstance();
+        SharedPreferencesManager preferencesManager = ChromeSharedPreferences.getInstance();
         boolean isPromoDismissed = preferencesManager.readBoolean(
                 ChromePreferenceKeys.SIGNIN_PROMO_SETTINGS_PERSONALIZED_DISMISSED, false);
         return preferencesManager.readInt(
@@ -237,17 +237,16 @@ public class SyncPromoController {
     }
 
     // Find the visible account for sync promos
-    private static @Nullable Account getVisibleAccount() {
+    private static @Nullable CoreAccountInfo getVisibleAccount() {
         final IdentityManager identityManager = IdentityServicesProvider.get().getIdentityManager(
                 Profile.getLastUsedRegularProfile());
         @Nullable
-        Account visibleAccount = CoreAccountInfo.getAndroidAccountFrom(
-                identityManager.getPrimaryAccountInfo(ConsentLevel.SIGNIN));
+        CoreAccountInfo visibleAccount = identityManager.getPrimaryAccountInfo(ConsentLevel.SIGNIN);
         final AccountManagerFacade accountManagerFacade =
                 AccountManagerFacadeProvider.getInstance();
         if (visibleAccount == null) {
-            visibleAccount =
-                    AccountUtils.getDefaultAccountIfFulfilled(accountManagerFacade.getAccounts());
+            visibleAccount = AccountUtils.getDefaultCoreAccountInfoIfFulfilled(
+                    accountManagerFacade.getCoreAccountInfos());
         }
         return visibleAccount;
     }
@@ -327,14 +326,14 @@ public class SyncPromoController {
                 Profile.getLastUsedRegularProfile());
         assert !identityManager.hasPrimaryAccount(ConsentLevel.SYNC) : "Sync is already enabled!";
 
-        final @Nullable Account visibleAccount = getVisibleAccount();
+        final @Nullable CoreAccountInfo visibleAccount = getVisibleAccount();
         // Set up the sync promo
         if (visibleAccount == null) {
             setupPromoView(view, /* profileData= */ null, listener);
             return;
         }
-        setupPromoView(
-                view, profileDataCache.getProfileDataOrDefault(visibleAccount.name), listener);
+        setupPromoView(view, profileDataCache.getProfileDataOrDefault(visibleAccount.getEmail()),
+                listener);
     }
 
     /**
@@ -372,7 +371,7 @@ public class SyncPromoController {
             view.getDismissButton().setVisibility(View.VISIBLE);
             view.getDismissButton().setOnClickListener(promoView -> {
                 assert mSyncPromoDismissedPreferenceTracker != null;
-                SharedPreferencesManager.getInstance().writeBoolean(
+                ChromeSharedPreferences.getInstance().writeBoolean(
                         mSyncPromoDismissedPreferenceTracker, true);
                 recordShowCountHistogram(UserAction.DISMISSED);
                 onDismissListener.onDismiss();
@@ -396,7 +395,7 @@ public class SyncPromoController {
     public void increasePromoShowCount() {
         if (mAccessPoint == SigninAccessPoint.NTP_CONTENT_SUGGESTIONS) {
             final long currentTime = System.currentTimeMillis();
-            final long lastShownTime = SharedPreferencesManager.getInstance().readLong(
+            final long lastShownTime = ChromeSharedPreferences.getInstance().readLong(
                     ChromePreferenceKeys.SIGNIN_PROMO_NTP_LAST_SHOWN_TIME, 0L);
             if (currentTime - lastShownTime < NTP_SYNC_PROMO_INCREASE_SHOW_COUNT_AFTER_MINUTE
                                     * DateUtils.MINUTE_IN_MILLIS
@@ -404,20 +403,20 @@ public class SyncPromoController {
                             ChromeFeatureList.SYNC_ANDROID_LIMIT_NTP_PROMO_IMPRESSIONS)) {
                 return;
             }
-            if (SharedPreferencesManager.getInstance().readLong(
+            if (ChromeSharedPreferences.getInstance().readLong(
                         ChromePreferenceKeys.SIGNIN_PROMO_NTP_FIRST_SHOWN_TIME)
                     == 0) {
-                SharedPreferencesManager.getInstance().writeLong(
+                ChromeSharedPreferences.getInstance().writeLong(
                         ChromePreferenceKeys.SIGNIN_PROMO_NTP_FIRST_SHOWN_TIME, currentTime);
             }
-            SharedPreferencesManager.getInstance().writeLong(
+            ChromeSharedPreferences.getInstance().writeLong(
                     ChromePreferenceKeys.SIGNIN_PROMO_NTP_LAST_SHOWN_TIME, currentTime);
         }
         if (mAccessPoint != SigninAccessPoint.RECENT_TABS) {
-            SharedPreferencesManager.getInstance().incrementInt(
+            ChromeSharedPreferences.getInstance().incrementInt(
                     getPromoShowCountPreferenceName(mAccessPoint));
         }
-        SharedPreferencesManager.getInstance().incrementInt(
+        ChromeSharedPreferences.getInstance().incrementInt(
                 ChromePreferenceKeys.SYNC_PROMO_TOTAL_SHOW_COUNT);
         recordShowCountHistogram(UserAction.SHOWN);
     }
@@ -506,7 +505,7 @@ public class SyncPromoController {
         }
         RecordHistogram.recordExactLinearHistogram(
                 "Signin.SyncPromo." + actionType + ".Count." + accessPoint,
-                SharedPreferencesManager.getInstance().readInt(
+                ChromeSharedPreferences.getInstance().readInt(
                         ChromePreferenceKeys.SYNC_PROMO_TOTAL_SHOW_COUNT),
                 MAX_TOTAL_PROMO_SHOW_COUNT);
     }
@@ -524,7 +523,7 @@ public class SyncPromoController {
     }
 
     public static void setPrefSigninPromoDeclinedBookmarksForTests(boolean isDeclined) {
-        SharedPreferencesManager.getInstance().writeBoolean(
+        ChromeSharedPreferences.getInstance().writeBoolean(
                 ChromePreferenceKeys.SIGNIN_PROMO_BOOKMARKS_DECLINED, isDeclined);
     }
 

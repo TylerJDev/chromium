@@ -16,6 +16,7 @@
 #include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
+#include "chrome/browser/privacy_sandbox/tracking_protection_settings_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
 #include "chrome/browser/ssl/security_state_tab_helper.h"
@@ -35,6 +36,7 @@
 #include "components/permissions/object_permission_context_base.h"
 #include "components/permissions/permission_manager.h"
 #include "components/prefs/pref_service.h"
+#include "components/privacy_sandbox/tracking_protection_settings.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
 #include "components/subresource_filter/content/browser/subresource_filter_content_settings_manager.h"
 #include "components/subresource_filter/content/browser/subresource_filter_profile_context.h"
@@ -46,7 +48,7 @@
 #include "url/origin.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-#include "chrome/browser/ui/webui/settings/ash/app_management/app_management_uma.h"
+#include "chrome/browser/ui/webui/ash/settings/app_management/app_management_uma.h"
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -54,6 +56,7 @@
 #include "chrome/browser/hid/hid_chooser_context.h"
 #include "chrome/browser/hid/hid_chooser_context_factory.h"
 #include "chrome/browser/lookalikes/safety_tip_ui_helper.h"
+#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/serial/serial_chooser_context.h"
 #include "chrome/browser/serial/serial_chooser_context_factory.h"
 #include "chrome/browser/ui/browser.h"
@@ -65,12 +68,12 @@
 #include "chrome/browser/ui/tab_dialogs.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/web_applications/web_app_ui_utils.h"
-#include "chrome/browser/web_applications/web_app_id.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
+#include "components/webapps/common/web_app_id.h"
 #include "ui/events/event.h"
 #else
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "ui/base/l10n/l10n_util.h"
 #endif
 
@@ -235,14 +238,15 @@ bool ChromePageInfoDelegate::IsIsolatedWebApp() {
     return false;
   }
 
-  const web_app::AppId* app_id =
+  const webapps::AppId* app_id =
       web_app::WebAppTabHelper::GetAppId(web_contents_);
   return app_id && provider->registrar_unsafe().IsIsolated(*app_id);
 }
 
 void ChromePageInfoDelegate::ShowSiteSettings(const GURL& site_url) {
-  if (web_app::HandleAppManagementLinkClickedInPageInfo(web_contents_))
+  if (web_app::HandleAppManagementLinkClickedInPageInfo(web_contents_)) {
     return;
+  }
 
   Browser* browser = chrome::FindBrowserWithWebContents(web_contents_);
   chrome::ShowSiteSettings(browser, site_url);
@@ -297,16 +301,18 @@ void ChromePageInfoDelegate::OpenContentSettingsExceptions(
 void ChromePageInfoDelegate::OnPageInfoActionOccurred(
     PageInfo::PageInfoAction action) {
   if (sentiment_service_) {
-    if (action == PageInfo::PAGE_INFO_OPENED)
+    if (action == PageInfo::PAGE_INFO_OPENED) {
       sentiment_service_->PageInfoOpened();
-    else
+    } else {
       sentiment_service_->InteractedWithPageInfo();
+    }
   }
 }
 
 void ChromePageInfoDelegate::OnUIClosing() {
-  if (sentiment_service_)
+  if (sentiment_service_) {
     sentiment_service_->PageInfoClosed();
+  }
 }
 #endif
 
@@ -341,13 +347,25 @@ bool ChromePageInfoDelegate::IsSubresourceFilterActivated(
   return settings_manager->GetSiteActivationFromMetadata(site_url);
 }
 
+bool ChromePageInfoDelegate::HasAutoPictureInPictureBeenRegistered() {
+#if BUILDFLAG(IS_ANDROID)
+  return false;
+#else
+  auto* auto_pip_tab_helper =
+      AutoPictureInPictureTabHelper::FromWebContents(web_contents_);
+  return auto_pip_tab_helper &&
+         auto_pip_tab_helper->HasAutoPictureInPictureBeenRegistered();
+#endif  // BUILDFLAG(IS_ANDROID)
+}
+
 bool ChromePageInfoDelegate::IsContentDisplayedInVrHeadset() {
   return vr::VrTabHelper::IsContentDisplayedInHeadset(web_contents_);
 }
 
 security_state::SecurityLevel ChromePageInfoDelegate::GetSecurityLevel() {
-  if (security_state_for_tests_set_)
+  if (security_state_for_tests_set_) {
     return security_level_for_tests_;
+  }
 
   // This is a no-op if a SecurityStateTabHelper already exists for
   // |web_contents|.
@@ -360,8 +378,9 @@ security_state::SecurityLevel ChromePageInfoDelegate::GetSecurityLevel() {
 
 security_state::VisibleSecurityState
 ChromePageInfoDelegate::GetVisibleSecurityState() {
-  if (security_state_for_tests_set_)
+  if (security_state_for_tests_set_) {
     return visible_security_state_for_tests_;
+  }
 
   // This is a no-op if a SecurityStateTabHelper already exists for
   // |web_contents|.
@@ -389,6 +408,16 @@ ChromePageInfoDelegate::GetPageSpecificContentSettingsDelegate() {
   auto delegate = std::make_unique<chrome::PageSpecificContentSettingsDelegate>(
       web_contents_);
   return std::move(delegate);
+}
+
+bool ChromePageInfoDelegate::IsTrackingProtection3pcdEnabled() {
+  return TrackingProtectionSettingsFactory::GetForProfile(GetProfile())
+      ->IsTrackingProtection3pcdEnabled();
+}
+
+bool ChromePageInfoDelegate::AreAllThirdPartyCookiesBlocked() {
+  return TrackingProtectionSettingsFactory::GetForProfile(GetProfile())
+      ->AreAllThirdPartyCookiesBlocked();
 }
 
 #if BUILDFLAG(IS_ANDROID)

@@ -690,8 +690,11 @@ correction to its `direction` attribute any time.
 ### Cleaning Up Histogram Entries {#obsolete}
 
 If a histogram is no longer being emitted to, you should clean it up by removing
-the corresponding histograms.xml entry. You can also add an obsoletion message
-in the same changelist. This also applies to variants of a
+the corresponding histograms.xml entry. The histogram data will still be
+available for viewing on Google's internal UMA dashboard.
+
+When removing a histograms.xml entry you can also add an obsoletion message in
+the same changelist. This also applies to variants of a
 [patterned histogram](#Patterned-Histograms) and to suffix entries for a
 suffixed histogram.
 
@@ -715,12 +718,16 @@ Delete the entry in the histograms.xml file.
 
 #### Add an Obsoletion Message
 
+An obsoletion message is displayed on the dashboard and provides developers
+context for why the histogram was removed and, if applicable, which histogram
+it was replaced by.
+
 **Note:** You can skip this step if the histogram is already expired or
 obsolete. This is because tooling automatically records the date and milestone
 of a histogram's expiration or obsoletion.
 
-There are a couple options for adding a message to the removed histogram's
-entry to provide relevant information to interested Chrome developers.
+You can provide a custom obsoletion message for a removed histogram via tags
+on the CL description:
 
 * Add the obsoletion message in the CL description in the format
   OBSOLETE_HISTOGRAM[histogram name]=obsoletion message (e.g.

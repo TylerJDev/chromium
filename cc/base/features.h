@@ -21,17 +21,38 @@ CC_BASE_EXPORT BASE_DECLARE_FEATURE(kSynchronizedScrolling);
 // or content=initial-scale=1.0
 CC_BASE_EXPORT BASE_DECLARE_FEATURE(kRemoveMobileViewportDoubleTap);
 
-// When enabled, all scrolling is performed on the compositor thread -
-// delegating only the hit test to Blink. This causes Blink to send additional
-// information in the scroll property tree. When a scroll can't be hit tested
-// on the compositor, it will post a hit test task to Blink and continue the
-// scroll when that resolves. For details, see:
-// https://docs.google.com/document/d/1smLAXs-DSLLmkEt4FIPP7PVglJXOcwRc7A5G0SEwxaY/edit
-CC_BASE_EXPORT BASE_DECLARE_FEATURE(kScrollUnification);
+// When enabled, scrolling within a covering snap area avoids or snaps to inner
+// nested areas, avoiding resting on positions which do not snap the inner area.
+// E.g. when scrolling within snap area A, it will stop either before/after
+// snap area B or with B snapped.
+//   --------
+//  | A      |
+//  |        |
+//  |  ---   |
+//  | | B |  |
+//  |  ---   |
+//  |        |
+//   --------
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kScrollSnapCoveringAvoidNestedSnapAreas);
+
+// When enabled, scrolling within a covering snap area uses the native fling,
+// allowing much more natural scrolling within these areas.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kScrollSnapCoveringUseNativeFling);
+
+// When enabled, if a snap container is snapping to a large snap area, it will
+// snap to the closest covering position if it is closer than the aligned
+// position. This avoid unnecessary jumps that attempt to honor the
+// scroll-snap-align value.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kScrollSnapPreferCloserCovering);
 
 // When enabled, cc will show blink's Web-Vital metrics inside its heads up
 // display.
 CC_BASE_EXPORT BASE_DECLARE_FEATURE(kHudDisplayForPerformanceMetrics);
+
+// Whether RenderSurface::common_ancestor_clip_id() is used to clip to the
+// common ancestor clip when any contributing layer escapes the clip of the
+// render surface's owning effect.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kRenderSurfaceCommonAncestorClip);
 
 // When enabled, CompositorTimingHistory will directly record the timing history
 // that is used to calculate main thread timing estimates, and use the
@@ -63,6 +84,12 @@ CC_BASE_EXPORT BASE_DECLARE_FEATURE(kNormalPriorityImageDecoding);
 
 // Use DMSAA instead of MSAA for rastering tiles.
 CC_BASE_EXPORT BASE_DECLARE_FEATURE(kUseDMSAAForTiles);
+
+#if BUILDFLAG(IS_ANDROID)
+// Use DMSAA instead of MSAA for rastering tiles on Android GL backend. Note
+// that the above flag kUseDMSAAForTiles is used for Android Vulkan backend.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kUseDMSAAForTilesAndroidGL);
+#endif
 
 // Updating browser controls state will IPC directly from browser main to the
 // compositor thread. Previously this proxied through the renderer main thread.
@@ -109,6 +136,9 @@ CC_BASE_EXPORT BASE_DECLARE_FEATURE(kImageCacheNoCache);
 // after some time.
 CC_BASE_EXPORT BASE_DECLARE_FEATURE(kReclaimOldPrepaintTiles);
 CC_BASE_EXPORT extern const base::FeatureParam<int> kReclaimDelayInSeconds;
+
+// Kill switch for using MapRect() to compute filter pixel movement.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kUseMapRectForPixelMovement);
 
 }  // namespace features
 

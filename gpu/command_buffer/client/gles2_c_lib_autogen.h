@@ -1642,6 +1642,10 @@ void GL_APIENTRY GLES2FramebufferTextureMultiviewOVR(GLenum target,
 void GL_APIENTRY GLES2MaxShaderCompilerThreadsKHR(GLuint count) {
   gles2::GetGLContext()->MaxShaderCompilerThreadsKHR(count);
 }
+void GL_APIENTRY GLES2TexImage2DSharedImageCHROMIUM(GLuint texture,
+                                                    const GLbyte* mailbox) {
+  gles2::GetGLContext()->TexImage2DSharedImageCHROMIUM(texture, mailbox);
+}
 GLuint GL_APIENTRY
 GLES2CreateAndTexStorage2DSharedImageCHROMIUM(const GLbyte* mailbox) {
   return gles2::GetGLContext()->CreateAndTexStorage2DSharedImageCHROMIUM(
@@ -1663,12 +1667,17 @@ GLES2ConvertRGBAToYUVAMailboxesINTERNAL(GLenum planes_yuv_color_space,
       planes_yuv_color_space, plane_config, subsampling, mailboxes);
 }
 void GL_APIENTRY
-GLES2ConvertYUVAMailboxesToRGBINTERNAL(GLenum planes_yuv_color_space,
+GLES2ConvertYUVAMailboxesToRGBINTERNAL(GLint src_x,
+                                       GLint src_y,
+                                       GLsizei width,
+                                       GLsizei height,
+                                       GLenum planes_yuv_color_space,
                                        GLenum plane_config,
                                        GLenum subsampling,
                                        const GLbyte* mailboxes) {
   gles2::GetGLContext()->ConvertYUVAMailboxesToRGBINTERNAL(
-      planes_yuv_color_space, plane_config, subsampling, mailboxes);
+      src_x, src_y, width, height, planes_yuv_color_space, plane_config,
+      subsampling, mailboxes);
 }
 void GL_APIENTRY GLES2CopySharedImageINTERNAL(GLint xoffset,
                                               GLint yoffset,
@@ -1834,6 +1843,17 @@ GLES2GetFramebufferPixelLocalStorageParameterivANGLE(GLint plane,
                                                      GLint* params) {
   gles2::GetGLContext()->GetFramebufferPixelLocalStorageParameterivANGLE(
       plane, pname, params);
+}
+void GL_APIENTRY GLES2ClipControlEXT(GLenum origin, GLenum depth) {
+  gles2::GetGLContext()->ClipControlEXT(origin, depth);
+}
+void GL_APIENTRY GLES2PolygonModeANGLE(GLenum face, GLenum mode) {
+  gles2::GetGLContext()->PolygonModeANGLE(face, mode);
+}
+void GL_APIENTRY GLES2PolygonOffsetClampEXT(GLfloat factor,
+                                            GLfloat units,
+                                            GLfloat clamp) {
+  gles2::GetGLContext()->PolygonOffsetClampEXT(factor, units, clamp);
 }
 
 namespace gles2 {
@@ -3161,6 +3181,10 @@ extern const NameToFunc g_gles2_function_table[] = {
         reinterpret_cast<GLES2FunctionPointer>(glMaxShaderCompilerThreadsKHR),
     },
     {
+        "glTexImage2DSharedImageCHROMIUM",
+        reinterpret_cast<GLES2FunctionPointer>(glTexImage2DSharedImageCHROMIUM),
+    },
+    {
         "glCreateAndTexStorage2DSharedImageCHROMIUM",
         reinterpret_cast<GLES2FunctionPointer>(
             glCreateAndTexStorage2DSharedImageCHROMIUM),
@@ -3295,6 +3319,18 @@ extern const NameToFunc g_gles2_function_table[] = {
         "glGetFramebufferPixelLocalStorageParameterivANGLE",
         reinterpret_cast<GLES2FunctionPointer>(
             glGetFramebufferPixelLocalStorageParameterivANGLE),
+    },
+    {
+        "glClipControlEXT",
+        reinterpret_cast<GLES2FunctionPointer>(glClipControlEXT),
+    },
+    {
+        "glPolygonModeANGLE",
+        reinterpret_cast<GLES2FunctionPointer>(glPolygonModeANGLE),
+    },
+    {
+        "glPolygonOffsetClampEXT",
+        reinterpret_cast<GLES2FunctionPointer>(glPolygonOffsetClampEXT),
     },
     {
         nullptr,

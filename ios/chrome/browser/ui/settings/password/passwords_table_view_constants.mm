@@ -22,7 +22,25 @@ NSString* const kPasswordIssuesTableViewId = @"kPasswordIssuesTableViewId";
 
 NSString* const kDismissedWarningsCellId = @"DismissedWarningsCellId";
 
+NSString* const kUsernameTextfieldForPasswordDetailsId =
+    @"kUsernameTextfieldForPasswordDetailsId";
+
+NSString* const kPasswordTextfieldForPasswordDetailsId =
+    @"kPasswordTextfieldForPasswordDetailsId";
+
 NSString* const kDeleteButtonForPasswordDetailsId =
     @"kDeleteButtonForPasswordDetailsId";
 
 NSString* const kLocalOnlyPasswordIconId = @"kLocalOnlyPasswordIconId";
+
+NSString* const kWidgetPromoImageName = @"password_manager_widget_promo";
+
+NSString* const kWidgetPromoDisabledImageName =
+    @"password_manager_widget_promo_disabled";
+
+NSString* const kWidgetPromoId = @"WidgetPromoId";
+
+NSString* const kWidgetPromoCloseButtonId = @"WidgetPromoCloseButtonId";
+
+const char kPasswordManagerWidgetPromoActionHistogram[] =
+    "IOS.PasswordManager.WidgetPromo.Action";

@@ -122,7 +122,7 @@ class GlanceablesClassroomClientImplTest : public testing::Test {
               "test-user-agent", TRAFFIC_ANNOTATION_FOR_TESTS);
         });
     client_ = std::make_unique<GlanceablesClassroomClientImpl>(
-        /*profile=*/nullptr, &test_clock_, create_request_sender_callback,
+        &test_clock_, create_request_sender_callback,
         /*use_best_effort_prefetch_task_runner=*/false);
 
     test_server_.RegisterRequestHandler(
@@ -1222,6 +1222,10 @@ TEST_F(GlanceablesClassroomClientImplTest,
   histogram_tester()->ExpectTotalCount(
       "Ash.Glanceables.Api.Classroom.GetCourses.Status",
       /*expected_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.IsStudentRoleActiveResult",
+      /*sample=*/1,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesClassroomClientImplTest,
@@ -1236,6 +1240,11 @@ TEST_F(GlanceablesClassroomClientImplTest,
 
   const bool active = future.Get();
   ASSERT_FALSE(active);
+
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.IsStudentRoleActiveResult",
+      /*sample=*/0,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesClassroomClientImplTest, ReturnsCompletedStudentAssignments) {
@@ -1351,6 +1360,14 @@ TEST_F(GlanceablesClassroomClientImplTest, ReturnsCompletedStudentAssignments) {
   histogram_tester()->ExpectTotalCount(
       "Ash.Glanceables.Api.Classroom.StudentDataFetchTime",
       /*expected_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.CourseWorkItemsPerStudentCourseCount",
+      /*sample=*/4,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.StudentSubmissionsPerStudentCourseCount",
+      /*sample=*/4,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesClassroomClientImplTest,
@@ -1501,6 +1518,14 @@ TEST_F(GlanceablesClassroomClientImplTest,
   histogram_tester()->ExpectTotalCount(
       "Ash.Glanceables.Api.Classroom.StudentDataFetchTime",
       /*expected_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.CourseWorkItemsPerStudentCourseCount",
+      /*sample=*/5,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.StudentSubmissionsPerStudentCourseCount",
+      /*sample=*/5,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesClassroomClientImplTest,
@@ -1669,6 +1694,14 @@ TEST_F(GlanceablesClassroomClientImplTest,
   histogram_tester()->ExpectTotalCount(
       "Ash.Glanceables.Api.Classroom.StudentDataFetchTime",
       /*expected_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.CourseWorkItemsPerStudentCourseCount",
+      /*sample=*/6,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.StudentSubmissionsPerStudentCourseCount",
+      /*sample=*/6,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesClassroomClientImplTest,
@@ -1788,6 +1821,14 @@ TEST_F(GlanceablesClassroomClientImplTest,
   histogram_tester()->ExpectTotalCount(
       "Ash.Glanceables.Api.Classroom.StudentDataFetchTime",
       /*expected_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.CourseWorkItemsPerStudentCourseCount",
+      /*sample=*/5,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Classroom.StudentSubmissionsPerStudentCourseCount",
+      /*sample=*/5,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesClassroomClientImplTest,

@@ -188,6 +188,8 @@ pub struct CargoPackage {
     pub edition: Edition,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub license: String,
 }
@@ -269,6 +271,7 @@ pub fn generate_fake_cargo_toml<Iter: IntoIterator<Item = PatchSpecification>>(
         authors: Vec::new(),
         edition: Edition("2021".to_string()),
         description: None,
+        include: Vec::new(),
         license: "".to_string(),
     };
 
@@ -453,6 +456,7 @@ mod tests {
                 edition: Edition("2021".to_string()),
                 description: None,
                 license: "funtimes".to_string(),
+                include: Vec::new(),
             },
             workspace: None,
             dependencies: CargoDependencySet::new(),
@@ -509,6 +513,7 @@ license = \"funtimes\"
                 edition: Edition("2021".to_string()),
                 description: Some("A library to foo the bars".to_string()),
                 license: "funtimes".to_string(),
+                include: Vec::new(),
             }
         )
     }

@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_SYNC_SERVICE_SYNC_SERVICE_H_
 #define COMPONENTS_SYNC_SERVICE_SYNC_SERVICE_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -29,6 +30,7 @@ class GURL;
 
 namespace syncer {
 
+struct LocalDataDescription;
 class ProtocolEventObserver;
 class SyncCycleSnapshot;
 struct TypeEntitiesCount;
@@ -429,6 +431,25 @@ class SyncService : public KeyedService {
   virtual void GetTypesWithUnsyncedData(
       base::OnceCallback<void(ModelTypeSet)> callback) const = 0;
 
+  // Queries the count and description/preview of existing local data for
+  // `types` data types. This is an asynchronous method which returns the result
+  // via the callback `callback` once the information for all the data types in
+  // `types` is available.
+  // Note: Only data types that are enabled and support this functionality are
+  // part of the response.
+  virtual void GetLocalDataDescriptions(
+      ModelTypeSet types,
+      base::OnceCallback<void(std::map<ModelType, LocalDataDescription>)>
+          callback) = 0;
+
+  // Requests sync service to move all local data to account for `types` data
+  // types. This is an asynchronous method which moves the local data for all
+  // `types` to the account store locally. Upload to the server will happen as
+  // part of the regular commit process, and is NOT part of this method.
+  // Note: Only data types that are enabled and support this functionality are
+  // triggered for upload.
+  virtual void TriggerLocalDataMigration(ModelTypeSet types) = 0;
+
   //////////////////////////////////////////////////////////////////////////////
   // ACTIONS / STATE CHANGE REQUESTS
   //////////////////////////////////////////////////////////////////////////////
@@ -548,9 +569,9 @@ class SyncService : public KeyedService {
   // having DISABLE_REASON_USER_CHOICE.
   // TODO(crbug.com/1444344): Remove this API together with
   // CanSyncFeatureStart().
-  // TODO(crbug.com/1219990): This API may also be removed once feature
-  // kSyncIgnoreSyncRequestedPreference is cleaned up, since HasSyncConsent()
-  // and GetDisableReasons() guarantee that this function returns true.
+  // TODO(crbug.com/1219990): This API may also be removed since
+  // HasSyncConsent() and GetDisableReasons() guarantee that this function
+  // returns true.
   virtual bool IsSyncFeatureConsideredRequested() const = 0;
 };
 

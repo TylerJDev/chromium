@@ -106,7 +106,7 @@ bool ShouldShowPartialTranslateInIncognito() {
   }
   return !base::GetFieldTrialParamByFeatureAsBool(
       kIOSEditMenuPartialTranslate,
-      kIOSEditMenuPartialTranslateNoIncognitoParam, true);
+      kIOSEditMenuPartialTranslateNoIncognitoParam, false);
 }
 
 const char kIOSEditMenuSearchWithTitleParamTitle[] =
@@ -204,7 +204,7 @@ constexpr base::FeatureParam<int>
 
 BASE_FEATURE(kNotificationSettingsMenuItem,
              "NotificationSettingsMenuItem",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kSpotlightOpenTabsSource,
              "SpotlightOpenTabsSource",
@@ -212,6 +212,10 @@ BASE_FEATURE(kSpotlightOpenTabsSource,
 
 BASE_FEATURE(kSpotlightReadingListSource,
              "SpotlightReadingListSource",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSpotlightDonateNewIntents,
+             "SpotlightDonateNewIntents",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kConsistencyNewAccountInterface,
@@ -251,11 +255,9 @@ bool IsBottomOmniboxSteadyStateEnabled() {
 BASE_FEATURE(kOnlyAccessClipboardAsync,
              "OnlyAccessClipboardAsync",
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kHideSettingsSyncPromo,
-             "HideSettingsSyncPromo",
+BASE_FEATURE(kDefaultBrowserVideoInSettings,
+             "DefaultBrowserVideoInSettings",
              base::FEATURE_DISABLED_BY_DEFAULT);
-
 BASE_FEATURE(kDefaultBrowserTriggerCriteriaExperiment,
              "DefaultBrowserTriggerCriteriaExperiment",
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -264,8 +266,8 @@ BASE_FEATURE(kFullScreenPromoOnOmniboxCopyPaste,
              "FullScreenPromoOnOmniboxCopyPaste",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kThemeColorInToolbar,
-             "ThemeColorInToolbar",
+BASE_FEATURE(kThemeColorInTopToolbar,
+             "ThemeColorInTopToolbar",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kTabGridRefactoring,
@@ -283,3 +285,7 @@ BASE_FEATURE(kBlockSimultaneousCellSelectionKillSwitch,
 BASE_FEATURE(kIOSSaveToPhotos,
              "IOSSaveToPhotos",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSettingsWillBeDismissedBugFixKillSwitch,
+             "SettingsWillBeDismissedBugFixKillSwitch",
+             base::FEATURE_ENABLED_BY_DEFAULT);

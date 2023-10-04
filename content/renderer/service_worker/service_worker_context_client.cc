@@ -83,7 +83,7 @@ std::string ComposeAlreadyInstalledString(bool is_starting_installed_worker) {
 // worker thread.
 struct ServiceWorkerContextClient::WorkerContextData {
   explicit WorkerContextData(ServiceWorkerContextClient* owner)
-      : weak_factory(owner), proxy_weak_factory(owner->proxy_) {}
+      : weak_factory(owner), proxy_weak_factory(owner->proxy_.get()) {}
 
   ~WorkerContextData() { DCHECK(thread_checker.CalledOnValidThread()); }
 
@@ -529,7 +529,8 @@ void ServiceWorkerContextClient::SendWorkerStarted(
 
   instance_host_->OnStarted(
       status, proxy_->FetchHandlerType(), proxy_->HasHidEventHandlers(),
-      WorkerThread::GetCurrentId(), std::move(start_timing_));
+      proxy_->HasUsbEventHandlers(), WorkerThread::GetCurrentId(),
+      std::move(start_timing_));
 
   TRACE_EVENT_NESTABLE_ASYNC_END0("ServiceWorker", "ServiceWorkerContextClient",
                                   this);

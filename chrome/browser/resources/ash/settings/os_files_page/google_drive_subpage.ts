@@ -23,7 +23,7 @@ import {Setting} from '../mojom-webui/setting.mojom-webui.js';
 import {RouteObserverMixin} from '../route_observer_mixin.js';
 import {Route, routes} from '../router.js';
 
-import {GoogleDriveBrowserProxy, Stage, Status} from './google_drive_browser_proxy.js';
+import {GoogleDriveBrowserProxy, GoogleDrivePageCallbackRouter, GoogleDrivePageHandlerRemote, Stage, Status} from './google_drive_browser_proxy.js';
 import {getTemplate} from './google_drive_subpage.html.js';
 
 const SettingsGoogleDriveSubpageElementBase =
@@ -45,6 +45,7 @@ const GOOGLE_DRIVE_BULK_PINNING_PREF = 'drivefs.bulk_pinning_enabled';
 export enum ConfirmationDialogType {
   DISCONNECT = 'disconnect',
   BULK_PINNING_DISABLE = 'bulk-pinning-disable',
+  BULK_PINNING_LISTING_FILES = 'bulk-pinning-listing-files',
   BULK_PINNING_NOT_ENOUGH_SPACE = 'bulk-pinning-not-enough-space',
   BULK_PINNING_UNEXPECTED_ERROR = 'bulk-pinning-unexpected-error',
   BULK_PINNING_CLEAN_UP_STORAGE = 'bulk-pinning-clean-up-storage',
@@ -82,7 +83,8 @@ export class SettingsGoogleDriveSubpageElement extends
        */
       supportedSettingIds: {
         type: Object,
-        value: () => new Set<Setting>([Setting.kGoogleDriveConnection]),
+        value: () => new Set<Setting>(
+            [Setting.kGoogleDriveRemoveAccess, Setting.kGoogleDriveFileSync]),
       },
 
       /**
@@ -155,6 +157,18 @@ export class SettingsGoogleDriveSubpageElement extends
       ContentCacheSizeType.CALCULATING;
 
   /**
+   * The number of files that have currently been listed, this count is the one
+   * displayed in the UI which gets updated every 5s from the source at
+   * bulkPinningStatus_.listedFiles.
+   */
+  private listedFiles_: bigint = 0n;
+
+  /**
+   * The interval to update listedFiles_.
+   */
+  private updateListedFilesInterval_: number|undefined = undefined;
+
+  /**
    * Whether to show the spinner in the top right of the settings page.
    */
   private showSpinner: boolean = false;
@@ -166,14 +180,14 @@ export class SettingsGoogleDriveSubpageElement extends
   /**
    * Returns the browser proxy page handler (to invoke functions).
    */
-  get pageHandler() {
+  get pageHandler(): GoogleDrivePageHandlerRemote {
     return this.proxy_.handler;
   }
 
   /**
    * Returns the browser proxy callback router (to receive async messages).
    */
-  get callbackRouter() {
+  get callbackRouter(): GoogleDrivePageCallbackRouter {
     return this.proxy_.observer;
   }
 
@@ -181,7 +195,7 @@ export class SettingsGoogleDriveSubpageElement extends
    * Returns the required space that is currently stored or -1 of no value. Used
    * for testing.
    */
-  get requiredSpace() {
+  get requiredSpace(): string {
     return this.bulkPinningStatus_?.requiredSpace || '-1';
   }
 
@@ -189,7 +203,7 @@ export class SettingsGoogleDriveSubpageElement extends
    * Returns the free space that is currently stored or -1 of no value.
    * Used for testing.
    */
-  get freeSpace() {
+  get freeSpace(): string {
     return this.bulkPinningStatus_?.freeSpace || '-1';
   }
 
@@ -197,44 +211,77 @@ export class SettingsGoogleDriveSubpageElement extends
    * Returns the total pinned size stored.
    * Used for testing.
    */
-  get contentCacheSize() {
+  get contentCacheSize(): string {
     return this.contentCacheSize_;
+  }
+
+  /**
+   * Returns the current number of listed files.
+   * Used for testing.
+   */
+  get listedFiles(): bigint {
+    return this.listedFiles_;
   }
 
   /**
    * Returns the current confirmation dialog showing.
    */
-  get dialogType() {
+  get dialogType(): ConfirmationDialogType {
     return this.dialogType_;
   }
 
-  override connectedCallback() {
+  /**
+   * Returns the current bulk pinning stage, or 'unknown' if not defined.
+   * Used for testing.
+   */
+  get stage(): Stage|'unknown' {
+    return this.bulkPinningStatus_?.stage || 'unknown';
+  }
+
+  override connectedCallback(): void {
     super.connectedCallback();
     this.callbackRouter.onServiceUnavailable.addListener(
         this.onServiceUnavailable_.bind(this));
     this.callbackRouter.onProgress.addListener(this.onProgress_.bind(this));
   }
 
-  override disconnectedCallback() {
+  override disconnectedCallback(): void {
     clearInterval(this.updateContentCacheSizeInterval_);
   }
 
   /**
    * Invoked when the underlying service is not longer available.
    */
-  private onServiceUnavailable_() {
+  private onServiceUnavailable_(): void {
     this.bulkPinningServiceUnavailable_ = true;
+    clearInterval(this.updateListedFilesInterval_);
+    this.updateListedFilesInterval_ = undefined;
   }
 
   /**
    * Invoked when progress has occurred with the underlying pinning operation.
    * This could also end up in an error state (e.g. no free space).
    */
-  private onProgress_(status: Status) {
+  private onProgress_(status: Status): void {
+    this.bulkPinningServiceUnavailable_ = false;
+
     if (status.stage !== this.bulkPinningStatus_?.stage ||
         status.freeSpace !== this.bulkPinningStatus_?.freeSpace ||
-        status.requiredSpace !== this.bulkPinningStatus_?.requiredSpace) {
+        status.requiredSpace !== this.bulkPinningStatus_?.requiredSpace ||
+        status.listedFiles !== this.bulkPinningStatus_?.listedFiles) {
       this.bulkPinningStatus_ = status;
+
+      if (!this.updateListedFilesInterval_ &&
+          status.stage === Stage.kListingFiles) {
+        this.listedFiles_ = this.bulkPinningStatus_?.listedFiles || 0n;
+        this.updateListedFilesInterval_ = setInterval(() => {
+          this.listedFiles_ = this.bulkPinningStatus_?.listedFiles || 0n;
+        }, 5000);
+      }
+    }
+
+    if (status.stage !== Stage.kListingFiles) {
+      this.stopUpdatingListedFilesAndClearDialog_();
     }
 
     let requiredSpace: number;
@@ -249,9 +296,24 @@ export class SettingsGoogleDriveSubpageElement extends
   }
 
   /**
+   * Whilst listing files an interval is maintained to not update the UI with
+   * too many changes. When listing files has finished, ensure the interval is
+   * cleared and the dialog is closed if it is kept open.
+   */
+  private stopUpdatingListedFilesAndClearDialog_(): void {
+    clearInterval(this.updateListedFilesInterval_);
+    this.updateListedFilesInterval_ = undefined;
+    this.listedFiles_ = 0n;
+    if (this.dialogType_ ===
+        ConfirmationDialogType.BULK_PINNING_LISTING_FILES) {
+      this.dialogType_ = ConfirmationDialogType.NONE;
+    }
+  }
+
+  /**
    * Retrieves the total pinned size of items in Drive and stores the total.
    */
-  private async updateContentCacheSize_() {
+  private async updateContentCacheSize_(): Promise<void> {
     if (!this.contentCacheSize_) {
       // Only set the total pinned size to calculating on the first update.
       this.contentCacheSize_ = ContentCacheSizeType.CALCULATING;
@@ -267,7 +329,7 @@ export class SettingsGoogleDriveSubpageElement extends
   /**
    * Invoked when the `prefs.gdata.disabled` preference changes value.
    */
-  private updateDriveDisabled_() {
+  private updateDriveDisabled_(): void {
     const disabled = this.getPref(GOOGLE_DRIVE_DISABLED_PREF).value;
     this.driveDisabled_ = disabled;
     if (disabled) {
@@ -275,7 +337,7 @@ export class SettingsGoogleDriveSubpageElement extends
     }
   }
 
-  override currentRouteChanged(route: Route, _oldRoute?: Route) {
+  override currentRouteChanged(route: Route, _oldRoute?: Route): void {
     // Does not apply to this page.
     if (route !== routes.GOOGLE_DRIVE) {
       clearInterval(this.updateContentCacheSizeInterval_);
@@ -288,7 +350,7 @@ export class SettingsGoogleDriveSubpageElement extends
   /**
    * Invokes methods when the route is navigated to.
    */
-  onNavigated() {
+  onNavigated(): void {
     this.attemptDeepLink();
     this.pageHandler.calculateRequiredSpace();
     this.updateContentCacheSize_();
@@ -353,7 +415,7 @@ export class SettingsGoogleDriveSubpageElement extends
    * pressed, all remaining actions (e.g. Cancel, ESC) should not update the
    * preference.
    */
-  private async onDriveConfirmationDialogClose_(e: CustomEvent) {
+  private async onDriveConfirmationDialogClose_(e: CustomEvent): Promise<void> {
     const closedDialogType = this.dialogType_;
     this.dialogType_ = ConfirmationDialogType.NONE;
     if (!e.detail.accept) {
@@ -405,7 +467,7 @@ export class SettingsGoogleDriveSubpageElement extends
    * the dialog.
    */
   private shouldShowConfirmationDialog_(
-      type: ConfirmationDialogType, requestedType: string) {
+      type: ConfirmationDialogType, requestedType: string): boolean {
     return type === requestedType;
   }
 
@@ -413,23 +475,50 @@ export class SettingsGoogleDriveSubpageElement extends
    * Spawn a confirmation dialog to the user if they choose to disable the bulk
    * pinning feature, for enabling just update the preference.
    */
-  private onToggleBulkPinning_(e: Event) {
+  private onToggleBulkPinning_(e: Event): void {
     const target = e.target as SettingsToggleButtonElement;
     const newValueAfterToggle =
         !this.getPref(GOOGLE_DRIVE_BULK_PINNING_PREF).value;
 
+    if (newValueAfterToggle) {
+      this.tryEnableBulkPinning_(target);
+      return;
+    }
+
+    // Turning the preference off should first spawn a dialog to have the user
+    // confirm that is what they want to do, leave the target as checked as the
+    // user must confirm before the preference gets updated.
+    target.checked = true;
+    this.dialogType_ = ConfirmationDialogType.BULK_PINNING_DISABLE;
+  }
+
+  /**
+   * Try to enable the bulk pinning toggle. If the `Stage` is in either in an
+   * error OR in a state that can't be enabled (e.g. PausedOffline or
+   * ListingFiles) then ensure the toggle isn't enabled, otherwise don't show a
+   * dialog and enable immediately.
+   */
+  private tryEnableBulkPinning_(target: SettingsToggleButtonElement): void {
+    target.checked = false;
+
+    // When the device is offline, don't allow the user to enable the toggle.
+    if (this.bulkPinningStatus_?.stage === Stage.kPausedOffline) {
+      this.dialogType_ = ConfirmationDialogType.BULK_PINNING_OFFLINE;
+      return;
+    }
+
+    // If currently enumerating the files, don't allow the user to enable file
+    // sync until we're certain the corpus will fit on the device.
+    if (this.bulkPinningStatus_?.stage === Stage.kListingFiles) {
+      this.dialogType_ = ConfirmationDialogType.BULK_PINNING_LISTING_FILES;
+      return;
+    }
+
     if (this.bulkPinningStatus_?.isError) {
-      target.checked = false;
       // If there is not enough free space for the user to reliably turn on bulk
       // pinning, spawn a dialog.
       if (this.bulkPinningStatus_?.stage === Stage.kNotEnoughSpace) {
         this.dialogType_ = ConfirmationDialogType.BULK_PINNING_NOT_ENOUGH_SPACE;
-        return;
-      }
-
-      // When the device is offline, don't allow the user to enable the toggle.
-      if (this.bulkPinningStatus_?.stage === Stage.kPausedOffline) {
-        this.dialogType_ = ConfirmationDialogType.BULK_PINNING_OFFLINE;
         return;
       }
 
@@ -440,15 +529,6 @@ export class SettingsGoogleDriveSubpageElement extends
     }
 
     target.checked = true;
-
-    // Turning the preference off should first spawn a dialog to have the user
-    // confirm that is what they want to do, leave the target as checked as the
-    // user must confirm before the preference gets updated.
-    if (!newValueAfterToggle) {
-      this.dialogType_ = ConfirmationDialogType.BULK_PINNING_DISABLE;
-      return;
-    }
-
     this.setPrefValue(GOOGLE_DRIVE_BULK_PINNING_PREF, true);
     this.proxy_.handler.recordBulkPinningEnabledMetric();
   }
@@ -456,17 +536,18 @@ export class SettingsGoogleDriveSubpageElement extends
   /**
    * Returns true if the bulk pinning preference is disabled.
    */
-  private shouldEnableCleanUpStorageButton_() {
+  private shouldEnableCleanUpStorageButton_(): boolean {
     return !this.getPref(GOOGLE_DRIVE_BULK_PINNING_PREF).value &&
         this.contentCacheSize_ !== ContentCacheSizeType.UNKNOWN &&
-        this.contentCacheSize_ !== ContentCacheSizeType.CALCULATING;
+        this.contentCacheSize_ !== ContentCacheSizeType.CALCULATING &&
+        this.contentCacheSize_ !== '0 B';
   }
 
   /**
    * Returns the string used in the confirmation dialog when cleaning the users
    * offline storage, this includes the total GB used by offline files.
    */
-  private getCleanUpStorageConfirmationDialogBody() {
+  private getCleanUpStorageConfirmationDialogBody(): TrustedHTML {
     return this.i18nAdvanced('googleDriveOfflineCleanStorageDialogBody', {
       tags: ['a'],
       substitutions: [
@@ -476,11 +557,19 @@ export class SettingsGoogleDriveSubpageElement extends
     });
   }
 
+  private getListingFilesDialogBody_(): string {
+    return this.listedFiles_ > 0n ?
+        this.i18n(
+            'googleDriveFileSyncListingFilesItemsFoundBody',
+            this.listedFiles_.toLocaleString()) :
+        this.i18n('googleDriveFileSyncListingFilesBody');
+  }
+
   /**
    * When the "Clean up storage" button is clicked, should not clean up
    * immediately but show the confirmation dialog first.
    */
-  private async onCleanUpStorage_() {
+  private onCleanUpStorage_(): void {
     this.dialogType_ = ConfirmationDialogType.BULK_PINNING_CLEAN_UP_STORAGE;
   }
 }

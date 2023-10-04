@@ -37,20 +37,24 @@ inline bool NeedsTableSection(const LayoutObject& object) {
 
 }  // namespace
 
-LayoutNGTable::LayoutNGTable(Element* element)
-    : LayoutNGMixin<LayoutBlock>(element) {}
+LayoutNGTable::LayoutNGTable(Element* element) : LayoutBlock(element) {}
 
 LayoutNGTable::~LayoutNGTable() = default;
 
+void LayoutNGTable::Trace(Visitor* visitor) const {
+  visitor->Trace(cached_table_borders_);
+  LayoutBlock::Trace(visitor);
+}
+
 LayoutNGTable* LayoutNGTable::CreateAnonymousWithParent(
     const LayoutObject& parent) {
-  scoped_refptr<const ComputedStyle> new_style =
+  const ComputedStyle* new_style =
       parent.GetDocument().GetStyleResolver().CreateAnonymousStyleWithDisplay(
           parent.StyleRef(),
           parent.IsLayoutInline() ? EDisplay::kInlineTable : EDisplay::kTable);
   auto* new_table = MakeGarbageCollected<LayoutNGTable>(nullptr);
   new_table->SetDocumentForAnonymous(&parent.GetDocument());
-  new_table->SetStyle(std::move(new_style));
+  new_table->SetStyle(new_style);
   return new_table;
 }
 
@@ -189,10 +193,9 @@ bool LayoutNGTable::HasCollapsedBorders() const {
   return cached_table_borders_ && cached_table_borders_->IsCollapsed();
 }
 
-void LayoutNGTable::SetCachedTableBorders(
-    scoped_refptr<const NGTableBorders> table_borders) {
+void LayoutNGTable::SetCachedTableBorders(const NGTableBorders* table_borders) {
   NOT_DESTROYED();
-  cached_table_borders_ = std::move(table_borders);
+  cached_table_borders_ = table_borders;
 }
 
 void LayoutNGTable::InvalidateCachedTableBorders() {
@@ -200,7 +203,7 @@ void LayoutNGTable::InvalidateCachedTableBorders() {
   // TODO(layout-dev) When cached borders are invalidated, we could do a
   // special kind of relayout where fragments can replace only TableBorders,
   // keep the geometry, and repaint.
-  cached_table_borders_.reset();
+  cached_table_borders_ = nullptr;
 }
 
 const NGTableTypes::Columns* LayoutNGTable::GetCachedTableColumnConstraints() {
@@ -312,7 +315,7 @@ void LayoutNGTable::AddChild(LayoutObject* child, LayoutObject* before_child) {
 void LayoutNGTable::RemoveChild(LayoutObject* child) {
   NOT_DESTROYED();
   TableGridStructureChanged();
-  LayoutNGMixin<LayoutBlock>::RemoveChild(child);
+  LayoutBlock::RemoveChild(child);
 }
 
 void LayoutNGTable::StyleDidChange(StyleDifference diff,
@@ -330,7 +333,7 @@ void LayoutNGTable::StyleDidChange(StyleDifference diff,
     if (borders_changed || collapse_changed)
       GridBordersChanged();
   }
-  LayoutNGMixin<LayoutBlock>::StyleDidChange(diff, old_style);
+  LayoutBlock::StyleDidChange(diff, old_style);
 }
 
 LayoutBox* LayoutNGTable::CreateAnonymousBoxWithSameTypeAs(
@@ -357,8 +360,8 @@ PhysicalRect LayoutNGTable::OverflowClipRect(
       clip_rect.size.height = LayoutUnit(infinite_rect.height());
     }
   } else {
-    clip_rect = LayoutNGMixin<LayoutBlock>::OverflowClipRect(
-        location, overlay_scrollbar_clip_behavior);
+    clip_rect = LayoutBlock::OverflowClipRect(location,
+                                              overlay_scrollbar_clip_behavior);
   }
   // TODO(1142929)
   // We cannot handle table hidden overflow with captions correctly.
@@ -393,76 +396,76 @@ LayoutUnit LayoutNGTable::BorderLeft() const {
   NOT_DESTROYED();
   // DCHECK(cached_table_borders_.get())
   // ScrollAnchoring fails this DCHECK.
-  if (ShouldCollapseBorders() && cached_table_borders_.get()) {
+  if (ShouldCollapseBorders() && cached_table_borders_) {
     return cached_table_borders_->TableBorder()
         .ConvertToPhysical(Style()->GetWritingDirection())
         .left;
   }
-  return LayoutNGMixin<LayoutBlock>::BorderLeft();
+  return LayoutBlock::BorderLeft();
 }
 
 LayoutUnit LayoutNGTable::BorderRight() const {
   NOT_DESTROYED();
   // DCHECK(cached_table_borders_.get())
   // ScrollAnchoring fails this DCHECK.
-  if (ShouldCollapseBorders() && cached_table_borders_.get()) {
+  if (ShouldCollapseBorders() && cached_table_borders_) {
     return cached_table_borders_->TableBorder()
         .ConvertToPhysical(Style()->GetWritingDirection())
         .right;
   }
-  return LayoutNGMixin<LayoutBlock>::BorderRight();
+  return LayoutBlock::BorderRight();
 }
 
 LayoutUnit LayoutNGTable::BorderTop() const {
   NOT_DESTROYED();
   // DCHECK(cached_table_borders_.get())
   // ScrollAnchoring fails this DCHECK.
-  if (ShouldCollapseBorders() && cached_table_borders_.get()) {
+  if (ShouldCollapseBorders() && cached_table_borders_) {
     return cached_table_borders_->TableBorder()
         .ConvertToPhysical(Style()->GetWritingDirection())
         .top;
   }
-  return LayoutNGMixin<LayoutBlock>::BorderTop();
+  return LayoutBlock::BorderTop();
 }
 
 LayoutUnit LayoutNGTable::BorderBottom() const {
   NOT_DESTROYED();
   // DCHECK(cached_table_borders_.get())
   // ScrollAnchoring fails this DCHECK.
-  if (ShouldCollapseBorders() && cached_table_borders_.get()) {
+  if (ShouldCollapseBorders() && cached_table_borders_) {
     return cached_table_borders_->TableBorder()
         .ConvertToPhysical(Style()->GetWritingDirection())
         .bottom;
   }
-  return LayoutNGMixin<LayoutBlock>::BorderBottom();
+  return LayoutBlock::BorderBottom();
 }
 
 LayoutUnit LayoutNGTable::PaddingTop() const {
   NOT_DESTROYED();
   if (ShouldCollapseBorders())
     return LayoutUnit();
-  return LayoutNGMixin<LayoutBlock>::PaddingTop();
+  return LayoutBlock::PaddingTop();
 }
 
 LayoutUnit LayoutNGTable::PaddingBottom() const {
   NOT_DESTROYED();
   if (ShouldCollapseBorders())
     return LayoutUnit();
-  return LayoutNGMixin<LayoutBlock>::PaddingBottom();
+  return LayoutBlock::PaddingBottom();
 }
 
 LayoutUnit LayoutNGTable::PaddingLeft() const {
   NOT_DESTROYED();
   if (ShouldCollapseBorders())
     return LayoutUnit();
-  return LayoutNGMixin<LayoutBlock>::PaddingLeft();
+  return LayoutBlock::PaddingLeft();
 }
 
 LayoutUnit LayoutNGTable::PaddingRight() const {
   NOT_DESTROYED();
   if (ShouldCollapseBorders())
     return LayoutUnit();
-  return LayoutNGMixin<LayoutBlock>::PaddingRight();
+  return LayoutBlock::PaddingRight();
 }
 
 // Effective column index is index of columns with mergeable

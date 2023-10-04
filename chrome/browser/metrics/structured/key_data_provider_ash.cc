@@ -6,8 +6,10 @@
 
 namespace metrics::structured {
 namespace {
-// The delay period for the PersistentProto.
-constexpr int kSaveDelayMs = 1000;
+
+// Default delay period for the PersistentProto. This is the delay before a file
+// write is triggered after a change has been made.
+constexpr base::TimeDelta kSaveDelay = base::Milliseconds(1000);
 
 // The path used to store per-profile keys. Relative to the user's
 // cryptohome. This file is created by chromium.
@@ -21,11 +23,11 @@ constexpr char kDeviceKeyPath[] = "/var/lib/metrics/structured/chromium/keys";
 }  // namespace
 
 KeyDataProviderAsh::KeyDataProviderAsh()
-    : KeyDataProviderAsh(base::FilePath(kDeviceKeyPath), kSaveDelayMs) {}
+    : KeyDataProviderAsh(base::FilePath(kDeviceKeyPath), kSaveDelay) {}
 
 KeyDataProviderAsh::KeyDataProviderAsh(const base::FilePath& device_key_path,
-                                       int write_delay_ms)
-    : device_key_path_(device_key_path), write_delay_ms_(write_delay_ms) {}
+                                       base::TimeDelta write_delay)
+    : device_key_path_(device_key_path), write_delay_(write_delay) {}
 
 KeyDataProviderAsh::~KeyDataProviderAsh() = default;
 
@@ -34,8 +36,7 @@ void KeyDataProviderAsh::InitializeDeviceKey(base::OnceClosure callback) {
     return;
   }
 
-  device_key_ = std::make_unique<KeyData>(device_key_path_,
-                                          base::Milliseconds(write_delay_ms_),
+  device_key_ = std::make_unique<KeyData>(device_key_path_, write_delay_,
                                           std::move(callback));
 }
 
@@ -49,8 +50,7 @@ void KeyDataProviderAsh::InitializeProfileKey(
   }
 
   profile_key_ = std::make_unique<KeyData>(profile_path.Append(kProfileKeyPath),
-                                           base::Milliseconds(write_delay_ms_),
-                                           std::move(callback));
+                                           write_delay_, std::move(callback));
 }
 
 KeyData* KeyDataProviderAsh::GetDeviceKeyData() {

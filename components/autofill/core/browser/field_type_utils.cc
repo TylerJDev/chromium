@@ -46,13 +46,10 @@ bool IsStreetNameOrHouseNumberType(const ServerFieldType type) {
 bool IsAddressType(const AutofillType& type) {
   switch (type.group()) {
     case FieldTypeGroup::kName:
-    case FieldTypeGroup::kNameBilling:
     case FieldTypeGroup::kEmail:
     case FieldTypeGroup::kCompany:
-    case FieldTypeGroup::kAddressHome:
-    case FieldTypeGroup::kAddressBilling:
-    case FieldTypeGroup::kPhoneHome:
-    case FieldTypeGroup::kPhoneBilling:
+    case FieldTypeGroup::kAddress:
+    case FieldTypeGroup::kPhone:
     case FieldTypeGroup::kBirthdateField:
       return true;
     case FieldTypeGroup::kNoGroup:
@@ -77,6 +74,18 @@ size_t AddressLineIndex(ServerFieldType type) {
     return kAddressLineIndex.at(type);
   }
   NOTREACHED_NORETURN();
+}
+
+size_t DetermineExpirationYearLength(const AutofillField& field,
+                                     ServerFieldType assumed_field_type) {
+  switch (assumed_field_type) {
+    case CREDIT_CARD_EXP_2_DIGIT_YEAR:
+      return 2;
+    case CREDIT_CARD_EXP_4_DIGIT_YEAR:
+      return 4;
+    default:
+      NOTREACHED_NORETURN();
+  }
 }
 
 }  // namespace autofill

@@ -212,7 +212,7 @@ v8::Local<v8::Object> SerializeNodeToV8Object(
   serialized_value_values.push_back(
       v8::Number::New(isolate, node->CountChildren()));
 
-  DOMNodeId backend_node_id = DOMNodeIds::IdForNode(node);
+  DOMNodeId backend_node_id = node->GetDomNodeId();
   serialized_value_keys.push_back(V8String(isolate, kBackendNodeId));
   serialized_value_values.push_back(v8::Number::New(isolate, backend_node_id));
 
@@ -224,8 +224,12 @@ v8::Local<v8::Object> SerializeNodeToV8Object(
         V8String(isolate, attribute->localName()));
 
     serialized_value_keys.push_back(V8String(isolate, kNamespaceURI));
-    serialized_value_values.push_back(
-        V8String(isolate, attribute->namespaceURI()));
+    if (attribute->namespaceURI().IsNull()) {
+      serialized_value_values.push_back(v8::Null(isolate));
+    } else {
+      serialized_value_values.push_back(
+          V8String(isolate, attribute->namespaceURI()));
+    }
   }
 
   if (node->IsElementNode()) {
@@ -967,9 +971,7 @@ void ThreadDebuggerCommonImpl::consoleTime(
   // TODO(dgozman): we can save on a copy here if trace macro would take a
   // pointer with length.
   TRACE_EVENT_COPY_NESTABLE_ASYNC_BEGIN0(
-      "blink.console", ToCoreString(title).Utf8().c_str(),
-      TRACE_ID_WITH_SCOPE(ToCoreString(title).Utf8().c_str(),
-                          TRACE_ID_LOCAL(this)));
+      "blink.console", ToCoreString(title).Utf8().c_str(), this);
 }
 
 void ThreadDebuggerCommonImpl::consoleTimeEnd(
@@ -977,9 +979,7 @@ void ThreadDebuggerCommonImpl::consoleTimeEnd(
   // TODO(dgozman): we can save on a copy here if trace macro would take a
   // pointer with length.
   TRACE_EVENT_COPY_NESTABLE_ASYNC_END0(
-      "blink.console", ToCoreString(title).Utf8().c_str(),
-      TRACE_ID_WITH_SCOPE(ToCoreString(title).Utf8().c_str(),
-                          TRACE_ID_LOCAL(this)));
+      "blink.console", ToCoreString(title).Utf8().c_str(), this);
 }
 
 void ThreadDebuggerCommonImpl::consoleTimeStamp(

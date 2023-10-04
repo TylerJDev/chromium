@@ -38,13 +38,11 @@ const char kNotifierBattery[] = "ash.battery";
 bool IsNotificationLowPower(
     PowerNotificationController::NotificationState notification_state) {
   return notification_state ==
-             PowerNotificationController::NOTIFICATION_LOW_POWER ||
-         notification_state ==
-             PowerNotificationController::NOTIFICATION_BSM_LOW_POWER_OPT_IN ||
-         notification_state ==
              PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN ||
+         notification_state == PowerNotificationController::
+                                   NOTIFICATION_BSM_ENABLING_AT_THRESHOLD ||
          notification_state ==
-             PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_OUT;
+             PowerNotificationController::NOTIFICATION_GENERIC_LOW_POWER;
 }
 
 const gfx::VectorIcon& GetBatteryImageMD(
@@ -78,31 +76,19 @@ message_center::SystemNotificationWarningLevel GetWarningLevelMD(
 }
 
 std::u16string GetLowBatteryTitle(
-    PowerNotificationController::NotificationState notification_state,
-    bool battery_saver_previously_active) {
+    PowerNotificationController::NotificationState notification_state) {
   const bool critical_battery =
       notification_state == PowerNotificationController::NOTIFICATION_CRITICAL;
 
-  const bool low_battery =
-      notification_state == PowerNotificationController::NOTIFICATION_LOW_POWER;
-
-  const bool auto_enable_bsm_notification =
+  const bool enabling_at_threshold_notification =
+      features::IsBatterySaverAvailable() &&
       notification_state ==
-      PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_OUT;
-
-  const bool battery_saver_active = PowerStatus::Get()->IsBatterySaverActive();
-
-  const bool is_exp_opt_in_in =
-      features::kBatterySaverNotificationBehavior.Get() ==
-      features::kFullyOptIn;
+          PowerNotificationController::NOTIFICATION_BSM_ENABLING_AT_THRESHOLD;
 
   if (critical_battery) {
     return l10n_util::GetStringUTF16(
         IDS_ASH_STATUS_TRAY_CRITICAL_BATTERY_TITLE);
-  } else if (features::IsBatterySaverAvailable() &&
-             (auto_enable_bsm_notification ||
-              (low_battery && !battery_saver_previously_active &&
-               battery_saver_active && !is_exp_opt_in_in))) {
+  } else if (enabling_at_threshold_notification) {
     return l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_TITLE);
   }
 
@@ -112,30 +98,50 @@ std::u16string GetLowBatteryTitle(
 std::u16string GetLowBatteryMessage(
     PowerNotificationController::NotificationState notification_state,
     const std::u16string& duration,
-    double battery_percentage,
-    bool battery_saver_previously_active) {
-  const bool low_battery =
-      notification_state == PowerNotificationController::NOTIFICATION_LOW_POWER;
+    const double battery_percentage,
+    const bool should_display_time) {
+  const bool critical_notification =
+      notification_state == PowerNotificationController::NOTIFICATION_CRITICAL;
 
-  const bool auto_enable_bsm_notification =
+  const bool enabling_at_threshold_notification =
       notification_state ==
-      PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_OUT;
+      PowerNotificationController::NOTIFICATION_BSM_ENABLING_AT_THRESHOLD;
 
-  const bool battery_saver_active = PowerStatus::Get()->IsBatterySaverActive();
+  const bool opt_in_at_threshold_notification =
+      notification_state ==
+      PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN;
 
-  const bool is_exp_opt_in_in =
-      features::kBatterySaverNotificationBehavior.Get() ==
-      features::kFullyOptIn;
+  const bool generic_low_power_notification =
+      notification_state ==
+      PowerNotificationController::NOTIFICATION_GENERIC_LOW_POWER;
 
-  auto message_token =
-      features::IsBatterySaverAvailable() &&
-              (auto_enable_bsm_notification ||
-               (low_battery && !battery_saver_previously_active &&
-                battery_saver_active && !is_exp_opt_in_in))
-          ? IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_MESSAGE
-          : IDS_ASH_STATUS_TRAY_LOW_BATTERY_MESSAGE;
+  // Send notification immediately with only battery percentage, but update
+  // string to battery percentage + time remaining when available.
+  if (features::IsBatterySaverAvailable() &&
+      enabling_at_threshold_notification) {
+    return should_display_time
+               ? l10n_util::GetStringFUTF16(
+                     IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_MESSAGE, duration,
+                     base::NumberToString16(battery_percentage))
+               : l10n_util::GetStringFUTF16(
+                     IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_MESSAGE_WITHOUT_TIME,
+                     base::NumberToString16(battery_percentage));
+  }
 
-  return l10n_util::GetStringFUTF16(message_token, duration,
+  if (features::IsBatterySaverAvailable() &&
+      (opt_in_at_threshold_notification || generic_low_power_notification ||
+       critical_notification)) {
+    return should_display_time
+               ? l10n_util::GetStringFUTF16(
+                     IDS_ASH_STATUS_TRAY_LOW_BATTERY_MESSAGE, duration,
+                     base::NumberToString16(battery_percentage))
+               : l10n_util::GetStringFUTF16(
+                     IDS_ASH_STATUS_TRAY_LOW_BATTERY_MESSAGE_WITHOUT_TIME,
+                     base::NumberToString16(battery_percentage));
+  }
+
+  return l10n_util::GetStringFUTF16(IDS_ASH_STATUS_TRAY_LOW_BATTERY_MESSAGE,
+                                    duration,
                                     base::NumberToString16(battery_percentage));
 }
 
@@ -144,62 +150,24 @@ absl::optional<int> CalculateNotificationButtonToken(
     PowerNotificationController::NotificationState notification_state) {
   const bool no_notification =
       notification_state == PowerNotificationController::NOTIFICATION_NONE;
-  const bool low_power_notification =
-      notification_state == PowerNotificationController::NOTIFICATION_LOW_POWER;
+  const bool generic_low_power_notification =
+      notification_state ==
+      PowerNotificationController::NOTIFICATION_GENERIC_LOW_POWER;
   const bool critical_battery_notification =
       notification_state == PowerNotificationController::NOTIFICATION_CRITICAL;
 
   // There are no buttons to add if either battery saver mode isn't available,
   // or if it is available, but there are no notifications showing, or if our
-  // battery is critical.
+  // battery is a generic low power or critical notification.
   if (!features::IsBatterySaverAvailable() || no_notification ||
-      critical_battery_notification) {
+      generic_low_power_notification || critical_battery_notification) {
     return absl::nullopt;
   }
 
-  // On the general low power notification for opt_out_out, if BSM is not
-  // active, this means the user opted out (either through the previous
-  // notification or through the settings toggle), so we don't want to show the
-  // 'turn off bsm' button on the low power notification since battery saver is
-  // already turned off.
-  const bool is_exp_opt_out_out =
-      features::kBatterySaverNotificationBehavior.Get() ==
-      features::kFullyAutoEnable;
-  if (is_exp_opt_out_out && low_power_notification &&
-      !status.IsBatterySaverActive()) {
-    return absl::nullopt;
-  }
-
-  // On the general low power notification for opt_in_out, if BSM is not active,
-  // there is no need to show 'turn off bsm' button, since it's already off.
-  const bool is_exp_opt_in_out =
-      features::kBatterySaverNotificationBehavior.Get() ==
-      features::kOptInThenAutoEnable;
-  if (is_exp_opt_in_out && low_power_notification &&
-      !status.IsBatterySaverActive()) {
-    return absl::nullopt;
-  }
-
-  // If we are in the opt_in_in experiment state, and the notification is a
-  // general low power notification, that means the user opted in to turning on
-  // BSM. Therefore, we don't prompt the user to opt-out here. A different low
-  // power notification shows up if the user opted out of the 20% notification
-  // (NOTIFICATION_LOW_POWER_BSM_OPT_IN).
-  const bool is_exp_opt_in_in =
-      features::kBatterySaverNotificationBehavior.Get() ==
-      features::kFullyOptIn;
-  if (is_exp_opt_in_in && low_power_notification) {
-    return absl::nullopt;
-  }
-
-  // Note: At this point, the Notification State could be LOW POWER, OPT_OUT,
-  // OPT_IN, or LOW_POWER_OPT_IN.
-
+  // Note: At this point, the Notification State could be OPT_OUT, or OPT_IN.
   const bool is_notification_opt_in =
       notification_state ==
-          PowerNotificationController::NOTIFICATION_BSM_LOW_POWER_OPT_IN ||
-      notification_state ==
-          PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN;
+      PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN;
 
   return is_notification_opt_in
              ? IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_BUTTON_OPT_IN
@@ -225,23 +193,36 @@ void CalculateNotificationButtons(
 }
 
 void HandlePowerNotificationButtonClick(
-    const bool is_low_power,
     absl::optional<int> token,
+    PowerNotificationController* power_notification_controller,
     const absl::optional<int> button_index) {
   if (token == absl::nullopt || button_index == absl::nullopt) {
     return;
   }
 
-  const BatterySaverController::UpdateReason reason =
-      is_low_power ? BatterySaverController::UpdateReason::kLowPower
-                   : BatterySaverController::UpdateReason::kThreshold;
   const bool active =
       token.value() == IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_BUTTON_OPT_IN;
 
   // Handle Button functionality based on button pressed, and button text.
   switch (button_index.value()) {
     case 0: {
-      Shell::Get()->battery_saver_controller()->SetState(active, reason);
+      Shell::Get()->battery_saver_controller()->SetState(
+          active, BatterySaverController::UpdateReason::kThreshold);
+
+      if (power_notification_controller) {
+        power_notification_controller->SetUserOptStatus(true);
+      }
+
+      // Send an 'Enabled' toast if enabling via button.
+      if (active) {
+        Shell::Get()
+            ->battery_saver_controller()
+            ->ShowBatterySaverModeEnabledToast();
+      }
+
+      // Dismiss notification from Message Center.
+      message_center::MessageCenter::Get()->RemoveNotification(
+          BatteryNotification::kNotificationId, false);
       break;
     }
     default:
@@ -250,11 +231,13 @@ void HandlePowerNotificationButtonClick(
 }
 
 std::unique_ptr<Notification> CreateNotification(
-    PowerNotificationController::NotificationState notification_state,
-    bool battery_saver_previously_active) {
+    PowerNotificationController* power_notification_controller) {
   const PowerStatus& status = *PowerStatus::Get();
 
   const double battery_percentage = status.GetRoundedBatteryPercent();
+
+  const auto notification_state =
+      power_notification_controller->GetNotificationState();
 
   std::u16string title =
       l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_BATTERY_PERCENT_TITLE);
@@ -273,7 +256,9 @@ std::unique_ptr<Notification> CreateNotification(
         l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_LOW_POWER_CHARGER_TITLE);
     message = l10n_util::GetStringUTF16(
         IDS_ASH_STATUS_TRAY_BATTERY_CHARGING_UNRELIABLE);
-  } else if (time && power_utils::ShouldDisplayBatteryTime(*time) &&
+  } else if (time &&
+             (power_utils::ShouldDisplayBatteryTime(*time) ||
+              features::IsBatterySaverAvailable()) &&
              !status.IsBatteryDischargingOnLinePower()) {
     std::u16string duration = ui::TimeFormat::Simple(
         ui::TimeFormat::FORMAT_DURATION, ui::TimeFormat::LENGTH_LONG, *time);
@@ -288,21 +273,14 @@ std::unique_ptr<Notification> CreateNotification(
           message_center::FullscreenVisibility::OVER_USER;
 
       // Calculate the title, message, and buttons based on the power state.
-      title = GetLowBatteryTitle(notification_state,
-                                 battery_saver_previously_active);
+      title = GetLowBatteryTitle(notification_state);
       message =
           GetLowBatteryMessage(notification_state, duration, battery_percentage,
-                               battery_saver_previously_active);
+                               power_utils::ShouldDisplayBatteryTime(*time));
       CalculateNotificationButtons(status, notification_state,
                                    rich_notification_data);
     }
   }
-
-  const bool is_low_power_notification =
-      notification_state ==
-          PowerNotificationController::NOTIFICATION_LOW_POWER ||
-      notification_state ==
-          PowerNotificationController::NOTIFICATION_BSM_LOW_POWER_OPT_IN;
 
   std::unique_ptr<Notification> notification = ash::CreateSystemNotificationPtr(
       message_center::NOTIFICATION_TYPE_SIMPLE,
@@ -314,8 +292,9 @@ std::unique_ptr<Notification> CreateNotification(
       rich_notification_data,
       base::MakeRefCounted<message_center::HandleNotificationClickDelegate>(
           base::BindRepeating(
-              &HandlePowerNotificationButtonClick, is_low_power_notification,
-              CalculateNotificationButtonToken(status, notification_state))),
+              &HandlePowerNotificationButtonClick,
+              CalculateNotificationButtonToken(status, notification_state),
+              power_notification_controller)),
       GetBatteryImageMD(notification_state),
       GetWarningLevelMD(notification_state));
   if (notification_state ==
@@ -333,25 +312,23 @@ const char BatteryNotification::kNotificationId[] = "battery";
 
 BatteryNotification::BatteryNotification(
     MessageCenter* message_center,
-    PowerNotificationController::NotificationState notification_state,
-    bool battery_saver_previously_active)
-    : message_center_(message_center) {
+    PowerNotificationController* power_notification_controller)
+    : message_center_(message_center),
+      power_notification_controller_(power_notification_controller) {
   message_center_->AddNotification(
-      CreateNotification(notification_state, battery_saver_previously_active));
+      CreateNotification(power_notification_controller_));
 }
 
 BatteryNotification::~BatteryNotification() {
-  if (message_center_->FindVisibleNotificationById(kNotificationId))
+  if (message_center_->FindVisibleNotificationById(kNotificationId)) {
     message_center_->RemoveNotification(kNotificationId, false);
+  }
 }
 
-void BatteryNotification::Update(
-    PowerNotificationController::NotificationState notification_state,
-    bool battery_saver_previously_active) {
+void BatteryNotification::Update() {
   if (message_center_->FindVisibleNotificationById(kNotificationId)) {
     message_center_->UpdateNotification(
-        kNotificationId, CreateNotification(notification_state,
-                                            battery_saver_previously_active));
+        kNotificationId, CreateNotification(power_notification_controller_));
   }
 }
 

@@ -15,6 +15,7 @@
 #include "ash/public/cpp/test/shell_test_api.h"
 #include "ash/root_window_controller.h"
 #include "ash/shell.h"
+#include "ash/system/accessibility/select_to_speak/select_to_speak_tray.h"
 #include "ash/system/status_area_widget.h"
 #include "ash/system/unified/unified_system_tray.h"
 #include "ash/test/ash_test_util.h"
@@ -467,8 +468,12 @@ IN_PROC_BROWSER_TEST_F(SelectToSpeakTestWithVoiceSwitching,
       "<span lang='en-US'>The first paragraph</span>"
       "<span lang='fr-FR'>le deuxième paragraphe</span></div>");
 
-  sm_.ExpectSpeechPatternWithLocale("The first paragraph*", "en-US");
-  sm_.ExpectSpeechPatternWithLocale("le deuxième paragraphe*", "fr-FR");
+  sm_.ExpectSpeech(test::SpeechMonitor::Expectation("The first paragraph*")
+                       .AsPattern()
+                       .WithLocale("en-US"));
+  sm_.ExpectSpeech(test::SpeechMonitor::Expectation("le deuxième paragraphe*")
+                       .AsPattern()
+                       .WithLocale("fr-FR"));
   sm_.Replay();
 }
 

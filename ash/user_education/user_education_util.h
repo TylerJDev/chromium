@@ -11,6 +11,7 @@
 #include "ash/ash_export.h"
 #include "base/values.h"
 #include "components/user_education/common/help_bubble_params.h"
+#include "components/user_manager/user_type.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/ui_base_types.h"
@@ -77,12 +78,6 @@ CreateExtendedProperties(Properties&&... properties) {
 // `user_session` is `nullptr`, `EmptyAccountId()` is returned.
 ASH_EXPORT const AccountId& GetAccountId(const UserSession* user_session);
 
-// Returns the custom event type for help bubble anchor bounds changed events.
-// TODO(http://b/287129131): Remove this utility after exporting
-//  `user_education::kHelpBubbleAnchorBoundsChangedEvent`.
-ASH_EXPORT ui::CustomElementEventType
-GetHelpBubbleAnchorBoundsChangedEventType();
-
 // Returns help bubble body icon from the specified `external_properties`. If
 // the specified `external_properties` does not contain a help bubble body icon,
 // an absent value is returned.
@@ -115,6 +110,11 @@ ASH_EXPORT absl::optional<HelpBubbleStyle> GetHelpBubbleStyle(
 ASH_EXPORT views::View* GetMatchingViewInRootWindow(
     int64_t display_id,
     ui::ElementIdentifier element_id);
+
+// Returns the user type associated with the specified `account_id`, or
+// `absl::nullopt` if type cannot be determined.
+ASH_EXPORT absl::optional<user_manager::UserType> GetUserType(
+    const AccountId& account_id);
 
 // Returns whether the primary user account is active.
 ASH_EXPORT bool IsPrimaryAccountActive();

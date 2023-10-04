@@ -118,27 +118,31 @@ class AutofillWebDataService : public WebDataServiceBase {
       base::RepeatingCallback<void(const AutofillProfileDeepChange&)>
           change_cb);
 
-  // Schedules a task to add IBAN to the web database.
-  void AddIban(const Iban& iban);
+  // Schedules a task to add a local IBAN to the web database.
+  void AddLocalIban(const Iban& iban);
 
-  // Initiates the request for local IBANs. The method
+  // Initiates the request for local/server IBANs. The method
   // OnWebDataServiceRequestDone of |consumer| gets called when the request is
   // finished, with the IBAN included in the argument |result|. The consumer
   // owns the IBAN.
-  WebDataServiceBase::Handle GetIbans(WebDataServiceConsumer* consumer);
+  WebDataServiceBase::Handle GetLocalIbans(WebDataServiceConsumer* consumer);
+  WebDataServiceBase::Handle GetServerIbans(WebDataServiceConsumer* consumer);
 
-  // Schedules a task to update iban in the web database.
-  void UpdateIban(const Iban& iban);
+  // Schedules a task to update a local IBAN in the web database.
+  void UpdateLocalIban(const Iban& iban);
 
-  // Schedules a task to remove an IBAN from the web database.
-  // |guid| is the identifier of the IBAN to remove.
-  void RemoveIban(const std::string& guid);
+  // Schedules a task to remove an existing local IBAN from the web database.
+  // `guid` is the identifier of the IBAN to remove.
+  void RemoveLocalIban(const std::string& guid);
 
   // Schedules a task to add credit card to the web database.
   void AddCreditCard(const CreditCard& credit_card);
 
   // Schedules a task to update credit card in the web database.
   void UpdateCreditCard(const CreditCard& credit_card);
+
+  // Schedules a task to update a local CVC in the web database.
+  void UpdateLocalCvc(const std::string& guid, const std::u16string& cvc);
 
   // Schedules a task to remove a credit card from the web database.
   // |guid| is identifier of the credit card to remove.
@@ -167,12 +171,6 @@ class AutofillWebDataService : public WebDataServiceBase {
   void UnmaskServerCreditCard(const CreditCard& card,
                               const std::u16string& full_number);
   void MaskServerCreditCard(const std::string& id);
-
-  // Store a UPI ID.
-  void AddUpiId(const std::string& upi_id);
-
-  // Gets all the UPI IDs stored in the database.
-  WebDataServiceBase::Handle GetAllUpiIds(WebDataServiceConsumer* consumer);
 
   // Initiates the request for Payments customer data.  The method
   // OnWebDataServiceRequestDone of |consumer| gets called when the request is

@@ -17,6 +17,8 @@ export function getLocalizationStringForContentType(
       return 'siteSettingsAdsMidSentence';
     case ContentSettingsTypes.AR:
       return 'siteSettingsArMidSentence';
+    case ContentSettingsTypes.AUTO_PICTURE_IN_PICTURE:
+      return 'siteSettingsAutoPictureInPictureMidSentence';
     case ContentSettingsTypes.AUTOMATIC_DOWNLOADS:
       return 'siteSettingsAutomaticDownloadsMidSentence';
     case ContentSettingsTypes.BACKGROUND_SYNC:
@@ -49,6 +51,7 @@ export function getLocalizationStringForContentType(
       return 'siteSettingsFontAccessMidSentence';
     case ContentSettingsTypes.MIC:
       return 'siteSettingsMicMidSentence';
+    case ContentSettingsTypes.MIDI:
     case ContentSettingsTypes.MIDI_DEVICES:
       return 'siteSettingsMidiDevicesMidSentence';
     case ContentSettingsTypes.MIXEDSCRIPT:

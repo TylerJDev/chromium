@@ -6,7 +6,7 @@
 #define COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_FEATURES_H_
 
 // DON'T ADD NEW FEATURES here.
-// If the feature doesn't logically belong to the browser process, put it into
+// If the feature belongs logically to the browser process, put it into
 // components/password_manager/core/browser/features/password_features.h.
 
 #include "base/feature_list.h"
@@ -32,6 +32,7 @@ BASE_DECLARE_FEATURE(kForgotPasswordFormSupport);
 BASE_DECLARE_FEATURE(kIOSPasswordUISplit);
 BASE_DECLARE_FEATURE(kIOSPasswordCheckup);
 BASE_DECLARE_FEATURE(kIOSPasswordBottomSheet);
+BASE_DECLARE_FEATURE(kIOSPasswordSettingsBulkUploadLocalPasswords);
 #endif  // IS_IOS
 BASE_DECLARE_FEATURE(kPasswordIssuesInSpecificsMetadata);
 BASE_DECLARE_FEATURE(kSendPasswords);
@@ -50,16 +51,18 @@ BASE_DECLARE_FEATURE(kPasskeyManagementUsingAccountSettingsAndroid);
 BASE_DECLARE_FEATURE(kPasswordEditDialogWithDetails);
 BASE_DECLARE_FEATURE(kPasswordGenerationBottomSheet);
 BASE_DECLARE_FEATURE(kPasswordSuggestionBottomSheetV2);
+// TODO(crbug.com/1439191): Clean up the UnifiedPasswordManagerAndroid flag.
 BASE_DECLARE_FEATURE(kUnifiedPasswordManagerAndroid);
-BASE_DECLARE_FEATURE(kUnifiedPasswordManagerLocalPasswordsAndroid);
+BASE_DECLARE_FEATURE(kUnifiedPasswordManagerLocalPasswordsAndroidWithMigration);
+BASE_DECLARE_FEATURE(
+    kUnifiedPasswordManagerLocalPasswordsAndroidWithoutMigration);
 BASE_DECLARE_FEATURE(kUnifiedPasswordManagerLocalPasswordsMigrationWarning);
 BASE_DECLARE_FEATURE(kUnifiedPasswordManagerSyncUsingAndroidBackendOnly);
-BASE_DECLARE_FEATURE(kUnifiedPasswordManagerAndroidBranding);
-BASE_DECLARE_FEATURE(kExploratorySaveUpdatePasswordStrings);
 BASE_DECLARE_FEATURE(kPasswordsInCredMan);
 #endif
 BASE_DECLARE_FEATURE(kUsernameFirstFlowFallbackCrowdsourcing);
 BASE_DECLARE_FEATURE(kUsernameFirstFlowHonorAutocomplete);
+BASE_DECLARE_FEATURE(kUsernameFirstFlowStoreSeveralValues);
 BASE_DECLARE_FEATURE(kUsernameFirstFlowWithIntermediateValues);
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
 BASE_DECLARE_FEATURE(kPasswordManagerPasskeys);
@@ -156,11 +159,6 @@ extern const char kTouchToFillPasswordSubmissionWithConservativeHeuristics[];
 // that allows to use the new feature end-to-end.
 bool UsesUnifiedPasswordManagerUi();
 
-// Returns true when unified password manager strings & icons should be
-// displayed. It provides the option to enable the UPM branding UI earlier then
-// the UPM feature itself.
-bool UsesUnifiedPasswordManagerBranding();
-
 // Returns true if the unified password manager feature is active and in a stage
 // that requires migrating existing credentials. Independent of
 // whether only non-syncable data needs to be migrated or full credentials.
@@ -170,6 +168,10 @@ bool RequiresMigrationForUnifiedPasswordManager();
 #if BUILDFLAG(IS_IOS)
 // Returns true if the Password Checkup feature flag is enabled.
 bool IsPasswordCheckupEnabled();
+
+// Helper function returning the status of
+// `kIOSPasswordSettingsBulkUploadLocalPasswords`.
+bool IsBulkUploadLocalPasswordsEnabled();
 #endif  // IS_IOS
 
 }  // namespace password_manager::features

@@ -73,7 +73,6 @@ struct HistoryDatabaseParams;
 class HistoryDBTask;
 class HistorySyncBridge;
 class InMemoryHistoryBackend;
-class TypedURLSyncBridge;
 class URLDatabase;
 
 // Returns a formatted version of `url` with the HTTP/HTTPS scheme, port,
@@ -623,16 +622,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // Fetches up to `max_visits` most recent visits for the passed URL.
   bool GetMostRecentVisitsForURL(URLID id, int max_visits, VisitVector* visits);
 
-  // For each element in `urls`, updates the pre-existing URLRow in the database
-  // with the same ID; or ignores the element if no such row exists. Returns the
-  // number of records successfully updated.
-  size_t UpdateURLs(const URLRows& urls);
-
-  // While adding visits in batch, the source needs to be provided.
-  bool AddVisits(const GURL& url,
-                 const std::vector<VisitInfo>& visits,
-                 VisitSource visit_source);
-
   // Searches for a visit with the given `originator_visit_id` coming from
   // another device (identified by `originator_cache_guid`). If found, returns
   // true and writes the visit into `visit_row`; otherwise returns false.
@@ -706,11 +695,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // multiple visits can have the same timestamp), returns the last visit in the
   // redirect chain.
   bool GetLastVisitByTime(base::Time visit_time, VisitRow* visit_row) override;
-
-  // Returns the sync controller delegate for syncing typed urls. The returned
-  // delegate is owned by `this` object.
-  base::WeakPtr<syncer::ModelTypeControllerDelegate>
-  GetTypedURLSyncControllerDelegate();
 
   // Returns the sync controller delegate for syncing history. The returned
   // delegate is owned by `this` object.
@@ -794,8 +778,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   ExpireHistoryBackend* expire_backend() { return &expirer_; }
 #endif
 
-  void SetTypedURLSyncBridgeForTest(std::unique_ptr<TypedURLSyncBridge> bridge);
-
   // Returns true if the passed visit time is already expired (used by the sync
   // code to avoid syncing visits that would immediately be expired).
   bool IsExpiredVisitTime(const base::Time& time) const override;
@@ -835,6 +817,15 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // of the associated URL (whether added or not) is returned. Both values will
   // be 0 on failure.
   //
+  // If the caller wants to add this visit to the VisitedLinkDatabase, it needs
+  // to provide values for the `top_level_url` and `frame_url` parameters.
+  // `top_level_url` is a GURL representing the top-level frame that this
+  // navigation originated from. `frame_url` is GURL representing the immediate
+  // frame that this navigation originated from. For example, if a link to
+  // `c.com` is clicked in an iframe `b.com` that is embedded in `a.com`, the
+  // `top_level_url` is `a.com` and the `frame_url` is `b.com` (and the `url` is
+  // `c.com`).
+  //
   // This does not schedule database commits, it is intended to be used as a
   // subroutine for AddPage only. It also assumes the database is valid.
   std::pair<URLID, VisitID> AddPageVisit(
@@ -850,6 +841,8 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
       bool consider_for_ntp_most_visited,
       absl::optional<int64_t> local_navigation_id = absl::nullopt,
       absl::optional<std::u16string> title = absl::nullopt,
+      absl::optional<GURL> top_level_url = absl::nullopt,
+      absl::optional<GURL> frame_url = absl::nullopt,
       absl::optional<base::TimeDelta> visit_duration = absl::nullopt,
       absl::optional<std::string> originator_cache_guid = absl::nullopt,
       absl::optional<VisitID> originator_visit_id = absl::nullopt,
@@ -1099,11 +1092,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
 
   // List of observers
   base::ObserverList<HistoryBackendObserver>::Unchecked observers_;
-
-  // Used to manage syncing of the typed urls datatype. It will be null before
-  // HistoryBackend::Init() is called. Defined after `observers_` because
-  // it unregisters itself as observer during destruction.
-  std::unique_ptr<TypedURLSyncBridge> typed_url_sync_bridge_;
 
   // Used to manage syncing of the history datatype. It will be null before
   // HistoryBackend::Init() is called. Defined after `observers_` because

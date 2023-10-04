@@ -14,7 +14,9 @@
 #include "gpu/command_buffer/common/shm_count.h"
 #include "gpu/command_buffer/service/context_state.h"
 #include "gpu/command_buffer/service/gl_context_virtual.h"
+#include "gpu/command_buffer/service/gr_cache_controller.h"
 #include "gpu/command_buffer/service/gr_shader_cache.h"
+#include "gpu/command_buffer/service/graphite_cache_controller.h"
 #include "gpu/command_buffer/service/graphite_image_provider.h"
 #include "gpu/command_buffer/service/service_transfer_cache.h"
 #include "gpu/command_buffer/service/service_utils.h"
@@ -25,6 +27,8 @@
 #include "gpu/ipc/common/gpu_client_ids.h"
 #include "gpu/vulkan/buildflags.h"
 #include "skia/buildflags.h"
+#include "third_party/skia/include/gpu/GrTypes.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLDirectContext.h"
 #include "third_party/skia/include/gpu/graphite/Context.h"
 #include "third_party/skia/include/gpu/mock/GrMockTypes.h"
 #include "ui/gl/gl_bindings.h"
@@ -256,6 +260,24 @@ SharedContextState::~SharedContextState() {
       this);
 }
 
+bool SharedContextState::IsGraphiteDawnVulkan() const {
+#if BUILDFLAG(SKIA_USE_DAWN)
+  return gr_context_type_ == GrContextType::kGraphiteDawn &&
+         dawn_context_provider_->backend_type() == wgpu::BackendType::Vulkan;
+#else
+  return false;
+#endif
+}
+
+bool SharedContextState::IsGraphiteDawnVulkanSwiftShader() const {
+#if BUILDFLAG(SKIA_USE_DAWN)
+  return gr_context_type_ == GrContextType::kGraphiteDawn &&
+         dawn_context_provider_->is_vulkan_swiftshader_adapter();
+#else
+  return false;
+#endif
+}
+
 bool SharedContextState::InitializeSkia(
     const GpuPreferences& gpu_preferences,
     const GpuDriverBugWorkarounds& workarounds,
@@ -348,7 +370,7 @@ bool SharedContextState::InitializeGanesh(
       DCHECK(owned_gr_context_);
     } else {
       owned_gr_context_ =
-          GrDirectContext::MakeGL(std::move(gr_gl_interface), options);
+          GrDirectContexts::MakeGL(std::move(gr_gl_interface), options);
     }
 
     gr_context_ = owned_gr_context_.get();
@@ -378,6 +400,7 @@ bool SharedContextState::InitializeGanesh(
 
   gr_context_->setResourceCacheLimit(max_resource_cache_bytes);
   transfer_cache_ = std::make_unique<ServiceTransferCache>(gpu_preferences);
+  gr_cache_controller_ = std::make_unique<raster::GrCacheController>(this);
   return true;
 }
 
@@ -419,6 +442,10 @@ bool SharedContextState::InitializeGraphite(
   // promoted to composited).
   gpu_main_graphite_recorder_ =
       MakeGraphiteRecorderWithImageProvider(graphite_context_);
+  gpu_main_graphite_cache_controller_ =
+      base::MakeRefCounted<raster::GraphiteCacheController>(
+          gpu_main_graphite_recorder_.get(), graphite_context_.get());
+
   viz_compositor_graphite_recorder_ =
       MakeGraphiteRecorderWithImageProvider(graphite_context_);
 
@@ -666,7 +693,7 @@ bool SharedContextState::OnMemoryDump(
     return true;
 
   if (args.level_of_detail ==
-      base::trace_event::MemoryDumpLevelOfDetail::BACKGROUND) {
+      base::trace_event::MemoryDumpLevelOfDetail::kBackground) {
     raster::DumpBackgroundGrMemoryStatistics(gr_context_, pmd);
   } else {
     raster::DumpGrMemoryStatistics(gr_context_, pmd, absl::nullopt);
@@ -698,7 +725,8 @@ void SharedContextState::PurgeMemory(
     case base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE:
       // With moderate pressure, clear any unlocked resources.
       sk_surface_cache_.Clear();
-      gr_context_->purgeUnlockedResources(true /* scratchResourcesOnly */);
+      gr_context_->purgeUnlockedResources(
+          GrPurgeResourceOptions::kScratchResourcesOnly);
       UpdateSkiaOwnedMemorySize();
       scratch_deserialization_buffer_.resize(
           kInitialScratchDeserializationBufferSize);
@@ -864,7 +892,6 @@ absl::optional<error::ContextLostReason> SharedContextState::GetResetStatus(
     bool needs_gl) {
   DCHECK(!context_lost());
 
-  // TODO(crbug.com/1434131): Check context loss for Graphite Dawn/Metal.
   if (gr_context_) {
     // Maybe Skia detected VK_ERROR_DEVICE_LOST.
     if (gr_context_->abandoned()) {
@@ -877,6 +904,13 @@ absl::optional<error::ContextLostReason> SharedContextState::GetResetStatus(
       return error::kOutOfMemory;
     }
   }
+
+#if BUILDFLAG(SKIA_USE_DAWN)
+  if (gr_context_type_ == GrContextType::kGraphiteDawn &&
+      dawn_context_provider_) {
+    return dawn_context_provider_->GetResetStatus();
+  }
+#endif
 
   // Not using GL.
   if (!GrContextIsGL() && !needs_gl)
@@ -939,8 +973,13 @@ bool SharedContextState::CheckResetStatus(bool need_gl) {
   return false;
 }
 
-void SharedContextState::ScheduleGrContextCleanup() {
-  gr_cache_controller_.ScheduleGrContextCleanup();
+void SharedContextState::ScheduleSkiaCleanup() {
+  if (gr_cache_controller_) {
+    gr_cache_controller_->ScheduleGrContextCleanup();
+  }
+  if (gpu_main_graphite_cache_controller_) {
+    gpu_main_graphite_cache_controller_->ScheduleCleanup();
+  }
 }
 
 int32_t SharedContextState::GetMaxTextureSize() const {

@@ -54,6 +54,7 @@
 #include "ash/wm/float/float_controller.h"
 #include "ash/wm/mru_window_tracker.h"
 #include "ash/wm/overview/overview_controller.h"
+#include "ash/wm/overview/overview_session.h"
 #include "ash/wm/splitview/split_view_controller.h"
 #include "ash/wm/tablet_mode/tablet_mode_controller.h"
 #include "ash/wm/window_state.h"
@@ -62,7 +63,6 @@
 #include "base/callback_list.h"
 #include "base/containers/adapters.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
@@ -327,6 +327,9 @@ void AppListControllerImpl::RegisterProfilePrefs(PrefRegistrySimple* registry) {
   registry->RegisterTimePref(prefs::kLauncherLastContinueRequestTime,
                              base::Time());
   registry->RegisterBooleanPref(prefs::kLauncherUseLongContinueDelay, false);
+
+  // The prefs for launcher search controls.
+  registry->RegisterDictionaryPref(prefs::kLauncherSearchCategoryControlStatus);
 }
 
 void AppListControllerImpl::SetClient(AppListClient* client) {
@@ -350,13 +353,6 @@ AppListControllerImpl::CreateLauncherSearchIphSession() {
     return nullptr;
   }
   return client_->CreateLauncherSearchIphSession();
-}
-
-void AppListControllerImpl::OpenSearchBoxIphUrl() {
-  if (!client_) {
-    return;
-  }
-  client_->OpenSearchBoxIphUrl();
 }
 
 void AppListControllerImpl::SetActiveModel(
@@ -418,6 +414,12 @@ bool AppListControllerImpl::IsVisible(
 
 bool AppListControllerImpl::IsVisible() {
   return IsVisible(absl::nullopt);
+}
+
+bool AppListControllerImpl::IsImageSearchToggleable() {
+  // Hide the image search from the category filter menu if the privacy notice
+  // hasn't been accepted or timeout yet.
+  return !SearchNotifierController::ShouldShowPrivacyNotice();
 }
 
 void AppListControllerImpl::OnActiveUserPrefServiceChanged(
@@ -1146,6 +1148,14 @@ void AppListControllerImpl::StartAssistant() {
       AssistantEntryPoint::kLauncherSearchBoxIcon);
 }
 
+std::vector<AppListSearchControlCategory>
+AppListControllerImpl::GetToggleableCategories() const {
+  if (client_) {
+    return client_->GetToggleableCategories();
+  }
+  return std::vector<AppListSearchControlCategory>();
+}
+
 void AppListControllerImpl::StartSearch(const std::u16string& raw_query) {
   if (client_) {
     std::u16string query;
@@ -1421,9 +1431,23 @@ void AppListControllerImpl::SetHideContinueSection(bool hide) {
   bubble_presenter_->UpdateContinueSectionVisibility();
 }
 
-void AppListControllerImpl::CommitTemporarySortOrder() {
-  DCHECK(client_);
-  client_->CommitTemporarySortOrder();
+bool AppListControllerImpl::IsCategoryEnabled(
+    AppListSearchControlCategory category) {
+  PrefService* prefs =
+      Shell::Get()->session_controller()->GetLastActiveUserPrefService();
+  return prefs->GetDict(prefs::kLauncherSearchCategoryControlStatus)
+      .FindBool(GetAppListControlCategoryName(category))
+      .value_or(true);
+}
+
+void AppListControllerImpl::SetCategoryEnabled(
+    AppListSearchControlCategory category,
+    bool enabled) {
+  PrefService* prefs =
+      Shell::Get()->session_controller()->GetLastActiveUserPrefService();
+  ScopedDictPrefUpdate pref_update(prefs,
+                                   prefs::kLauncherSearchCategoryControlStatus);
+  pref_update->Set(GetAppListControlCategoryName(category), enabled);
 }
 
 void AppListControllerImpl::GetAppLaunchedMetricParams(
@@ -1475,7 +1499,7 @@ int AppListControllerImpl::GetShelfSize() {
 }
 
 int AppListControllerImpl::GetSystemShelfInsetsInTabletMode() {
-  return ShelfConfig::Get()->GetSystemShelfInsetsInTabletMode();
+  return ShelfConfig::Get()->GetTabletModeShelfInsetsAndRecordUMA();
 }
 
 bool AppListControllerImpl::IsInTabletMode() {

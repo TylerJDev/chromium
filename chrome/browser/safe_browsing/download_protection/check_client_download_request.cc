@@ -237,6 +237,10 @@ void CheckClientDownloadRequest::MaybeStorePingsForDownload(
       result, upload_requested, item_, request_data, response_body);
 }
 
+void CheckClientDownloadRequest::LogDeepScanningPrompt() const {
+  LogDeepScanEvent(item_, DeepScanEvent::kPromptShown);
+}
+
 absl::optional<enterprise_connectors::AnalysisSettings>
 CheckClientDownloadRequest::ShouldUploadBinary(
     DownloadCheckResultReason reason) {
@@ -282,11 +286,11 @@ void CheckClientDownloadRequest::UploadBinary(
     service()->UploadForDeepScanning(
         item_, base::BindRepeating(&MaybeOverrideScanResult, reason, callback_),
         DeepScanningRequest::DeepScanTrigger::TRIGGER_POLICY, result,
-        std::move(settings), /*password=*/"");
+        std::move(settings), /*password=*/absl::nullopt);
   } else {
     service()->UploadForDeepScanning(
         item_, callback_, DeepScanningRequest::DeepScanTrigger::TRIGGER_POLICY,
-        result, std::move(settings), /*password=*/"");
+        result, std::move(settings), /*password=*/absl::nullopt);
   }
 }
 
@@ -324,11 +328,18 @@ bool CheckClientDownloadRequest::ShouldPromptForDeepScanning(
     return false;
 
   Profile* profile = Profile::FromBrowserContext(GetBrowserContext());
-  if (profile && IsEnhancedProtectionEnabled(*profile->GetPrefs()))
-    return true;
+  if (!profile) {
+    return false;
+  }
 
-  if (IsUnderAdvancedProtection(profile))
+  if (!AreDeepScansAllowedByPolicy(*profile->GetPrefs())) {
+    return false;
+  }
+
+  if (IsUnderAdvancedProtection(profile) ||
+      IsEnhancedProtectionEnabled(*profile->GetPrefs())) {
     return true;
+  }
 
   return false;
 }

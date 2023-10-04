@@ -41,9 +41,9 @@
 #include "url/url_util.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/web_applications/web_app_id.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
+#include "components/webapps/common/web_app_id.h"
 #endif
 
 namespace site_engagement {
@@ -301,8 +301,7 @@ void PopulateInfoMapWithBookmarks(
       BookmarkModelFactory::GetForBrowserContextIfExists(profile);
   if (!model)
     return;
-  std::vector<UrlAndTitle> untrimmed_bookmarks;
-  model->GetBookmarks(&untrimmed_bookmarks);
+  std::vector<UrlAndTitle> untrimmed_bookmarks = model->GetUniqueUrls();
 
   // Process the bookmarks and optionally trim them if we have too many.
   std::vector<UrlAndTitle> result_bookmarks;
@@ -460,7 +459,7 @@ void ImportantSitesUtil::RecordExcludedAndIgnoredImportantSites(
     for (const std::string& ignored_site : ignored_sites) {
       GURL origin("http://" + ignored_site);
       base::Value dict = map->GetWebsiteSetting(
-          origin, origin, ContentSettingsType::IMPORTANT_SITE_INFO, nullptr);
+          origin, origin, ContentSettingsType::IMPORTANT_SITE_INFO);
 
       if (!dict.is_dict())
         dict = base::Value(base::Value::Type::DICT);

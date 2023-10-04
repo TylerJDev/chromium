@@ -4,15 +4,20 @@
 
 #include "ash/wm/snap_group/snap_group_controller.h"
 
+#include "ash/root_window_controller.h"
 #include "ash/shell.h"
 #include "ash/wm/mru_window_tracker.h"
 #include "ash/wm/overview/overview_controller.h"
+#include "ash/wm/overview/overview_grid.h"
+#include "ash/wm/overview/overview_session.h"
+#include "ash/wm/overview/overview_utils.h"
 #include "ash/wm/snap_group/snap_group.h"
 #include "ash/wm/splitview/split_view_controller.h"
 #include "ash/wm/tablet_mode/tablet_mode_controller.h"
 #include "ash/wm/window_state.h"
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/containers/contains.h"
 #include "base/containers/unique_ptr_adapters.h"
 
 namespace ash {
@@ -44,6 +49,33 @@ SnapGroupController* SnapGroupController::Get() {
   return g_instance;
 }
 
+void SnapGroupController::OnWindowSnapped(aura::Window* window) {
+  if (!IsArm1AutomaticallyLockEnabled()) {
+    return;
+  }
+
+  if (GetSnapGroupForGivenWindow(window)) {
+    // If `window` already belongs to a snap group, do nothing.
+    return;
+  }
+
+  if (!IsInOverviewSession()) {
+    RootWindowController::ForWindow(window)->StartSplitViewOverviewSession(
+        window, OverviewStartAction::kSplitView,
+        OverviewEnterExitType::kNormal);
+    // If this is the second window, SplitViewController will add the snap
+    // group and end overview.
+    // TODO(b/286963080): Move snap group creation here.
+  } else {
+    // If overview has already started, we may need to update the bounds. This
+    // may happen if a snapped window swaps positions or ratios during split
+    // view overview.
+    GetOverviewSession()
+        ->GetGridWithRootWindow(window->GetRootWindow())
+        ->RefreshGridBounds(/*animate=*/false);
+  }
+}
+
 bool SnapGroupController::AreWindowsInSnapGroup(aura::Window* window1,
                                                 aura::Window* window2) const {
   DCHECK(window1);
@@ -62,10 +94,8 @@ bool SnapGroupController::AddSnapGroup(aura::Window* window1,
     return false;
   }
 
-  if (window_to_snap_group_map_.find(window1) !=
-          window_to_snap_group_map_.end() ||
-      window_to_snap_group_map_.find(window2) !=
-          window_to_snap_group_map_.end()) {
+  if (base::Contains(window_to_snap_group_map_, window1) ||
+      base::Contains(window_to_snap_group_map_, window2)) {
     return false;
   }
 
@@ -86,10 +116,8 @@ bool SnapGroupController::RemoveSnapGroup(SnapGroup* snap_group) {
   CHECK(snap_group);
   aura::Window* window1 = snap_group->window1();
   aura::Window* window2 = snap_group->window2();
-  CHECK(window_to_snap_group_map_.find(window1) !=
-            window_to_snap_group_map_.end() &&
-        window_to_snap_group_map_.find(window2) !=
-            window_to_snap_group_map_.end());
+  CHECK(base::Contains(window_to_snap_group_map_, window1) &&
+        base::Contains(window_to_snap_group_map_, window2));
 
   if (!Shell::Get()->IsInTabletMode()) {
     snap_group->RestoreWindowsBoundsOnSnapGroupRemoved();
@@ -118,13 +146,9 @@ bool SnapGroupController::RemoveSnapGroupContainingWindow(
 }
 
 SnapGroup* SnapGroupController::GetSnapGroupForGivenWindow(
-    aura::Window* window) {
-  if (window_to_snap_group_map_.find(window) ==
-      window_to_snap_group_map_.end()) {
-    return nullptr;
-  }
-
-  return window_to_snap_group_map_.find(window)->second;
+    const aura::Window* window) {
+  auto iter = window_to_snap_group_map_.find(window);
+  return iter != window_to_snap_group_map_.end() ? iter->second : nullptr;
 }
 
 bool SnapGroupController::CanEnterOverview() const {
@@ -217,8 +241,6 @@ void SnapGroupController::RestoreSnapGroups() {
   // TODO(b/288335850): Currently `SplitViewController` only supports two
   // windows, the group at the end will overwrite any split view operations.
   // This will be addressed in multiple snap groups feature.
-  // TODO(b/288333989): The order in `snap_groups_` doesn't reflect the mru
-  // order yet, which will be addressed in b/288333989.
   // TODO(b/288334530): Iterate through all the displays and restore the snap
   // groups based on the mru order.
   for (const auto& snap_group : snap_groups_) {

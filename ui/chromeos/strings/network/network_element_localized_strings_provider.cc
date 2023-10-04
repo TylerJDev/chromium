@@ -10,6 +10,7 @@
 #include "build/build_config.h"
 #include "chromeos/ash/components/login/login_state/login_state.h"
 #include "chromeos/ash/components/network/network_connection_handler.h"
+#include "chromeos/ash/components/network/policy_util.h"
 #include "chromeos/strings/grit/chromeos_strings.h"
 #include "components/login/localized_values_builder.h"
 #include "components/strings/grit/components_strings.h"
@@ -144,6 +145,8 @@ constexpr webui::LocalizedString kElementLocalizedStrings[] = {
     {"networkIconLabelConnecting", IDS_NETWORK_ICON_LABEL_CONNECTING},
     {"networkIconLabelNotConnected", IDS_NETWORK_ICON_LABEL_NOT_CONNECTED},
     {"networkIconLabelSignalStrength", IDS_NETWORK_ICON_LABEL_SIGNAL_STRENGTH},
+    {"networkListItemUpdatedCellularSimCardCarrierLocked",
+     IDS_NETWORK_LIST_UPDATED_CELLULAR_SIM_CARD_CARRIER_LOCKED},
 };
 
 }  //  namespace
@@ -238,13 +241,12 @@ void AddOncLocalizedStrings(content::WebUIDataSource* html_source) {
       {"OncTether-BatteryPercentage_Value",
        IDS_ONC_TETHER_BATTERY_PERCENTAGE_VALUE},
       {"OncTether-SignalStrength", IDS_ONC_TETHER_SIGNAL_STRENGTH},
-      {"OncTether-SignalStrength_Weak", IDS_ONC_TETHER_SIGNAL_STRENGTH_WEAK},
-      {"OncTether-SignalStrength_Okay", IDS_ONC_TETHER_SIGNAL_STRENGTH_OKAY},
-      {"OncTether-SignalStrength_Good", IDS_ONC_TETHER_SIGNAL_STRENGTH_GOOD},
+      {"OncTether-SignalStrength_None", IDS_ONC_TETHER_SIGNAL_STRENGTH_NONE},
+      {"OncTether-SignalStrength_Low", IDS_ONC_TETHER_SIGNAL_STRENGTH_LOW},
+      {"OncTether-SignalStrength_Medium",
+       IDS_ONC_TETHER_SIGNAL_STRENGTH_MEDIUM},
       {"OncTether-SignalStrength_Strong",
        IDS_ONC_TETHER_SIGNAL_STRENGTH_STRONG},
-      {"OncTether-SignalStrength_VeryStrong",
-       IDS_ONC_TETHER_SIGNAL_STRENGTH_VERY_STRONG},
       {"OncTether-Carrier", IDS_ONC_TETHER_CARRIER},
       {"OncTether-Carrier_Unknown", IDS_ONC_TETHER_CARRIER_UNKNOWN},
       {"OncVPN-Host", IDS_ONC_VPN_HOST},
@@ -507,6 +509,8 @@ void AddDetailsLocalizedStrings(content::WebUIDataSource* html_source) {
 
   html_source->AddBoolean("isApnRevampEnabled",
                           ash::features::IsApnRevampEnabled());
+  html_source->AddBoolean("isCellularCarrierLockEnabled",
+                          ash::features::IsCellularCarrierLockEnabled());
 }
 
 void AddConfigLocalizedStrings(content::WebUIDataSource* html_source) {
@@ -550,6 +554,10 @@ void AddConfigLocalizedStrings(content::WebUIDataSource* html_source) {
   html_source->AddBoolean(
       "eapDefaultCasWithoutSubjectVerificationAllowed",
       ash::features::IsEapDefaultCasWithoutSubjectVerificationAllowed());
+
+  html_source->AddBoolean(
+      "ephemeralNetworkPoliciesEnabled",
+      ash::policy_util::AreEphemeralNetworkPoliciesEnabled());
 }
 
 void AddErrorLocalizedStrings(content::WebUIDataSource* html_source) {

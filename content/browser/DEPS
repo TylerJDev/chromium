@@ -27,6 +27,7 @@ include_rules = [
   "+components/link_header_util",
   "+components/metrics",
   "+components/metrics:single_sample_metrics",
+  "+components/miracle_parameter",
   "+components/network_session_configurator/common",
   "+components/offline_pages/buildflags/buildflags.h",
   "+components/offline_pages/core/request_header",
@@ -137,6 +138,9 @@ specific_include_rules = {
   ".*test_utils\.(h|cc)": [
     "+services/network/test",
   ],
+  "browser_interface_binders\.cc": [
+    "+components/ml/webnn/features.h",
+  ],
   "browser_main_loop\.cc": [
     # TODO(crbug.com/1049894): Remove.
     "+services/network/transitional_url_loader_factory_owner.h",
@@ -154,7 +158,6 @@ specific_include_rules = {
   ],
   "navigation_url_loader_impl_unittest\.cc": [
     "+services/network/resource_scheduler/resource_scheduler_client.h",
-    "+services/network/shared_storage/shared_storage_request_helper.h",
     "+services/network/url_loader.h",
     "+services/network/url_request_context_owner.h",
   ],

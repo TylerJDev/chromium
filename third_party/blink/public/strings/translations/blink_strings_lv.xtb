@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Mainīts uz spoguļošanu</translation>
 <translation id="2031987842108996681">Sarkanais kanāls</translation>
 <translation id="2060505056492490888">Punkts (<ph name="DOT" />) atrodas nepareizā vietā (<ph name="INVALIDDOMAIN" />).</translation>
+<translation id="2068711044993563745">Minimālajai vērtībai (<ph name="MINIMUM" />) ir jābūt mazākai nekā maksimālajai vērtībai (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Šodien</translation>
 <translation id="2226276347425096477">Lūdzu, saīsiniet šo tekstu līdz <ph name="MAX_CHARACTERS" /> vai mazāk zīmēm (pašreiz tas ietver <ph name="CURRENT_LENGTH" /> rakstzīmes).</translation>
 <translation id="2247351761944213033"><ph name="WEEKNUMBER" />. nedēļa, <ph name="YEAR" />. gads</translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Lai turpinātu, atzīmējiet šo izvēles rūtiņu.</translation>
 <translation id="2908441821576996758">Lūdzu, ievadiet ar komatu atdalītu e-pasta adrešu sarakstu.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">rādīt audio aprakstu izvēlni</translation>
 <translation id="3075154866155599887">Lūdzu, ievadiet derīgu vērtību. Šis lauks nav pabeigts, vai tajā ir norādīts nederīgs datums.</translation>
 <translation id="310520048233152454">Ievadiet URL.</translation>
 <translation id="3220661731597678625">pašreizējā darbība</translation>

@@ -1599,7 +1599,7 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnGetAssertion(
   // technically permissible to send an empty allow_list when asking for
   // discoverable credentials, but some authenticators in practice don't take it
   // that way. Thus this code mirrors that to better reflect reality.
-  if (request_map.find(cbor::Value(3)) == request_map.end()) {
+  if (!base::Contains(request_map, cbor::Value(3))) {
     DCHECK(config_.resident_key_support);
     for (auto& registration : mutable_state()->registrations) {
       if (registration.second.is_resident &&
@@ -1653,7 +1653,7 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnGetAssertion(
     return CtapDeviceResponseCode::kCtap2ErrNoCredentials;
   }
 
-  absl::optional<std::array<uint8_t, SHA256_DIGEST_LENGTH>> hmac_shared_key;
+  absl::optional<std::vector<uint8_t>> hmac_shared_key;
   absl::optional<std::array<uint8_t, 32>> hmac_salt1;
   absl::optional<std::array<uint8_t, 32>> hmac_salt2;
 
@@ -1673,6 +1673,19 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnGetAssertion(
     if (!request.pin_protocol) {
       return CtapDeviceResponseCode::kCtap2ErrPinAuthInvalid;
     }
+    if (static_cast<unsigned>(*request.pin_protocol) >= 2 &&
+        !request.hmac_secret->pin_protocol.has_value()) {
+      DLOG(ERROR) << "Rejecting request because PIN protocol v2 request with "
+                     "hmac-secret didn't duplicate the PIN protocol in the "
+                     "hmac-secret extension";
+      return CtapDeviceResponseCode::kCtap2ErrMissingParameter;
+    }
+    if (request.hmac_secret->pin_protocol.has_value() &&
+        *request.hmac_secret->pin_protocol != *request.pin_protocol) {
+      DLOG(ERROR) << "Rejecting request because PIN protocol in hmac-secret "
+                     "extension didn't match the top-level value.";
+      return CtapDeviceResponseCode::kCtap2ErrPinAuthInvalid;
+    }
     const pin::Protocol& pin_protocol =
         pin::ProtocolVersion(*request.pin_protocol);
 
@@ -1690,14 +1703,12 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnGetAssertion(
         mutable_state()->ecdh_key.get(), platform_point.get());
 
     const auto& encrypted_salts = request.hmac_secret->encrypted_salts;
-    if (encrypted_salts.size() != 32 && encrypted_salts.size() != 64) {
+    std::vector<uint8_t> salts =
+        pin_protocol.Decrypt(shared_key, encrypted_salts);
+    if (salts.size() != 32 && salts.size() != 64) {
       NOTREACHED();
       return CtapDeviceResponseCode::kCtap1ErrInvalidParameter;
     }
-
-    std::vector<uint8_t> salts =
-        pin_protocol.Decrypt(shared_key, encrypted_salts);
-    CHECK_EQ(salts.size(), encrypted_salts.size());
 
     if (pin_protocol.Authenticate(shared_key, encrypted_salts) !=
         request.hmac_secret->salts_auth) {
@@ -1707,15 +1718,13 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnGetAssertion(
 
     hmac_salt1.emplace();
     memcpy(hmac_salt1->data(), salts.data(), hmac_salt1->size());
-    if (encrypted_salts.size() == 64) {
+    if (salts.size() == 64) {
       hmac_salt2.emplace();
       memcpy(hmac_salt2->data(), salts.data() + hmac_salt1->size(),
              hmac_salt2->size());
     }
 
-    hmac_shared_key.emplace();
-    CHECK_EQ(hmac_shared_key->size(), shared_key.size());
-    memcpy(hmac_shared_key->data(), shared_key.data(), shared_key.size());
+    hmac_shared_key = std::move(shared_key);
   }
 
   if (request.allow_list.empty() && found_registrations.size() > 1 &&
@@ -1754,7 +1763,6 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnGetAssertion(
       std::vector<uint8_t> encrypted_outputs =
           pin::ProtocolVersion(*request.pin_protocol)
               .Encrypt(*hmac_shared_key, outputs);
-      CHECK_EQ(encrypted_outputs.size(), outputs.size());
 
       extensions_map.emplace(kExtensionHmacSecret,
                              std::move(encrypted_outputs));
@@ -2104,10 +2112,11 @@ absl::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnPINCommand(
       PinUvAuthTokenPermissions permissions;
       if (subcommand ==
           static_cast<int>(device::pin::Subcommand::kGetPINToken)) {
-        if (request_map.find(cbor::Value(static_cast<int>(
-                pin::RequestKey::kPermissions))) != request_map.end() ||
-            request_map.find(cbor::Value(static_cast<int>(
-                pin::RequestKey::kPermissionsRPID))) != request_map.end()) {
+        if (base::Contains(request_map, cbor::Value(static_cast<int>(
+                                            pin::RequestKey::kPermissions))) ||
+            base::Contains(request_map,
+                           cbor::Value(static_cast<int>(
+                               pin::RequestKey::kPermissionsRPID)))) {
           return CtapDeviceResponseCode::kCtap1ErrInvalidParameter;
         }
         // Set default PinUvAuthToken permissions.

@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">ਪ੍ਰਤਿਬਿੰਬੀਕਰਨ 'ਤੇ ਸਵਿੱਚ ਕੀਤਾ ਗਿਆ</translation>
 <translation id="2031987842108996681">ਲਾਲ ਚੈਨਲ</translation>
 <translation id="2060505056492490888">'<ph name="DOT" />' ,'<ph name="INVALIDDOMAIN" />' ਵਿੱਚ ਇੱਕ ਗ਼ਲਤ ਪੋਜੀਸ਼ਨ ਤੇ ਵਰਤਿਆ ਜਾਂਦਾ ਹੈ।</translation>
+<translation id="2068711044993563745">ਨਿਊਨਤਮ ਮੁੱਲ (<ph name="MINIMUM" />) ਅਧਿਕਤਮ ਮੁੱਲ (<ph name="MAXIMUM" />) ਤੋਂ ਘੱਟ ਹੋਣਾ ਲਾਜ਼ਮੀ ਹੈ।</translation>
 <translation id="2148716181193084225">ਅੱਜ</translation>
 <translation id="2226276347425096477">ਕਿਰਪਾ ਕਰਕੇ ਇਸ ਲਿਖਤ ਨੂੰ <ph name="MAX_CHARACTERS" /> ਅੱਖਰਾਂ ਤੱਕ ਜਾਂ ਇਸ ਤੋਂ ਘੱਟ ਵਿੱਚ ਛੋਟਾ ਕਰੋ (ਇਸ ਵੇਲੇ ਤੁਸੀਂ <ph name="CURRENT_LENGTH" /> ਅੱਖਰ ਵਰਤ ਰਹੇ ਹੋ)।</translation>
 <translation id="2247351761944213033">ਹਫ਼ਤਾ <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">ਜੇਕਰ ਤੁਸੀਂ ਜਾਰੀ ਰੱਖਣਾ ਚਾਹੁੰਦੇ ਹੋ ਤਾਂ ਕਿਰਪਾ ਕਰਕੇ ਇਸ ਬੌਕਸ ਵਿੱਚ ਸਹੀ ਦਾ ਨਿਸ਼ਾਨ ਲਗਾਓ।</translation>
 <translation id="2908441821576996758">ਕਿਰਪਾ ਕਰਕੇ ਈਮੇਲ ਪਤਿਆਂ ਦੀ ਇੱਕ ਕਾਮਾ ਵੱਖ ਕੀਤੀ ਸੂਚੀ ਦਰਜ ਕਰੋ।</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">ਆਡੀਓ ਦੇ ਵਰਣਨ ਮੀਨੂ ਦਿਖਾਓ</translation>
 <translation id="3075154866155599887">ਕਿਰਪਾ ਕਰਕੇ ਵੈਧ ਮੁੱਲ ਦਾਖਲ ਕਰੋ। ਇਹ ਖੇਤਰ ਅਧੂਰਾ ਹੈ ਜਾਂ ਇਸ ਵਿੱਚ ਅਵੈਧ ਤਾਰੀਖ ਹੈ।</translation>
 <translation id="310520048233152454">ਕਿਰਪਾ ਕਰਕੇ ਇੱਕ URL ਦਰਜ ਕਰੋ।</translation>
 <translation id="3220661731597678625">ਮੌਜੂਦਾ ਪੜਾਅ</translation>

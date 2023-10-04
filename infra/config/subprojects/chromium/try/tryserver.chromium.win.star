@@ -59,6 +59,13 @@ try_.builder(
 )
 
 try_.builder(
+    name = "win-clobber-rel",
+    mirrors = [
+        "ci/win-archive-rel",
+    ],
+)
+
+try_.builder(
     name = "win-libfuzzer-asan-rel",
     branch_selector = branches.selector.WINDOWS_BRANCHES,
     executable = "recipe:chromium/fuzz",
@@ -78,15 +85,9 @@ try_.orchestrator_builder(
         "ci/GPU Win x64 Builder",
         "ci/Win10 x64 Release (NVIDIA)",
     ],
-    try_settings = builder_config.try_settings(
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
     compilator = "win-rel-compilator",
     coverage_test_types = ["unit", "overall"],
     experiments = {
-        "chromium_rts.inverted_rts": 100,
         # go/nplus1shardsproposal
         "chromium.add_one_test_shard": 5,
     },
@@ -106,28 +107,24 @@ try_.compilator_builder(
     main_list_view = "try",
 )
 
-# TODO(b/277863839): remove Siso experimental builders after migrate
-# win-rel to Siso.
 try_.orchestrator_builder(
     name = "win-siso-rel",
+    description_html = """\
+This builder shadows win-rel builder to compare between Siso builds and Ninja builds.<br/>
+This builder should be removed after migrating win-rel from Ninja to Siso. b/277863839
+""",
     mirrors = builder_config.copy_from("try/win-rel"),
-    try_settings = builder_config.try_settings(
-        is_compile_only = True,
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
     compilator = "win-siso-rel-compilator",
     coverage_test_types = ["unit", "overall"],
     experiments = {
-        "chromium_rts.inverted_rts": 100,
         # go/nplus1shardsproposal
         "chromium.add_one_test_shard": 5,
     },
     main_list_view = "try",
     tryjob = try_.job(
-        # TODO(b/277863839): increase percentage.
-        experiment_percentage = 20,
+        # Decreasing the experiment percentage while enabling tests to reduce
+        # extra workloads on the test pool.
+        experiment_percentage = 10,
     ),
     use_clang_coverage = True,
 )
@@ -141,7 +138,7 @@ try_.compilator_builder(
 )
 
 try_.builder(
-    name = "win_archive",
+    name = "win32-clobber-rel",
     mirrors = [
         "ci/win32-archive-rel",
     ],
@@ -205,13 +202,6 @@ try_.builder(
     os = os.WINDOWS_ANY,
     execution_timeout = 6 * time.hour,
     reclient_instance = None,
-)
-
-try_.builder(
-    name = "win_x64_archive",
-    mirrors = [
-        "ci/win-archive-rel",
-    ],
 )
 
 try_.builder(
@@ -316,6 +306,7 @@ try_.gpu.optional_tests_builder(
     main_list_view = "try",
     tryjob = try_.job(
         location_filters = [
+            # Inclusion filters.
             cq.location_filter(path_regexp = "chrome/browser/media/.+"),
             cq.location_filter(path_regexp = "chrome/browser/vr/.+"),
             cq.location_filter(path_regexp = "components/cdm/renderer/.+"),
@@ -345,11 +336,9 @@ try_.gpu.optional_tests_builder(
             cq.location_filter(path_regexp = "tools/clang/scripts/update.py"),
             cq.location_filter(path_regexp = "tools/mb/mb_config_expectations/tryserver.chromium.win.json"),
             cq.location_filter(path_regexp = "ui/gl/.+"),
+
+            # Exclusion filters.
+            cq.location_filter(exclude = True, path_regexp = ".*\\.md"),
         ],
     ),
-)
-
-try_.builder(
-    name = "win-cr23-rel",
-    mirrors = ["ci/win-cr23-rel"],
 )

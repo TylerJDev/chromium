@@ -14,19 +14,22 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_arraybuffer_arraybufferview.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_client_inputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_client_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_device_public_key_inputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_device_public_key_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_inputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_inputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_values.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authenticator_selection_criteria.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_cable_authentication_data.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_credential_logout_r_ps_request.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_credential_request_options_context.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_identity_credential_request_options_mode.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_provider_config.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_user_info.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_m_doc_element.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_m_doc_provider.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_creation_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_parameters.h"
@@ -34,6 +37,10 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_rp_entity.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_user_entity.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_remote_desktop_client_override.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_union_string_walletfieldrequirement.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_wallet_field_requirement.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_wallet_provider.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_wallet_selector.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_piece.h"
 #include "third_party/blink/renderer/modules/credentialmanagement/credential.h"
 #include "third_party/blink/renderer/modules/credentialmanagement/federated_credential.h"
@@ -69,10 +76,6 @@ using blink::mojom::blink::IdentityUserInfoPtr;
 using blink::mojom::blink::LargeBlobSupport;
 using blink::mojom::blink::LogoutRpsRequest;
 using blink::mojom::blink::LogoutRpsRequestPtr;
-using blink::mojom::blink::MDocElement;
-using blink::mojom::blink::MDocElementPtr;
-using blink::mojom::blink::MDocProvider;
-using blink::mojom::blink::MDocProviderPtr;
 using blink::mojom::blink::PRFValues;
 using blink::mojom::blink::PRFValuesPtr;
 using blink::mojom::blink::PublicKeyCredentialCreationOptionsPtr;
@@ -90,7 +93,14 @@ using blink::mojom::blink::RemoteDesktopClientOverride;
 using blink::mojom::blink::RemoteDesktopClientOverridePtr;
 using blink::mojom::blink::ResidentKeyRequirement;
 using blink::mojom::blink::RpContext;
+using blink::mojom::blink::RpMode;
 using blink::mojom::blink::UserVerificationRequirement;
+using blink::mojom::blink::WalletFieldRequirement;
+using blink::mojom::blink::WalletFieldRequirementPtr;
+using blink::mojom::blink::WalletProvider;
+using blink::mojom::blink::WalletProviderPtr;
+using blink::mojom::blink::WalletSelector;
+using blink::mojom::blink::WalletSelectorPtr;
 
 namespace {
 
@@ -164,6 +174,92 @@ TypeConverter<blink::Credential*, CredentialInfoPtr>::Convert(
   }
   NOTREACHED();
   return nullptr;
+}
+
+static blink::DOMArrayBuffer* VectorToDOMArrayBuffer(
+    const Vector<uint8_t> buffer) {
+  return blink::DOMArrayBuffer::Create(static_cast<const void*>(buffer.data()),
+                                       buffer.size());
+}
+
+#if BUILDFLAG(IS_ANDROID)
+static Vector<Vector<uint32_t>> UvmEntryToArray(
+    const Vector<blink::mojom::blink::UvmEntryPtr>& user_verification_methods) {
+  Vector<Vector<uint32_t>> uvm_array;
+  for (const auto& uvm : user_verification_methods) {
+    Vector<uint32_t> uvmEntry = {uvm->user_verification_method,
+                                 uvm->key_protection_type,
+                                 uvm->matcher_protection_type};
+    uvm_array.push_back(uvmEntry);
+  }
+  return uvm_array;
+}
+#endif
+
+// static template <>
+blink::AuthenticationExtensionsClientOutputs*
+TypeConverter<blink::AuthenticationExtensionsClientOutputs*,
+              blink::mojom::blink::AuthenticationExtensionsClientOutputsPtr>::
+    Convert(const blink::mojom::blink::AuthenticationExtensionsClientOutputsPtr&
+                extensions) {
+  auto* extension_outputs =
+      blink::AuthenticationExtensionsClientOutputs::Create();
+  if (extensions->echo_appid_extension) {
+    extension_outputs->setAppid(extensions->appid_extension);
+  }
+#if BUILDFLAG(IS_ANDROID)
+  if (extensions->echo_user_verification_methods) {
+    extension_outputs->setUvm(
+        UvmEntryToArray(std::move(*extensions->user_verification_methods)));
+  }
+#endif
+  if (extensions->echo_large_blob) {
+    DCHECK(blink::RuntimeEnabledFeatures::
+               WebAuthenticationLargeBlobExtensionEnabled());
+    blink::AuthenticationExtensionsLargeBlobOutputs* large_blob_outputs =
+        blink::AuthenticationExtensionsLargeBlobOutputs::Create();
+    if (extensions->large_blob) {
+      large_blob_outputs->setBlob(
+          VectorToDOMArrayBuffer(std::move(*extensions->large_blob)));
+    }
+    if (extensions->echo_large_blob_written) {
+      large_blob_outputs->setWritten(extensions->large_blob_written);
+    }
+    extension_outputs->setLargeBlob(large_blob_outputs);
+  }
+  if (extensions->get_cred_blob) {
+    extension_outputs->setGetCredBlob(
+        VectorToDOMArrayBuffer(std::move(*extensions->get_cred_blob)));
+  }
+  if (extensions->device_public_key) {
+    blink::AuthenticationExtensionsDevicePublicKeyOutputs*
+        device_public_key_outputs =
+            blink::AuthenticationExtensionsDevicePublicKeyOutputs::Create();
+    device_public_key_outputs->setAuthenticatorOutput(VectorToDOMArrayBuffer(
+        std::move(extensions->device_public_key->authenticator_output)));
+    device_public_key_outputs->setSignature(VectorToDOMArrayBuffer(
+        std::move(extensions->device_public_key->signature)));
+    extension_outputs->setDevicePubKey(device_public_key_outputs);
+  }
+  if (extensions->echo_prf) {
+    auto* prf_outputs = blink::AuthenticationExtensionsPRFOutputs::Create();
+    if (extensions->prf_results) {
+      auto* values = blink::AuthenticationExtensionsPRFValues::Create();
+      values->setFirst(
+          MakeGarbageCollected<blink::V8UnionArrayBufferOrArrayBufferView>(
+              VectorToDOMArrayBuffer(
+                  std::move(extensions->prf_results->first))));
+      if (extensions->prf_results->second) {
+        values->setSecond(
+            MakeGarbageCollected<blink::V8UnionArrayBufferOrArrayBufferView>(
+                VectorToDOMArrayBuffer(
+                    std::move(extensions->prf_results->second.value()))));
+      }
+      prf_outputs->setResults(values);
+    }
+    extension_outputs->setPrf(prf_outputs);
+  }
+  return extension_outputs;
 }
 
 // static helper method.
@@ -763,21 +859,50 @@ TypeConverter<IdentityProviderConfigPtr, blink::IdentityProviderConfig>::
 IdentityProviderPtr
 TypeConverter<IdentityProviderPtr, blink::IdentityProviderConfig>::Convert(
     const blink::IdentityProviderConfig& provider) {
-  if (provider.hasMdoc() &&
+  if (provider.hasHolder() &&
       blink::RuntimeEnabledFeatures::WebIdentityMDocsEnabled() &&
       // TODO(https://crbug.com/1416939): make sure the MDocs API
       // works well with the Multiple IdP API.
       !blink::RuntimeEnabledFeatures::FedCmMultipleIdentityProvidersEnabled()) {
-    WTF::Vector<MDocElementPtr> requested_elements;
-    for (auto element : provider.mdoc()->requestedElements()) {
-      auto requested_element =
-          MDocElement::New(element->elementNamespace(), element->name());
-      requested_elements.push_back(std::move(requested_element));
+    auto mojo_provider = WalletProvider::New();
+    if (provider.holder()->hasParams()) {
+      HashMap<String, String> params;
+      for (const auto& pair : provider.holder()->params()) {
+        params.Set(pair.first, pair.second);
+      }
+      mojo_provider->params = std::move(params);
     }
-    auto mdoc = MDocProvider::New(provider.mdoc()->documentType(),
-                                  provider.mdoc()->readerPublicKey(),
-                                  std::move(requested_elements));
-    return IdentityProvider::NewMdoc(std::move(mdoc));
+    mojo_provider->selector = WalletSelector::New();
+    if (provider.holder()->hasSelector()) {
+      if (provider.holder()->selector()->hasFormat()) {
+        mojo_provider->selector->format =
+            provider.holder()->selector()->format();
+      }
+      if (provider.holder()->selector()->hasDoctype()) {
+        mojo_provider->selector->doctype =
+            provider.holder()->selector()->doctype();
+      }
+      if (provider.holder()->selector()->hasFields()) {
+        WTF::Vector<WalletFieldRequirementPtr> fields;
+        for (auto element : provider.holder()->selector()->fields()) {
+          auto requested_element = WalletFieldRequirement::New();
+          if (element->IsString()) {
+            requested_element->name = element->GetAsString();
+          } else {
+            requested_element->name =
+                element->GetAsWalletFieldRequirement()->name();
+            if (element->GetAsWalletFieldRequirement()->hasEquals()) {
+              requested_element->equals =
+                  element->GetAsWalletFieldRequirement()->equals();
+            }
+          }
+
+          fields.push_back(std::move(requested_element));
+        }
+        mojo_provider->selector->fields = std::move(fields);
+      }
+    }
+    return IdentityProvider::NewHolder(std::move(mojo_provider));
   } else {
     auto config = IdentityProviderConfig::From(provider);
     return IdentityProvider::NewFederated(std::move(config));
@@ -797,6 +922,18 @@ TypeConverter<RpContext, blink::V8IdentityCredentialRequestOptionsContext>::
       return RpContext::kUse;
     case blink::V8IdentityCredentialRequestOptionsContext::Enum::kContinue:
       return RpContext::kContinue;
+  }
+}
+
+// static
+RpMode
+TypeConverter<RpMode, blink::V8IdentityCredentialRequestOptionsMode>::Convert(
+    const blink::V8IdentityCredentialRequestOptionsMode& mode) {
+  switch (mode.AsEnum()) {
+    case blink::V8IdentityCredentialRequestOptionsMode::Enum::kWidget:
+      return RpMode::kWidget;
+    case blink::V8IdentityCredentialRequestOptionsMode::Enum::kButton:
+      return RpMode::kButton;
   }
 }
 

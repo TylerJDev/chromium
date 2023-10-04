@@ -8,10 +8,10 @@
 #import "base/immediate_crash.h"
 #import "base/strings/string_number_conversions.h"
 #import "base/task/thread_pool.h"
-#import "ios/chrome/browser/crash_report/crash_reporter_url_observer.h"
+#import "ios/chrome/browser/crash_report/model/crash_reporter_url_observer.h"
 #import "ios/chrome/browser/ntp/new_tab_page_util.h"
-#import "ios/chrome/browser/prerender/prerender_service.h"
-#import "ios/chrome/browser/prerender/prerender_service_factory.h"
+#import "ios/chrome/browser/prerender/model/prerender_service.h"
+#import "ios/chrome/browser/prerender/model/prerender_service_factory.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state_browser_agent.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
@@ -19,13 +19,13 @@
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
 #import "ios/chrome/browser/ui/incognito_reauth/incognito_reauth_scene_agent.h"
 #import "ios/chrome/browser/url_loading/scene_url_loading_service.h"
 #import "ios/chrome/browser/url_loading/url_loading_notifier_browser_agent.h"
 #import "ios/chrome/browser/url_loading/url_loading_params.h"
 #import "ios/chrome/browser/url_loading/url_loading_util.h"
 #import "ios/chrome/browser/web/load_timing_tab_helper.h"
-#import "ios/chrome/browser/web_state_list/tab_insertion_browser_agent.h"
 #import "net/base/url_util.h"
 
 BROWSER_USER_DATA_KEY_IMPL(UrlLoadingBrowserAgent)
@@ -128,19 +128,6 @@ void UrlLoadingBrowserAgent::Load(const UrlLoadParams& params) {
       UrlLoadParams fixed_params = params;
       fixed_params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
       Dispatch(fixed_params);
-      break;
-    }
-    case UrlLoadStrategy::ALWAYS_IN_INCOGNITO: {
-      ChromeBrowserState* browser_state = browser_->GetBrowserState();
-      if (params.disposition == WindowOpenDisposition::CURRENT_TAB &&
-          !browser_state->IsOffTheRecord()) {
-        DCHECK(incognito_loader_);
-        incognito_loader_->Load(params);
-      } else {
-        UrlLoadParams fixed_params = params;
-        fixed_params.in_incognito = YES;
-        Dispatch(fixed_params);
-      }
       break;
     }
     case UrlLoadStrategy::NORMAL: {
@@ -336,7 +323,9 @@ void UrlLoadingBrowserAgent::LoadUrlInNewTab(const UrlLoadParams& params) {
   // Notify only after checking incognito match, otherwise the delegate will
   // take of changing the mode and try again. Notifying before the checks can
   // lead to be calling it twice, and calling 'did' below once.
-  notifier_->NewTabWillLoadUrl(params.web_params.url, params.user_initiated);
+  if (params.instant_load || !params.in_background()) {
+    notifier_->NewTabWillLoadUrl(params.web_params.url, params.user_initiated);
+  }
 
   if (!params.in_background()) {
     LoadUrlInNewTabImpl(params, absl::nullopt);
@@ -388,12 +377,23 @@ void UrlLoadingBrowserAgent::LoadUrlInNewTabImpl(const UrlLoadParams& params,
 
   TabInsertionBrowserAgent* insertion_agent =
       TabInsertionBrowserAgent::FromBrowser(browser_);
+  TabInsertion::Params insertion_params;
+  insertion_params.parent = parent_web_state;
+  insertion_params.index = insertion_index;
+  insertion_params.instant_load = params.instant_load;
+  insertion_params.in_background = params.in_background();
+  insertion_params.inherit_opener = params.inherit_opener;
+  insertion_params.should_skip_new_tab_animation = params.from_external;
+  insertion_params.placeholder_title = params.placeholder_title;
 
-  web::WebState* web_state = insertion_agent->InsertWebState(
-      params.web_params, parent_web_state, /*opened_by_dom=*/false,
-      insertion_index, params.in_background(), params.inherit_opener,
-      /*should_show_start_surface=*/false,
-      /*should_skip_new_tab_animation=*/params.from_external);
-  web_state->GetNavigationManager()->LoadIfNecessary();
-  notifier_->NewTabDidLoadUrl(params.web_params.url, params.user_initiated);
+  web::WebState* web_state =
+      insertion_agent->InsertWebState(params.web_params, insertion_params);
+
+  // If the tab was created as "unrealized" (e.g. `instant_load`
+  // being false) then do not force a load. The tab will load
+  // when it transition to "realized".
+  if (web_state->IsRealized()) {
+    web_state->GetNavigationManager()->LoadIfNecessary();
+    notifier_->NewTabDidLoadUrl(params.web_params.url, params.user_initiated);
+  }
 }

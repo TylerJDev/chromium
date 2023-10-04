@@ -75,6 +75,9 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   void ScheduleWork() override;
   void ScheduleDelayedWork(
       const Delegate::NextWorkInfo& next_work_info) override;
+  TimeTicks AjdustDelayedRunTime(TimeTicks earliest_time,
+                                 TimeTicks run_time,
+                                 TimeTicks latest_time) override;
 
 #if BUILDFLAG(IS_IOS)
   // Some iOS message pumps do not support calling |Run()| to spin the main
@@ -219,26 +222,27 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   void PushWorkItemScope();
 
   // The thread's run loop.
-  base::ScopedCFTypeRef<CFRunLoopRef> run_loop_;
+  apple::ScopedCFTypeRef<CFRunLoopRef> run_loop_;
 
   // The enabled modes. Posted tasks may run in any non-null entry.
   std::unique_ptr<ScopedModeEnabler> enabled_modes_[kNumModes];
 
   // The timer, sources, and observers are described above alongside their
   // callbacks.
-  base::ScopedCFTypeRef<CFRunLoopTimerRef> delayed_work_timer_;
-  base::ScopedCFTypeRef<CFRunLoopSourceRef> work_source_;
-  base::ScopedCFTypeRef<CFRunLoopSourceRef> nesting_deferred_work_source_;
-  base::ScopedCFTypeRef<CFRunLoopObserverRef> pre_wait_observer_;
-  base::ScopedCFTypeRef<CFRunLoopObserverRef> after_wait_observer_;
-  base::ScopedCFTypeRef<CFRunLoopObserverRef> pre_source_observer_;
-  base::ScopedCFTypeRef<CFRunLoopObserverRef> enter_exit_observer_;
+  apple::ScopedCFTypeRef<CFRunLoopTimerRef> delayed_work_timer_;
+  apple::ScopedCFTypeRef<CFRunLoopSourceRef> work_source_;
+  apple::ScopedCFTypeRef<CFRunLoopSourceRef> nesting_deferred_work_source_;
+  apple::ScopedCFTypeRef<CFRunLoopObserverRef> pre_wait_observer_;
+  apple::ScopedCFTypeRef<CFRunLoopObserverRef> after_wait_observer_;
+  apple::ScopedCFTypeRef<CFRunLoopObserverRef> pre_source_observer_;
+  apple::ScopedCFTypeRef<CFRunLoopObserverRef> enter_exit_observer_;
 
   // (weak) Delegate passed as an argument to the innermost Run call.
   raw_ptr<Delegate> delegate_ = nullptr;
 
   // Time at which `delayed_work_timer_` is set to fire.
   base::TimeTicks delayed_work_scheduled_at_ = base::TimeTicks::Max();
+  base::TimeDelta delayed_work_leeway_;
 
   // The recursion depth of the currently-executing CFRunLoopRun loop on the
   // run loop's thread.  0 if no run loops are running inside of whatever scope
@@ -310,7 +314,7 @@ class BASE_EXPORT MessagePumpNSRunLoop : public MessagePumpCFRunLoopBase {
   // A source that doesn't do anything but provide something signalable
   // attached to the run loop.  This source will be signalled when Quit
   // is called, to cause the loop to wake up so that it can stop.
-  base::ScopedCFTypeRef<CFRunLoopSourceRef> quit_source_;
+  apple::ScopedCFTypeRef<CFRunLoopSourceRef> quit_source_;
 };
 
 #if BUILDFLAG(IS_IOS)

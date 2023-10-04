@@ -5,6 +5,9 @@
 import {TestRunner} from 'test_runner';
 import {ConsoleTestRunner} from 'console_test_runner';
 
+import * as Common from 'devtools/core/common/common.js';
+import * as BindingsModule from 'devtools/models/bindings/bindings.js';
+
 (async function() {
   TestRunner.addResult(`Test that console.log() would linkify its location in respect with ignore-listing.\n`);
 
@@ -30,23 +33,23 @@ import {ConsoleTestRunner} from 'console_test_runner';
   async function step1() {
     await dumpConsoleMessageURLs();
 
-    TestRunner.addSniffer(Bindings.IgnoreListManager.prototype, 'patternChangeFinishedForTests', step2);
+    TestRunner.addSniffer(BindingsModule.IgnoreListManager.IgnoreListManager.prototype, 'patternChangeFinishedForTests', step2);
     var frameworkRegexString = 'foo\\.js';
-    Common.settingForTest('skipStackFramesPattern').set(frameworkRegexString);
+    Common.Settings.settingForTest('skipStackFramesPattern').set(frameworkRegexString);
   }
 
   async function step2() {
     await dumpConsoleMessageURLs();
-    TestRunner.addSniffer(Bindings.IgnoreListManager.prototype, 'patternChangeFinishedForTests', step3);
+    TestRunner.addSniffer(BindingsModule.IgnoreListManager.IgnoreListManager.prototype, 'patternChangeFinishedForTests', step3);
     var frameworkRegexString = 'foo\\.js|boo\\.js';
-    Common.settingForTest('skipStackFramesPattern').set(frameworkRegexString);
+    Common.Settings.settingForTest('skipStackFramesPattern').set(frameworkRegexString);
   }
 
   async function step3() {
     await dumpConsoleMessageURLs();
-    TestRunner.addSniffer(Bindings.IgnoreListManager.prototype, 'patternChangeFinishedForTests', step4);
+    TestRunner.addSniffer(BindingsModule.IgnoreListManager.IgnoreListManager.prototype, 'patternChangeFinishedForTests', step4);
     var frameworkRegexString = '';
-    Common.settingForTest('skipStackFramesPattern').set(frameworkRegexString);
+    Common.Settings.settingForTest('skipStackFramesPattern').set(frameworkRegexString);
   }
 
   async function step4() {

@@ -17,6 +17,7 @@
 #include "components/content_settings/core/common/cookie_settings_base.h"
 #include "components/keyed_service/core/refcounted_keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
+#include "components/privacy_sandbox/tracking_protection_settings_observer.h"
 
 class GURL;
 class PrefService;
@@ -45,14 +46,17 @@ const char kDummyExtensionScheme[] = ":no-extension-scheme:";
 // A frontend to the cookie settings of |HostContentSettingsMap|. Handles
 // cookie-specific logic such as blocking third-party cookies. Written on the UI
 // thread and read on any thread.
-class CookieSettings : public CookieSettingsBase,
-                       public content_settings::Observer,
-                       public RefcountedKeyedService {
+class CookieSettings
+    : public CookieSettingsBase,
+      public content_settings::Observer,
+      public privacy_sandbox::TrackingProtectionSettingsObserver,
+      public RefcountedKeyedService {
  public:
   class Observer : public base::CheckedObserver {
    public:
     virtual void OnThirdPartyCookieBlockingChanged(
         bool block_third_party_cookies) {}
+    virtual void OnMitigationsEnabledFor3pcdChanged(bool enable) {}
     virtual void OnCookieSettingChanged() {}
   };
 
@@ -75,7 +79,8 @@ class CookieSettings : public CookieSettingsBase,
   // default setting is assigned to it.
   //
   // This may be called on any thread.
-  ContentSetting GetDefaultCookieSetting(std::string* provider_id) const;
+  ContentSetting GetDefaultCookieSetting(
+      std::string* provider_id = nullptr) const;
 
   // Returns all patterns with a non-default cookie setting, mapped to their
   // actual settings, in the precedence order of the setting rules.
@@ -114,6 +119,25 @@ class CookieSettings : public CookieSettingsBase,
   // not covered by user bypass at this state of art.
   bool IsStoragePartitioningBypassEnabled(const GURL& first_party_url);
 
+  // Sets the `settings_for_3pcd_metadata_grants_` `ContentSettingsForOneType`
+  // to be held and accessed from memory by the cookie settings object.
+  void SetContentSettingsFor3pcdMetadataGrants(
+      const ContentSettingsForOneType settings) {
+    settings_for_3pcd_metadata_grants_ = settings;
+  }
+
+  ContentSetting GetContentSettingForTesting(
+      const GURL& primary_url,
+      const GURL& secondary_url,
+      ContentSettingsType content_type,
+      content_settings::SettingInfo* info = nullptr) {
+    return GetContentSetting(primary_url, secondary_url, content_type);
+  }
+
+  ContentSettingsForOneType GetTpcdMetadataGrantsForTesting() {
+    return settings_for_3pcd_metadata_grants_;
+  }
+
   // Resets the cookie setting for the given url.
   //
   // This should only be called on the UI thread.
@@ -137,7 +161,7 @@ class CookieSettings : public CookieSettingsBase,
   // Resets the third party cookie setting for the given url. Resets both site-
   // and origin-scoped exceptions since either one might be present.
   // `SetCookieSettingForUserBypass()` and `SetThirdPartyCookieSetting()` create
-  // site- and origin-scoped exceptions respectevely.
+  // site- and origin-scoped exceptions respectively.
   //
   // This should only be called on the UI thread.
   void ResetThirdPartyCookieSetting(const GURL& first_party_url);
@@ -148,6 +172,15 @@ class CookieSettings : public CookieSettingsBase,
   //
   // This method may be called on any thread. Virtual for testing.
   bool ShouldBlockThirdPartyCookies() const override;
+
+  // Returns true iff third party cookies deprecation mitigations should be
+  // allowed.
+  //
+  // NOTE: Most mitigations will also be individually gated behind dedicated
+  // feature flags.
+  //
+  // This method may be called on any thread. Virtual for testing.
+  bool MitigationsEnabledFor3pcd() const override;
 
   // Returns true if there is an active storage access exception with
   // |first_party_url| as the secondary pattern.
@@ -163,6 +196,9 @@ class CookieSettings : public CookieSettingsBase,
   // called.
   void ShutdownOnUIThread() override;
 
+  // TrackingProtectionSettingsObserver:
+  void OnTrackingProtection3pcdChanged() override;
+
   static void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
 
   void AddObserver(Observer* obs) { observers_.AddObserver(obs); }
@@ -173,9 +209,13 @@ class CookieSettings : public CookieSettingsBase,
   ~CookieSettings() override;
 
  private:
-  // Evaluate if third-party cookies are blocked. Should only be called
+  // Evaluates if third-party cookies are blocked. Should only be called
   // when the preference changes to update the internal state.
   bool ShouldBlockThirdPartyCookiesInternal();
+
+  // Evaluates whether third party cookies deprecation mitigations should be
+  // enabled.
+  bool MitigationsEnabledFor3pcdInternal();
 
   void OnCookiePreferencesChanged();
 
@@ -206,8 +246,18 @@ class CookieSettings : public CookieSettingsBase,
   const bool is_incognito_;
   const char* extension_scheme_;  // Weak.
 
+  // Used to represent content settings for 3PC accesses granted via the
+  // component updater service. This type will only be populated when
+  // `net::features::kTpcdMetadataGrants` is enabled.
+  //
+  // TODO(http://b/290039145): There's a chance for the list to get considerably
+  // big. Look into optimizing memory by querying straight from a global
+  // service.
+  ContentSettingsForOneType settings_for_3pcd_metadata_grants_;
+
   mutable base::Lock lock_;
   bool block_third_party_cookies_ GUARDED_BY(lock_);
+  bool mitigations_enabled_for_3pcd_ GUARDED_BY(lock_) = false;
 };
 
 }  // namespace content_settings

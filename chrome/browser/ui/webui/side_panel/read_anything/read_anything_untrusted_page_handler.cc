@@ -9,11 +9,13 @@
 #include <utility>
 #include <vector>
 
+#include "base/metrics/histogram_functions.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/views/side_panel/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/webui/side_panel/read_anything/read_anything_prefs.h"
+#include "chrome/common/accessibility/read_anything_constants.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/web_ui.h"
 #include "ui/accessibility/accessibility_features.h"
@@ -29,6 +31,17 @@
 using read_anything::mojom::ReadAnythingTheme;
 using read_anything::mojom::UntrustedPage;
 using read_anything::mojom::UntrustedPageHandler;
+
+namespace {
+
+int GetNormalizedFontScale(double font_scale) {
+  DCHECK(font_scale >= kReadAnythingMinimumFontScale &&
+         font_scale <= kReadAnythingMaximumFontScale);
+  return (font_scale - kReadAnythingMinimumFontScale) *
+         (1 / kReadAnythingFontScaleIncrement);
+}
+
+}  // namespace
 
 ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
     mojo::PendingRemote<UntrustedPage> page,
@@ -51,6 +64,16 @@ ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
 
   if (features::IsReadAnythingWebUIToolbarEnabled()) {
     PrefService* prefs = browser_->profile()->GetPrefs();
+    double speechRate =
+        features::IsReadAnythingReadAloudEnabled()
+            ? prefs->GetDouble(prefs::kAccessibilityReadAnythingSpeechRate)
+            : kReadAnythingDefaultSpeechRate;
+    read_anything::mojom::HighlightGranularity highlightGranularity =
+        features::IsReadAnythingReadAloudEnabled()
+            ? static_cast<read_anything::mojom::HighlightGranularity>(
+                  prefs->GetDouble(
+                      prefs::kAccessibilityReadAnythingHighlightGranularity))
+            : read_anything::mojom::HighlightGranularity::kDefaultValue;
     page_->OnSettingsRestoredFromPrefs(
         static_cast<read_anything::mojom::LineSpacing>(
             prefs->GetInteger(prefs::kAccessibilityReadAnythingLineSpacing)),
@@ -59,7 +82,8 @@ ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
         prefs->GetString(prefs::kAccessibilityReadAnythingFontName),
         prefs->GetDouble(prefs::kAccessibilityReadAnythingFontScale),
         static_cast<read_anything::mojom::Colors>(
-            prefs->GetInteger(prefs::kAccessibilityReadAnythingColorInfo)));
+            prefs->GetInteger(prefs::kAccessibilityReadAnythingColorInfo)),
+        speechRate, highlightGranularity);
   }
 
 #if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
@@ -81,6 +105,7 @@ ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
 ReadAnythingUntrustedPageHandler::~ReadAnythingUntrustedPageHandler() {
   TabStripModelObserver::StopObservingAll(this);
   Observe(nullptr);
+  LogTextStyle();
 
   if (!coordinator_) {
     return;
@@ -137,6 +162,18 @@ void ReadAnythingUntrustedPageHandler::OnColorChange(
       prefs::kAccessibilityReadAnythingColorInfo, static_cast<size_t>(color));
 }
 
+void ReadAnythingUntrustedPageHandler::OnSpeechRateChange(double rate) {
+  browser_->profile()->GetPrefs()->SetDouble(
+      prefs::kAccessibilityReadAnythingSpeechRate, rate);
+}
+
+void ReadAnythingUntrustedPageHandler::OnHighlightGranularityChanged(
+    read_anything::mojom::HighlightGranularity granularity) {
+  browser_->profile()->GetPrefs()->SetInteger(
+      prefs::kAccessibilityReadAnythingHighlightGranularity,
+      static_cast<size_t>(granularity));
+}
+
 void ReadAnythingUntrustedPageHandler::OnLinkClicked(
     const ui::AXTreeID& target_tree_id,
     ui::AXNodeID target_node_id) {
@@ -175,6 +212,10 @@ void ReadAnythingUntrustedPageHandler::OnSelectionChange(
   handler->PerformAction(action_data);
 }
 
+void ReadAnythingUntrustedPageHandler::OnCollapseSelection() {
+  web_contents()->CollapseSelection();
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // ReadAnythingModel::Observer:
 ///////////////////////////////////////////////////////////////////////////////
@@ -202,6 +243,11 @@ void ReadAnythingUntrustedPageHandler::OnReadAnythingThemeChanged(
   page_->OnThemeChanged(
       ReadAnythingTheme::New(font_name, font_scale, foreground_skcolor,
                              background_skcolor, line_spacing, letter_spacing));
+}
+
+void ReadAnythingUntrustedPageHandler::SetDefaultLanguageCode(
+    const std::string& code) {
+  page_->SetDefaultLanguageCode(code);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -316,4 +362,42 @@ void ReadAnythingUntrustedPageHandler::OnActiveAXTreeIDChanged() {
   }
 
   page_->OnActiveAXTreeIDChanged(tree_id, ukm_source_id, visible_url);
+}
+
+void ReadAnythingUntrustedPageHandler::LogTextStyle() {
+  if (!browser_ || !browser_->profile()->GetPrefs()) {
+    return;
+  }
+
+  // This is called when the side panel closes, so retrieving the values from
+  // preferences won't happen very often.
+  PrefService* prefs = browser_->profile()->GetPrefs();
+  int maximum_font_scale_logging =
+      GetNormalizedFontScale(kReadAnythingMaximumFontScale);
+  double font_scale =
+      prefs->GetDouble(prefs::kAccessibilityReadAnythingFontScale);
+  base::UmaHistogramExactLinear(string_constants::kFontScaleHistogramName,
+                                GetNormalizedFontScale(font_scale),
+                                maximum_font_scale_logging + 1);
+  std::string font_name =
+      prefs->GetString(prefs::kAccessibilityReadAnythingFontName);
+  if (font_map_.find(font_name) != font_map_.end()) {
+    ReadAnythingFont font = font_map_.at(font_name);
+    base::UmaHistogramEnumeration(string_constants::kFontNameHistogramName,
+                                  font);
+  }
+  read_anything::mojom::Colors color =
+      static_cast<read_anything::mojom::Colors>(
+          prefs->GetInteger(prefs::kAccessibilityReadAnythingColorInfo));
+  base::UmaHistogramEnumeration(string_constants::kColorHistogramName, color);
+  read_anything::mojom::LineSpacing line_spacing =
+      static_cast<read_anything::mojom::LineSpacing>(
+          prefs->GetInteger(prefs::kAccessibilityReadAnythingLineSpacing));
+  base::UmaHistogramEnumeration(string_constants::kLineSpacingHistogramName,
+                                line_spacing);
+  read_anything::mojom::LetterSpacing letter_spacing =
+      static_cast<read_anything::mojom::LetterSpacing>(
+          prefs->GetInteger(prefs::kAccessibilityReadAnythingLetterSpacing));
+  base::UmaHistogramEnumeration(string_constants::kLetterSpacingHistogramName,
+                                letter_spacing);
 }

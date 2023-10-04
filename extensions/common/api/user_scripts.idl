@@ -1,4 +1,4 @@
-// Copyright 2023 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -45,7 +45,20 @@ namespace userScripts {
     extensionTypes.RunAt? runAt;
   };
 
+  // An object used to filter user scripts for ${ref:getScripts}.
+  dictionary UserScriptFilter {
+    // $(ref:getScripts) only returns scripts with the IDs specified in this
+    // list.
+    DOMString[]? ids;
+  };
+
   callback RegisterCallback = void();
+
+  callback GetScriptsCallback = void(RegisteredUserScript[] scripts);
+
+  callback UnregisterCallback = void();
+
+  callback UpdateCallback = void();
 
   interface Functions {
     // Registers one or more user scripts for this extension.
@@ -54,5 +67,35 @@ namespace userScripts {
     // has ocurred.
     [supportsPromises] static void register(RegisteredUserScript[] scripts,
                                             optional RegisterCallback callback);
+
+    // Returns all dynamically-registered user scripts for this extension.
+    // |filter|: If specified, this method returns only the user scripts that
+    // match it.
+    // |callback|: Called once scripts have been fully registered or if an error
+    // occurs.
+    [supportsPromises] static void getScripts(
+        optional UserScriptFilter filter,
+        GetScriptsCallback callback);
+
+    // Unregisters all dynamically-registered user scripts for this extension.
+    // |filter|: If specified, this method unregisters only the user scripts
+    // that match it.
+    // |callback|: Called once scripts have been fully unregistered or if an
+    // error ocurs
+    [supportsPromises] static void unregister(
+        optional UserScriptFilter filter,
+        UnregisterCallback callback);
+
+    // Updates one or more user scripts for this extension.
+    // |scripts|: Contains a list of user scripts to be updated. A property is
+    // only updated for the existing script if it is specified in this object.
+    // If there are errors during script parsing/file validation, or if the IDs
+    // specified do not correspond to a fully registered script, then no scripts
+    // are updated.
+    // |callback|: Called once scripts have been fully updated or if an error
+    // occurs.
+    [supportsPromises] static void update(
+        RegisteredUserScript[] scripts,
+        optional UpdateCallback callback);
   };
 };

@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -106,7 +106,7 @@ UIView* IconViewWithImage(NSString* image_name, BOOL custom_symbol) {
   ];
   NSArray<UIView*>* imageViews = @[
     IconViewWithImage(kBookmarksSymbol, /*custom_symbol=*/NO),
-    IconViewWithImage(kDocPlaintext, /*custom_symbol=*/NO),
+    IconViewWithImage(kDocPlaintextSymbol, /*custom_symbol=*/NO),
     IconViewWithImage(kRecentTabsSymbol, /*custom_symbol=*/YES),
   ];
   InstructionView* instructionView =

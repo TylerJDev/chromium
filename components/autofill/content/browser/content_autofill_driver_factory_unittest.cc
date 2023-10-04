@@ -10,8 +10,10 @@
 #include "base/memory/raw_ptr.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
+#include "components/autofill/content/browser/content_autofill_driver.h"
 #include "components/autofill/content/browser/content_autofill_driver_factory.h"
 #include "components/autofill/content/browser/content_autofill_driver_factory_test_api.h"
+#include "components/autofill/content/common/mojom/autofill_agent.mojom.h"
 #include "components/autofill/core/browser/test_autofill_client.h"
 #include "components/autofill/core/browser/test_autofill_driver.h"
 #include "components/autofill/core/common/autofill_features.h"
@@ -36,11 +38,6 @@ using testing::Ref;
 namespace autofill {
 
 namespace {
-
-class MockAutofillClient : public TestAutofillClient {
- public:
-  MOCK_METHOD(void, HideAutofillPopup, (PopupHidingReason), (override));
-};
 
 class MockContentAutofillDriverFactoryObserver
     : public ContentAutofillDriverFactory::Observer {
@@ -74,14 +71,10 @@ class MockAutofillAgent : public mojom::AutofillAgent {
               (base::OnceCallback<void(bool)>),
               (override));
   MOCK_METHOD(void,
-              FillOrPreviewForm,
-              (const FormData& form,
-               mojom::AutofillActionPersistence action_persistence),
-              (override));
-  MOCK_METHOD(void,
-              UndoAutofill,
-              (const FormData& form,
-               mojom::AutofillActionPersistence action_persistence),
+              ApplyAutofillAction,
+              (mojom::AutofillActionType action_type,
+               mojom::AutofillActionPersistence action_persistence,
+               const FormData& form),
               (override));
   MOCK_METHOD(void,
               FieldTypePredictionsAvailable,
@@ -150,7 +143,7 @@ class ContentAutofillDriverFactoryTest
   void SetUp() override {
     content::RenderViewHostTestHarness::SetUp();
 
-    client_ = std::make_unique<MockAutofillClient>();
+    client_ = std::make_unique<TestAutofillClient>();
     client_->set_channel_for_testing(channel_);
 
     agent_ = std::make_unique<MockAutofillAgent>();
@@ -174,10 +167,6 @@ class ContentAutofillDriverFactoryTest
   }
 
   void NavigateMainFrame(base::StringPiece url) {
-    // One call of HideAutofillPopup() comes from ContentAutofillDriverFactory.
-    // A second one may come from BrowserAutofillManager::Reset().
-    EXPECT_CALL(*client_, HideAutofillPopup(PopupHidingReason::kNavigation))
-        .Times(Between(1, 2));
     content::NavigationSimulator::CreateBrowserInitiated(GURL(url),
                                                          web_contents())
         ->Commit();
@@ -186,7 +175,7 @@ class ContentAutofillDriverFactoryTest
  protected:
   version_info::Channel channel_;
   std::unique_ptr<MockAutofillAgent> agent_;
-  std::unique_ptr<MockAutofillClient> client_;
+  std::unique_ptr<TestAutofillClient> client_;
   std::unique_ptr<ContentAutofillDriverFactory> factory_;
 };
 
@@ -241,11 +230,6 @@ TEST_F(ContentAutofillDriverFactoryTest_WithTwoFrames, TwoDrivers) {
   EXPECT_EQ(factory_->DriverForFrame(main_rfh()), main_driver);
   EXPECT_EQ(factory_->DriverForFrame(child_rfh()), child_driver);
   EXPECT_EQ(test_api(*factory_).num_drivers(), 2u);
-  // TODO(crbug.com/1200511): Set the router's last source and target, and if
-  // the |child_driver| is destroyed, expect a call to
-  // AutofillManager::OnHidePopup(). For this to work, we need mock
-  // AutofillManagers instead of real BrowserAutofillManager, which are blocked
-  // by ContentAutofillDriver's use of the factory callback.
 }
 
 // Test case with two frames, where the parameter selects one of them.
@@ -279,13 +263,6 @@ TEST_P(ContentAutofillDriverFactoryTest_WithTwoFrames_PickOne,
     EXPECT_EQ(test_api(*factory_).GetDriver(child_rfh()), child_driver);
   else
     EXPECT_EQ(test_api(*factory_).GetDriver(main_rfh()), main_driver);
-}
-
-// Tests that OnVisibilityChanged() hides the popup.
-TEST_F(ContentAutofillDriverFactoryTest, TabHidden) {
-  NavigateMainFrame("https://a.com/");
-  EXPECT_CALL(*client_, HideAutofillPopup(PopupHidingReason::kTabGone));
-  factory_->OnVisibilityChanged(content::Visibility::HIDDEN);
 }
 
 // Test case with one frame, with BFcache enabled or disabled depending on the

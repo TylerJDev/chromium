@@ -19,6 +19,8 @@
 #include "chrome/browser/ui/views/side_panel/side_panel_util.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_view_state_observer.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/views/controls/image_view.h"
+#include "ui/views/controls/label.h"
 #include "ui/views/view_observer.h"
 
 class Browser;
@@ -115,6 +117,8 @@ class SidePanelCoordinator final : public SidePanelRegistryObserver,
                            ShowEmptyUserNoteSidePanel);
   FRIEND_TEST_ALL_PREFIXES(UserNoteUICoordinatorTest,
                            PopulateUserNoteSidePanel);
+  FRIEND_TEST_ALL_PREFIXES(SidePanelPinningCoordinatorTest,
+                           SidePanelTitleUpdates);
 
   // Unlike `Show()` which takes in a SidePanelEntry's id or key, this version
   // should only be used for the rare case when we need to show a particular
@@ -159,6 +163,8 @@ class SidePanelCoordinator final : public SidePanelRegistryObserver,
 
   void UpdateToolbarButtonHighlight(bool side_panel_visible);
 
+  void UpdatePanelIconView(const ui::ImageModel& icon);
+
   // views::ViewObserver:
   void OnViewVisibilityChanged(views::View* observed_view,
                                views::View* starting_from) override;
@@ -166,10 +172,6 @@ class SidePanelCoordinator final : public SidePanelRegistryObserver,
   // Returns the last active entry or the default entry if no last active
   // entry exists.
   absl::optional<SidePanelEntry::Key> GetLastActiveEntryKey() const;
-
-  // Returns the last active global entry or the default entry if no last active
-  // global entry exists.
-  absl::optional<SidePanelEntry::Key> GetLastActiveGlobalEntryKey() const;
 
   // Returns the currently selected id in the combobox, if one is shown.
   absl::optional<SidePanelEntry::Key> GetSelectedKey() const;
@@ -237,7 +239,6 @@ class SidePanelCoordinator final : public SidePanelRegistryObserver,
 
   const raw_ptr<BrowserView, AcrossTasksDanglingUntriaged> browser_view_;
   raw_ptr<SidePanelRegistry> global_registry_;
-  absl::optional<SidePanelEntry::Key> last_active_global_entry_key_;
 
   // current_entry_ tracks the entry that currently has its view hosted by the
   // side panel. It is necessary as current_entry_ may belong to a contextual
@@ -254,6 +255,12 @@ class SidePanelCoordinator final : public SidePanelRegistryObserver,
   std::unique_ptr<SidePanelComboboxModel> combobox_model_;
   raw_ptr<views::Combobox, AcrossTasksDanglingUntriaged> header_combobox_ =
       nullptr;
+
+  // Used to update icon in the side panel header.
+  raw_ptr<views::ImageView, AcrossTasksDanglingUntriaged> panel_icon_ = nullptr;
+
+  // Used to update the displayed title in the side panel header.
+  raw_ptr<views::Label, AcrossTasksDanglingUntriaged> panel_title_ = nullptr;
 
   // Used to update the visibility of the 'Open in New Tab' header button.
   raw_ptr<views::ImageButton, AcrossTasksDanglingUntriaged>

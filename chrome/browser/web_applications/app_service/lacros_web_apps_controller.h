@@ -22,6 +22,7 @@
 #include "components/services/app_service/public/cpp/app_types.h"
 #include "components/services/app_service/public/cpp/icon_types.h"
 #include "components/services/app_service/public/cpp/permission.h"
+#include "components/webapps/common/web_app_id.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
@@ -58,19 +59,6 @@ class LacrosWebAppsController : public crosapi::mojom::AppController,
 
   void SetPublisherForTesting(crosapi::mojom::AppPublisher* publisher);
 
- private:
-  void OnReady();
-  void ExecuteContextMenuCommandInternal(
-      const std::string& app_id,
-      const std::string& id,
-      base::OnceCallback<void(const std::vector<content::WebContents*>&)>
-          launch_finished_callback);
-  void LaunchInternal(
-      const std::string& app_id,
-      apps::AppLaunchParams params,
-      base::OnceCallback<void(const std::vector<content::WebContents*>&)>
-          launch_finished_callback);
-
   // crosapi::mojom::AppController:
   void Uninstall(const std::string& app_id,
                  apps::UninstallSource uninstall_source,
@@ -78,13 +66,14 @@ class LacrosWebAppsController : public crosapi::mojom::AppController,
                  bool report_abuse) override;
   void PauseApp(const std::string& app_id) override;
   void UnpauseApp(const std::string& app_id) override;
+  void StopApp(const std::string& app_id) override;
   void GetMenuModel(const std::string& app_id,
                     GetMenuModelCallback callback) override;
-  void LoadIcon(const std::string& app_id,
-                apps::IconKeyPtr icon_key,
-                apps::IconType icon_type,
-                int32_t size_hint_in_dip,
-                apps::LoadIconCallback callback) override;
+  void DEPRECATED_LoadIcon(const std::string& app_id,
+                           apps::IconKeyPtr icon_key,
+                           apps::IconType icon_type,
+                           int32_t size_hint_in_dip,
+                           apps::LoadIconCallback callback) override;
   void GetCompressedIcon(const std::string& app_id,
                          int32_t size_in_dip,
                          ui::ResourceScaleFactor scale_factor,
@@ -98,9 +87,21 @@ class LacrosWebAppsController : public crosapi::mojom::AppController,
       const std::string& app_id,
       const std::string& id,
       ExecuteContextMenuCommandCallback callback) override;
-  void StopApp(const std::string& app_id) override;
   void SetPermission(const std::string& app_id,
                      apps::PermissionPtr permission) override;
+
+ private:
+  void OnReady();
+  void ExecuteContextMenuCommandInternal(
+      const std::string& app_id,
+      const std::string& id,
+      base::OnceCallback<void(const std::vector<content::WebContents*>&)>
+          launch_finished_callback);
+  void LaunchInternal(
+      const std::string& app_id,
+      apps::AppLaunchParams params,
+      base::OnceCallback<void(const std::vector<content::WebContents*>&)>
+          launch_finished_callback);
 
   // WebAppPublisherHelper::Delegate:
   void PublishWebApps(std::vector<apps::AppPtr> apps) override;
@@ -114,7 +115,7 @@ class LacrosWebAppsController : public crosapi::mojom::AppController,
       base::OnceCallback<void(crosapi::mojom::LaunchResultPtr)> callback,
       const std::vector<content::WebContents*>& web_contents);
 
-  const WebApp* GetWebApp(const AppId& app_id) const;
+  const WebApp* GetWebApp(const webapps::AppId& app_id) const;
 
   void OnShortcutsMenuIconsRead(
       const std::string& app_id,

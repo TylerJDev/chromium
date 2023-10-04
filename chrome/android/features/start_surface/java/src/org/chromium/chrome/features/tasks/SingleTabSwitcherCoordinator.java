@@ -7,6 +7,7 @@ package org.chromium.chrome.features.tasks;
 import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.util.Size;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,6 +27,7 @@ import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tasks.pseudotab.TabAttributeCache;
+import org.chromium.chrome.browser.tasks.tab_management.RecyclerViewPosition;
 import org.chromium.chrome.browser.tasks.tab_management.TabListFaviconProvider;
 import org.chromium.chrome.browser.tasks.tab_management.TabSwitcher;
 import org.chromium.chrome.browser.tasks.tab_management.TabSwitcherCustomViewManager;
@@ -96,12 +98,6 @@ public class SingleTabSwitcherCoordinator implements TabSwitcher {
             }
 
             @Override
-            public long getLastDirtyTime() {
-                assert false : "should not reach here";
-                return 0;
-            }
-
-            @Override
             public void setBitmapCallbackForTesting(Callback<Bitmap> callback) {
                 assert false : "should not reach here";
             }
@@ -131,9 +127,21 @@ public class SingleTabSwitcherCoordinator implements TabSwitcher {
             }
 
             @Override
+            @VisibleForTesting
+            public Rect getRecyclerViewLocation() {
+                return null;
+            }
+
+            @Override
+            @VisibleForTesting
             public int getListModeForTesting() {
                 assert false : "should not reach here";
                 return 0;
+            }
+
+            @Override
+            public void prepareTabGridView() {
+                assert false : "should not reach here";
             }
 
             @Override
@@ -146,6 +154,12 @@ public class SingleTabSwitcherCoordinator implements TabSwitcher {
 
             @Override
             public Rect getThumbnailLocationOfCurrentTab() {
+                assert false : "should not reach here";
+                return null;
+            }
+
+            @Override
+            public Size getThumbnailSize() {
                 assert false : "should not reach here";
                 return null;
             }
@@ -222,6 +236,14 @@ public class SingleTabSwitcherCoordinator implements TabSwitcher {
     public boolean onBackPressed() {
         return false;
     }
+
+    @Override
+    public int getTabSwitcherTabListModelSize() {
+        return 0;
+    }
+
+    @Override
+    public void setTabSwitcherRecyclerViewPosition(RecyclerViewPosition recyclerViewPosition) {}
 
     /** @see SingleTabSwitcherOnTabletMediator#setVisibility. */
     void setVisibility(boolean isVisible) {

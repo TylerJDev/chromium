@@ -8,7 +8,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/segmentation_platform/internal/database/cached_result_provider.h"
 #include "components/segmentation_platform/internal/database/storage_service.h"
-#include "components/segmentation_platform/internal/execution/default_model_manager.h"
 #include "components/segmentation_platform/internal/execution/execution_request.h"
 #include "components/segmentation_platform/internal/execution/model_executor_impl.h"
 #include "components/segmentation_platform/internal/execution/processing/feature_aggregator_impl.h"
@@ -19,6 +18,7 @@
 #include "components/segmentation_platform/public/config.h"
 #include "components/segmentation_platform/public/input_delegate.h"
 #include "components/segmentation_platform/public/model_provider.h"
+#include "components/segmentation_platform/public/proto/model_metadata.pb.h"
 
 namespace segmentation_platform {
 
@@ -63,7 +63,8 @@ void ExecutionService::Initialize(
       profile_prefs, clock, cached_result_provider);
 
   model_executor_ = std::make_unique<ModelExecutorImpl>(
-      clock, feature_list_query_processor_.get());
+      clock, storage_service->segment_info_database(),
+      feature_list_query_processor_.get());
 
   model_manager_ = storage_service->model_manager();
 
@@ -88,7 +89,8 @@ ModelProvider* ExecutionService::GetModelProvider(SegmentId segment_id,
 
 void ExecutionService::RequestModelExecution(
     std::unique_ptr<ExecutionRequest> request) {
-  DCHECK(request->segment_info);
+  DCHECK_NE(request->segment_id, SegmentId::OPTIMIZATION_TARGET_UNKNOWN);
+  DCHECK_NE(request->model_source, proto::ModelSource::UNKNOWN_MODEL_SOURCE);
   DCHECK(!request->callback.is_null());
   model_executor_->ExecuteModel(std::move(request));
 }

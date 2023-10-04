@@ -96,9 +96,8 @@ void VerifyFormGroupValues(const FormGroup& form_group,
                            bool ignore_status) {
   for (const auto& value : values) {
     SCOPED_TRACE(testing::Message()
-                 << "Expected for type "
-                 << AutofillType::ServerFieldTypeToString(value.type) << "\n\t"
-                 << value.value << " with status "
+                 << "Expected for type " << FieldTypeToStringPiece(value.type)
+                 << "\n\t" << value.value << " with status "
                  << (ignore_status ? "(ignored)" : "")
                  << value.verification_status << "\nFound:"
                  << "\n\t" << form_group.GetRawInfo(value.type)
@@ -161,39 +160,34 @@ void CreateTestAddressFormData(FormData* form,
   form->submission_event =
       mojom::SubmissionIndicatorEvent::SAME_DOCUMENT_NAVIGATION;
 
-  FormFieldData field;
-  test::CreateTestFormField("First Name", "firstname", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("First Name", "firstname", "", "text"));
   types->push_back({NAME_FIRST});
-  test::CreateTestFormField("Middle Name", "middlename", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("Middle Name", "middlename", "", "text"));
   types->push_back({NAME_MIDDLE});
-  test::CreateTestFormField("Last Name", "lastname", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("Last Name", "lastname", "", "text"));
   types->push_back({NAME_LAST, NAME_LAST_SECOND});
-  test::CreateTestFormField("Address Line 1", "addr1", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("Address Line 1", "addr1", "", "text"));
   types->push_back({ADDRESS_HOME_LINE1});
-  test::CreateTestFormField("Address Line 2", "addr2", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("Address Line 2", "addr2", "", "text"));
   types->push_back({ADDRESS_HOME_SUBPREMISE, ADDRESS_HOME_LINE2});
-  test::CreateTestFormField("City", "city", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(CreateTestFormField("City", "city", "", "text"));
   types->push_back({ADDRESS_HOME_CITY});
-  test::CreateTestFormField("State", "state", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(CreateTestFormField("State", "state", "", "text"));
   types->push_back({ADDRESS_HOME_STATE});
-  test::CreateTestFormField("Postal Code", "zipcode", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("Postal Code", "zipcode", "", "text"));
   types->push_back({ADDRESS_HOME_ZIP});
-  test::CreateTestFormField("Country", "country", "", "text", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(CreateTestFormField("Country", "country", "", "text"));
   types->push_back({ADDRESS_HOME_COUNTRY});
-  test::CreateTestFormField("Phone Number", "phonenumber", "", "tel", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(
+      CreateTestFormField("Phone Number", "phonenumber", "", "tel"));
   types->push_back({PHONE_HOME_WHOLE_NUMBER});
-  test::CreateTestFormField("Email", "email", "", "email", &field);
-  form->fields.push_back(field);
+  form->fields.push_back(CreateTestFormField("Email", "email", "", "email"));
   types->push_back({EMAIL_ADDRESS});
 }
 
@@ -325,21 +319,48 @@ std::string GetStrippedValue(const char* value) {
 }
 
 Iban GetIban() {
-  Iban iban(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  Iban iban(Iban::Guid(base::Uuid::GenerateRandomV4().AsLowercaseString()));
   iban.set_value(base::UTF8ToUTF16(std::string(kIbanValue)));
   iban.set_nickname(u"Nickname for Iban");
   return iban;
 }
 
 Iban GetIban2() {
-  Iban iban;
+  Iban iban(Iban::Guid(base::Uuid::GenerateRandomV4().AsLowercaseString()));
   iban.set_value(base::UTF8ToUTF16(std::string(kIbanValue_1)));
   iban.set_nickname(u"My doctor's IBAN");
   return iban;
 }
 
+Iban GetServerIban() {
+  Iban iban(Iban::InstrumentId("1234567"));
+  iban.set_prefix(u"FR76");
+  iban.set_suffix(u"0189");
+  iban.set_length(27);
+  iban.set_nickname(u"My doctor's IBAN");
+  return iban;
+}
+
+Iban GetServerIban2() {
+  Iban iban(Iban::InstrumentId("1234568"));
+  iban.set_prefix(u"BE71");
+  iban.set_suffix(u"8676");
+  iban.set_length(16);
+  iban.set_nickname(u"My sister's IBAN");
+  return iban;
+}
+
+Iban GetServerIban3() {
+  Iban iban(Iban::InstrumentId("1234569"));
+  iban.set_prefix(u"DE91");
+  iban.set_suffix(u"6789");
+  iban.set_length(22);
+  iban.set_nickname(u"My IBAN");
+  return iban;
+}
+
 Iban GetIbanWithoutNickname() {
-  Iban iban;
+  Iban iban(Iban::Guid(base::Uuid::GenerateRandomV4().AsLowercaseString()));
   iban.set_value(base::UTF8ToUTF16(std::string(kIbanValue_2)));
   return iban;
 }
@@ -510,6 +531,11 @@ CreditCard GetRandomCreditCard(CreditCard::RecordType record_type) {
         kNetworks[base::RandInt(0, kNumNetworks - 1)]);
   }
 
+  return credit_card;
+}
+
+CreditCard WithCvc(CreditCard credit_card, std::u16string cvc) {
+  credit_card.set_cvc(cvc);
   return credit_card;
 }
 
@@ -736,11 +762,13 @@ void SetCreditCardInfo(CreditCard* credit_card,
                        const char* card_number,
                        const char* expiration_month,
                        const char* expiration_year,
-                       const std::string& billing_address_id) {
+                       const std::string& billing_address_id,
+                       const std::u16string& cvc) {
   check_and_set(credit_card, CREDIT_CARD_NAME_FULL, name_on_card);
   check_and_set(credit_card, CREDIT_CARD_NUMBER, card_number);
   check_and_set(credit_card, CREDIT_CARD_EXP_MONTH, expiration_month);
   check_and_set(credit_card, CREDIT_CARD_EXP_4_DIGIT_YEAR, expiration_year);
+  credit_card->set_cvc(cvc);
   credit_card->set_billing_address_id(billing_address_id);
 }
 

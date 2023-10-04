@@ -72,6 +72,7 @@
 #include "ui/views/win/fullscreen_handler.h"
 #include "ui/views/win/hwnd_message_handler_delegate.h"
 #include "ui/views/win/hwnd_util.h"
+#include "ui/views/win/pen_event_handler_util.h"
 #include "ui/views/win/scoped_fullscreen_visibility.h"
 
 namespace views {
@@ -421,6 +422,7 @@ base::LazyInstance<HWNDMessageHandler::FullscreenWindowMonitorMap>::
 
 LONG HWNDMessageHandler::last_touch_or_pen_message_time_ = 0;
 bool HWNDMessageHandler::is_pen_active_in_client_area_ = false;
+bool HWNDMessageHandler::handle_pen_events_in_client_area_ = true;
 
 HWNDMessageHandler::HWNDMessageHandler(HWNDMessageHandlerDelegate* delegate,
                                        const std::string& debugging_id)
@@ -767,7 +769,10 @@ void HWNDMessageHandler::Show(ui::WindowShowState show_state,
   // window visibility state and explicitly activate window just like
   // platform window manager would do.
   if (IsHeadless()) {
-    headless_mode_window_->visibility_state = true;
+    if (!headless_mode_window_->visibility_state) {
+      headless_mode_window_->visibility_state = true;
+      delegate_->HandleVisibilityChanged(/*visible=*/true);
+    }
     if (show_state != ui::SHOW_STATE_INACTIVE) {
       Activate();
     }
@@ -848,7 +853,10 @@ void HWNDMessageHandler::Hide() {
   // hiding it just maintain a local flag to track the expected headless
   // window visibility state.
   if (IsHeadless()) {
-    headless_mode_window_->visibility_state = false;
+    if (headless_mode_window_->visibility_state) {
+      headless_mode_window_->visibility_state = false;
+      delegate_->HandleVisibilityChanged(/*visible=*/false);
+    }
     return;
   }
 
@@ -865,7 +873,18 @@ void HWNDMessageHandler::Hide() {
 
 void HWNDMessageHandler::Maximize() {
   if (IsHeadless()) {
-    headless_mode_window_->minmax_state = HeadlessModeWindow::kMaximized;
+    if (headless_mode_window_->minmax_state != HeadlessModeWindow::kMaximized) {
+      headless_mode_window_->minmax_state = HeadlessModeWindow::kMaximized;
+      headless_mode_window_->restored_bounds = headless_mode_window_->bounds;
+      gfx::Rect bounds = headless_mode_window_->bounds;
+      // When running in headless mode there is no screen size that would define
+      // maximized window dimensions. Instead just double the current window
+      // size assuming the user will expect it to increase.
+      bounds.set_width(bounds.width() * 2);
+      bounds.set_height(bounds.height() * 2);
+      SetBoundsInternal(bounds, /*force_size_changed=*/false);
+      delegate_->HandleCommand(static_cast<int>(SC_MAXIMIZE));
+    }
     return;
   }
 
@@ -874,7 +893,12 @@ void HWNDMessageHandler::Maximize() {
 
 void HWNDMessageHandler::Minimize() {
   if (IsHeadless()) {
-    headless_mode_window_->minmax_state = HeadlessModeWindow::kMinimized;
+    if (headless_mode_window_->minmax_state != HeadlessModeWindow::kMinimized) {
+      headless_mode_window_->minmax_state = HeadlessModeWindow::kMinimized;
+      delegate_->HandleWindowMinimizedOrRestored(/*restored=*/false);
+      delegate_->HandleCommand(static_cast<int>(SC_MINIMIZE));
+      delegate_->HandleNativeBlur(nullptr);
+    }
     return;
   }
 
@@ -884,7 +908,21 @@ void HWNDMessageHandler::Minimize() {
 
 void HWNDMessageHandler::Restore() {
   if (IsHeadless()) {
-    headless_mode_window_->minmax_state = HeadlessModeWindow::kNormal;
+    if (headless_mode_window_->minmax_state != HeadlessModeWindow::kNormal) {
+      auto prev_state = headless_mode_window_->minmax_state;
+      headless_mode_window_->minmax_state = HeadlessModeWindow::kNormal;
+
+      if (headless_mode_window_->restored_bounds) {
+        gfx::Rect bounds = *headless_mode_window_->restored_bounds;
+        headless_mode_window_->restored_bounds.reset();
+        SetBoundsInternal(bounds, /*force_size_changed=*/false);
+      }
+
+      if (prev_state == HeadlessModeWindow::kMinimized) {
+        delegate_->HandleWindowMinimizedOrRestored(/*restored=*/true);
+      }
+      delegate_->HandleCommand(static_cast<int>(SC_RESTORE));
+    }
     return;
   }
 
@@ -1195,6 +1233,11 @@ void HWNDMessageHandler::SizeConstraintsChanged() {
     style &= ~WS_MINIMIZEBOX;
   }
   SetWindowLong(hwnd(), GWL_STYLE, style);
+}
+
+// static
+void HWNDMessageHandler::UseDefaultHandlerForPenEventsUntilPenUp() {
+  handle_pen_events_in_client_area_ = false;
 }
 
 bool HWNDMessageHandler::HasChildRenderingWindow() {
@@ -3566,10 +3609,15 @@ LRESULT HWNDMessageHandler::HandlePointerEventTypePen(
     is_pen_active_in_client_area_ = true;
   }
 
-  // Always mark as handled as we don't want to generate WM_MOUSE compatiblity
-  // events.
   if (ref)
-    SetMsgHandled(TRUE);
+    SetMsgHandled(handle_pen_events_in_client_area_);
+
+  // When not dragging, always mark pen events as handled so as not to generate
+  // WM_MOUSE compatibility events.
+  if (message == WM_POINTERUP) {
+    handle_pen_events_in_client_area_ = true;
+  }
+
   return 0;
 }
 
@@ -3829,6 +3877,11 @@ void HWNDMessageHandler::SetHeadlessWindowBounds(const gfx::Rect& bounds) {
     headless_mode_window_->bounds = bounds;
     delegate_->HandleHeadlessWindowBoundsChanged(bounds);
   }
+}
+
+// Declared in pen_event_handler_util.h.
+void UseDefaultHandlerForPenEventsUntilPenUp() {
+  HWNDMessageHandler::UseDefaultHandlerForPenEventsUntilPenUp();
 }
 
 }  // namespace views

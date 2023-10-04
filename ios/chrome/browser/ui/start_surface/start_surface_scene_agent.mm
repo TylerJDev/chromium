@@ -19,10 +19,10 @@
 #import "ios/chrome/browser/shared/model/url/url_util.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
 #import "ios/chrome/browser/ui/start_surface/start_surface_features.h"
 #import "ios/chrome/browser/ui/start_surface/start_surface_recent_tab_browser_agent.h"
 #import "ios/chrome/browser/ui/start_surface/start_surface_util.h"
-#import "ios/chrome/browser/web_state_list/tab_insertion_browser_agent.h"
 #import "ios/web/public/navigation/navigation_manager.h"
 #import "ios/web/public/web_state.h"
 #import "url/gurl.h"
@@ -166,12 +166,11 @@ const char kExcessNTPTabsRemoved[] = "IOS.NTP.ExcessRemovedTabCount";
   // Create a new NTP since there is no existing one.
   TabInsertionBrowserAgent* insertion_agent =
       TabInsertionBrowserAgent::FromBrowser(browser);
-  web::NavigationManager::WebLoadParams params((GURL(kChromeUINewTabURL)));
-  insertion_agent->InsertWebState(
-      params, nullptr, /*opened_by_dom=*/false,
-      TabInsertion::kPositionAutomatically, /*in_background=*/false,
-      /*inherit_opener=*/false, /*should_show_start_surface=*/true,
-      /*should_skip_new_tab_animation=*/false);
+  web::NavigationManager::WebLoadParams web_load_params(
+      (GURL(kChromeUINewTabURL)));
+  TabInsertion::Params tab_insertion_params;
+  tab_insertion_params.should_show_start_surface = true;
+  insertion_agent->InsertWebState(web_load_params, tab_insertion_params);
 }
 
 // Removes duplicate NTP tabs in `browser`'s WebStateList.

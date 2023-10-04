@@ -8,15 +8,21 @@
 #include "base/memory/raw_ptr.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/apps/app_service/app_service_proxy_forward.h"
+#include "chrome/browser/apps/app_service/publishers/compressed_icon_getter.h"
 #include "components/services/app_service/public/cpp/app_types.h"
+#include "components/services/app_service/public/cpp/icon_types.h"
 #include "components/services/app_service/public/cpp/shortcut/shortcut.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+
+namespace ui {
+enum ResourceScaleFactor : int;
+}
 
 namespace apps {
 
 // ShortcutPublisher parent class (in the App Service sense) for all shortcut
 // publishers. See components/services/app_service/README.md.
-class ShortcutPublisher {
+class ShortcutPublisher : public CompressedIconGetter {
  public:
   explicit ShortcutPublisher(AppServiceProxy* proxy);
   ShortcutPublisher(const ShortcutPublisher&) = delete;
@@ -40,6 +46,19 @@ class ShortcutPublisher {
                               const std::string& local_shortcut_id,
                               int64_t display_id) = 0;
 
+  // Removes the shortcut identified by `local_shortcut_id` in the app
+  // identified by 'host_app_id`. This request will be sent to shortcut
+  // publisher to remove shortcut from the platform published it.
+  virtual void RemoveShortcut(const std::string& host_app_id,
+                              const std::string& local_shortcut_id,
+                              UninstallSource uninstall_source) = 0;
+
+  // CompressedIconGetter override.
+  void GetCompressedIconData(const std::string& shortcut_id,
+                             int32_t size_in_dip,
+                             ui::ResourceScaleFactor scale_factor,
+                             LoadIconCallback callback) override;
+
  protected:
   // Publish one `delta` to AppServiceProxy. Should be called whenever the
   // shortcut represented by `delta` undergoes some state change to inform
@@ -47,8 +66,9 @@ class ShortcutPublisher {
   // been called before the first call to this method.
   void PublishShortcut(ShortcutPtr delta);
 
-  // Remove shortcut represented by shortcut id `id`.
-  void RemoveShortcut(const ShortcutId& id);
+  // Calls when shortcut represented by shortcut id `id` has been removed from
+  // the shortcut publisher, and needs to be removed from ShortcutRegistryCache.
+  void ShortcutRemoved(const ShortcutId& id);
 
   AppServiceProxy* proxy() { return proxy_; }
 

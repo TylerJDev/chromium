@@ -99,6 +99,13 @@ class DisplayMediaAccessHandlerTest : public ChromeRenderViewHostTestHarness {
     return request;
   }
 
+  content::MediaStreamRequest MakeExcludeMonitorTypeSurfacesRequest(
+      bool exclude_monitor_type_surfaces) {
+    content::MediaStreamRequest request = MakeRequest(/*request_audio=*/false);
+    request.exclude_monitor_type_surfaces = exclude_monitor_type_surfaces;
+    return request;
+  }
+
   content::MediaResponseCallback MakeCallback(
       base::RunLoop* wait_loop,
       blink::mojom::MediaStreamRequestResult* request_result,
@@ -173,6 +180,7 @@ class DisplayMediaAccessHandlerTest : public ChromeRenderViewHostTestHarness {
 
     EXPECT_TRUE(test_flags_[0].picker_created);
 
+    picker_factory_ = nullptr;
     access_handler_.reset();
     EXPECT_TRUE(test_flags_[0].picker_deleted);
   }
@@ -206,6 +214,8 @@ class DisplayMediaAccessHandlerTest : public ChromeRenderViewHostTestHarness {
                   &wait_loop, &result, devices);
     wait_loop.Run();
     EXPECT_FALSE(test_flags_[0].picker_created);
+
+    picker_factory_ = nullptr;
     access_handler_.reset();
     EXPECT_EQ(expected_result, result);
 
@@ -223,8 +233,9 @@ class DisplayMediaAccessHandlerTest : public ChromeRenderViewHostTestHarness {
   std::vector<FakeDesktopMediaPickerFactory::TestFlags> test_flags_;
 
  protected:
-  raw_ptr<FakeDesktopMediaPickerFactory, DanglingUntriaged> picker_factory_;
+  // `access_handler` owns `picker_factory` and must outlive it.
   std::unique_ptr<DisplayMediaAccessHandler> access_handler_;
+  raw_ptr<FakeDesktopMediaPickerFactory> picker_factory_;
 };
 
 TEST_F(DisplayMediaAccessHandlerTest, PermissionGiven) {
@@ -414,7 +425,6 @@ TEST_F(DisplayMediaAccessHandlerTest, UpdateMediaRequestStateWithClosing) {
   EXPECT_TRUE(queue_it != GetRequestQueues().end());
   EXPECT_EQ(0u, queue_it->second.size());
   EXPECT_TRUE(test_flags_[0].picker_deleted);
-  access_handler_.reset();
 }
 
 TEST_F(DisplayMediaAccessHandlerTest, CorrectHostAsksForPermissions) {
@@ -554,7 +564,6 @@ TEST_F(DisplayMediaAccessHandlerTest, WebContentsDestroyed) {
 
   NotifyWebContentsDestroyed();
   EXPECT_EQ(0u, GetRequestQueues().size());
-  access_handler_.reset();
 }
 
 TEST_F(DisplayMediaAccessHandlerTest, MultipleRequests) {
@@ -614,7 +623,6 @@ TEST_F(DisplayMediaAccessHandlerTest, MultipleRequests) {
   // default.
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::SYSTEM_PERMISSION_DENIED,
             result);
-  access_handler_.reset();
   return;
 #endif
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::OK, result);
@@ -632,8 +640,6 @@ TEST_F(DisplayMediaAccessHandlerTest, MultipleRequests) {
   EXPECT_EQ(blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
             devices[0].type);
   EXPECT_FALSE(devices[0].IsSameDevice(first_device));
-
-  access_handler_.reset();
 }
 
 TEST_F(DisplayMediaAccessHandlerTest,
@@ -723,14 +729,12 @@ TEST_F(DisplayMediaAccessHandlerTest, ChangeSourceWithPendingPickerRequest) {
   // default.
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::SYSTEM_PERMISSION_DENIED,
             results[0]);
-  access_handler_.reset();
   return;
 #endif
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::OK, results[0]);
   EXPECT_FALSE(test_flags_[1].picker_created);
   EXPECT_FALSE(test_flags_[1].picker_deleted);
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::OK, results[1]);
-  access_handler_.reset();
 }
 
 TEST_F(DisplayMediaAccessHandlerTest,
@@ -760,14 +764,12 @@ TEST_F(DisplayMediaAccessHandlerTest,
   // default.
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::SYSTEM_PERMISSION_DENIED,
             results[0]);
-  access_handler_.reset();
   return;
 #endif
   EXPECT_FALSE(test_flags_[1].picker_created);
   EXPECT_FALSE(test_flags_[1].picker_deleted);
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
             results[1]);
-  access_handler_.reset();
 }
 
 TEST_F(DisplayMediaAccessHandlerTest,
@@ -798,13 +800,11 @@ TEST_F(DisplayMediaAccessHandlerTest,
   // default.
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::SYSTEM_PERMISSION_DENIED,
             results[0]);
-  access_handler_.reset();
   return;
 #endif
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::OK, results[0]);
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::INVALID_STATE, results[1]);
   EXPECT_EQ(blink::mojom::MediaStreamRequestResult::OK, results[2]);
-  access_handler_.reset();
 }
 
 class DisplayMediaAccessHandlerTestWithSelfBrowserSurface
@@ -836,5 +836,38 @@ TEST_P(DisplayMediaAccessHandlerTestWithSelfBrowserSurface,
       &wait_loop, &result, devices);
   wait_loop.Run();
   EXPECT_EQ(exclude_self_browser_surface_, IsWebContentsExcluded());
-  access_handler_.reset();
+}
+
+class DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces
+    : public DisplayMediaAccessHandlerTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces()
+      : exclude_monitor_type_surfaces_(GetParam()) {}
+
+  ~DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces() override = default;
+
+ protected:
+  const bool exclude_monitor_type_surfaces_;
+};
+
+INSTANTIATE_TEST_SUITE_P(_,
+                         DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces,
+                         ::testing::Bool());
+
+TEST_P(DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces,
+       CheckMonitorTypeSurfacesAreExcluded) {
+  SetTestFlags({{/*expect_screens=*/!exclude_monitor_type_surfaces_,
+                 /*expect_windows=*/true,
+                 /*expect_tabs=*/true, /*expect_current_tab=*/false,
+                 /*expect_audio=*/false, content::DesktopMediaID(),
+                 /*cancelled=*/false}});
+  blink::mojom::MediaStreamRequestResult result;
+  blink::mojom::StreamDevices devices;
+  base::RunLoop wait_loop;
+
+  HandleRequest(
+      MakeExcludeMonitorTypeSurfacesRequest(exclude_monitor_type_surfaces_),
+      &wait_loop, &result, devices);
+  wait_loop.Run();
 }

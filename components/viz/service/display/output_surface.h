@@ -14,6 +14,7 @@
 #include "components/viz/common/gpu/gpu_vsync_callback.h"
 #include "components/viz/common/resources/returned_resource.h"
 #include "components/viz/service/display/pending_swap_params.h"
+#include "components/viz/service/display/render_pass_alpha_type.h"
 #include "components/viz/service/display/software_output_device.h"
 #include "components/viz/service/viz_service_export.h"
 #include "gpu/command_buffer/common/mailbox.h"
@@ -50,8 +51,7 @@ class VIZ_SERVICE_EXPORT OutputSurface {
  public:
   enum Type {
     kSoftware = 0,
-    kOpenGL = 1,
-    kVulkan = 2,
+    kSkia = 1,
   };
 
   enum class OrientationMode {
@@ -150,7 +150,7 @@ class VIZ_SERVICE_EXPORT OutputSurface {
   };
 
   // Constructor for skia-based compositing.
-  explicit OutputSurface(Type type);
+  OutputSurface();
   // Constructor for software compositing.
   explicit OutputSurface(std::unique_ptr<SoftwareOutputDevice> software_device);
 
@@ -212,7 +212,7 @@ class VIZ_SERVICE_EXPORT OutputSurface {
     gfx::ColorSpace color_space;
     // TODO(sunnyps): Change to SkColorType.
     gfx::BufferFormat format = gfx::BufferFormat::RGBA_8888;
-    SkAlphaType alpha_type = kPremul_SkAlphaType;
+    RenderPassAlphaType alpha_type = RenderPassAlphaType::kPremul;
 
     bool operator==(const ReshapeParams& other) const {
       return size == other.size &&

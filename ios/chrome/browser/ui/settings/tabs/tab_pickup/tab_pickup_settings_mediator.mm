@@ -6,14 +6,15 @@
 
 #import "components/prefs/pref_service.h"
 #import "components/sync/service/sync_service.h"
+#import "components/sync/service/sync_user_settings.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_backed_boolean.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
-#import "ios/chrome/browser/sync/sync_observer_bridge.h"
+#import "ios/chrome/browser/shared/model/utils/observable_boolean.h"
+#import "ios/chrome/browser/sync/model/sync_observer_bridge.h"
 #import "ios/chrome/browser/tabs/tab_pickup/features.h"
 #import "ios/chrome/browser/ui/settings/tabs/tab_pickup/tab_pickup_settings_consumer.h"
 #import "ios/chrome/browser/ui/settings/tabs/tab_pickup/tab_pickup_settings_table_view_controller.h"
 #import "ios/chrome/browser/ui/settings/tabs/tab_pickup/tab_pickup_settings_table_view_controller_delegate.h"
-#import "ios/chrome/browser/ui/settings/utils/observable_boolean.h"
-#import "ios/chrome/browser/ui/settings/utils/pref_backed_boolean.h"
 
 @interface TabPickupSettingsMediator () <BooleanObserver,
                                          SyncObserverModelBridge>
@@ -55,7 +56,10 @@
     _tabPickupEnabledPref.observer = self;
 
     [_consumer setTabPickupEnabled:_tabPickupEnabledPref.value];
-    [_consumer setSyncEnabled:_syncService->IsSyncFeatureEnabled()];
+    const bool tabSyncEnabled =
+        _syncService->GetUserSettings()->GetSelectedTypes().Has(
+            syncer::UserSelectableType::kTabs);
+    [_consumer setTabSyncEnabled:tabSyncEnabled];
   }
   return self;
 }
@@ -79,7 +83,10 @@
 #pragma mark - SyncObserverModelBridge
 
 - (void)onSyncStateChanged {
-  [_consumer setSyncEnabled:_syncService->IsSyncFeatureEnabled()];
+  const bool tabSyncEnabled =
+      _syncService->GetUserSettings()->GetSelectedTypes().Has(
+          syncer::UserSelectableType::kTabs);
+  [_consumer setTabSyncEnabled:tabSyncEnabled];
 }
 
 #pragma mark - BooleanObserver

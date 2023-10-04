@@ -37,7 +37,7 @@ class ChromeScrollJank(TestSuite):
     return DiffTestBlueprint(
         trace=DataPath('event_latency_with_args.perfetto-trace'),
         query="""
-        SELECT RUN_METRIC('chrome/event_latency_to_breakdowns.sql');
+        SELECT IMPORT('chrome.scroll_jank.event_latency_to_breakdowns');
 
         SELECT
           event_latency_ts,
@@ -48,7 +48,7 @@ class ChromeScrollJank(TestSuite):
           BrowserMainToRendererCompositorNs,
           RendererCompositorQueueingDelayNs,
           unknown_stages_seen
-        FROM event_latency_to_breakdowns
+        FROM chrome_event_latency_to_breakdowns
         ORDER BY event_latency_id
         LIMIT 30;
         """,
@@ -58,7 +58,7 @@ class ChromeScrollJank(TestSuite):
     return DiffTestBlueprint(
         trace=DataPath('chrome_input_with_frame_view.pftrace'),
         query="""
-        SELECT RUN_METRIC('chrome/chrome_scroll_jank_v3.sql');
+        SELECT IMPORT('chrome.scroll_jank.scroll_jank_v3');
 
         SELECT
           cause_of_jank,
@@ -73,7 +73,7 @@ class ChromeScrollJank(TestSuite):
     return DiffTestBlueprint(
         trace=DataPath('chrome_input_with_frame_view.pftrace'),
         query="""
-        SELECT RUN_METRIC('chrome/chrome_scroll_jank_v3.sql');
+        SELECT IMPORT('chrome.scroll_jank.scroll_jank_v3');
 
         SELECT
           delayed_frame_percentage
@@ -85,7 +85,7 @@ class ChromeScrollJank(TestSuite):
     return DiffTestBlueprint(
         trace=DataPath('event_latency_with_args.perfetto-trace'),
         query="""
-        SELECT RUN_METRIC('chrome/event_latency_scroll_jank.sql');
+        SELECT IMPORT('chrome.scroll_jank.event_latency_scroll_jank');
 
         SELECT
           jank,
@@ -100,7 +100,7 @@ class ChromeScrollJank(TestSuite):
           next_dur,
           prev_ts,
           prev_dur
-        FROM scroll_event_latency_jank
+        FROM chrome_scroll_event_latency_jank
         ORDER BY jank DESC
         LIMIT 10;
         """,
@@ -110,7 +110,7 @@ class ChromeScrollJank(TestSuite):
     return DiffTestBlueprint(
         trace=DataPath('event_latency_with_args.perfetto-trace'),
         query="""
-        SELECT RUN_METRIC('chrome/event_latency_scroll_jank_cause.sql');
+        SELECT IMPORT('chrome.scroll_jank.event_latency_scroll_jank_cause');
 
         SELECT
           dur,
@@ -123,7 +123,7 @@ class ChromeScrollJank(TestSuite):
           cause_of_jank,
           max_delta_dur_ns,
           sub_cause_of_jank
-        FROM event_latency_scroll_jank_cause
+        FROM chrome_event_latency_scroll_jank_cause
         ORDER by ts;
         """,
         out=Path('event_latency_scroll_jank_cause.out'))
@@ -373,7 +373,8 @@ class ChromeScrollJank(TestSuite):
     return DiffTestBlueprint(
         trace=DataPath('fling_with_input_delay.pftrace'),
         query="""
-        SELECT RUN_METRIC('chrome/chrome_tasks_delaying_input_processing.sql',
+        SELECT
+        RUN_METRIC('chrome/chrome_tasks_delaying_input_processing.sql',
           'duration_causing_jank_ms',
          /* duration_causing_jank_ms = */ '8');
 
@@ -391,7 +392,7 @@ class ChromeScrollJank(TestSuite):
         trace=DataPath('long_task_tracking_trace'),
         query="""
         SELECT
-          RUN_METRIC('chrome/chrome_long_tasks_delaying_input_processing.sql');
+        RUN_METRIC('chrome/chrome_long_tasks_delaying_input_processing.sql');
 
         SELECT
           full_name,

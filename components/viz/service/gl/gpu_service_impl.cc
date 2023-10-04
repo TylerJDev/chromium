@@ -26,12 +26,14 @@
 #include "base/unguessable_token.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "components/startup_metric_utils/gpu/startup_metric_utils.h"
 #include "components/viz/common/features.h"
 #include "gpu/command_buffer/client/gpu_memory_buffer_manager.h"
 #include "gpu/command_buffer/service/dawn_caching_interface.h"
 #include "gpu/command_buffer/service/gpu_switches.h"
 #include "gpu/command_buffer/service/scheduler.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_factory.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
 #include "gpu/command_buffer/service/skia_utils.h"
 #include "gpu/command_buffer/service/sync_point_manager.h"
@@ -103,6 +105,11 @@
 #endif  // BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
 
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
+#if !BUILDFLAG(IS_CHROMEOS)
+#include "components/ml/webnn/features.h"
+#include "services/webnn/webnn_context_provider_impl.h"
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN)
 #include "components/viz/common/overlay_state/win/overlay_state_service.h"
@@ -540,7 +547,9 @@ void GpuServiceImpl::UpdateGPUInfo() {
 
   // Record initialization only after collecting the GPU info because that can
   // take a significant amount of time.
-  gpu_info_.initialization_time = base::TimeTicks::Now() - start_time_;
+  base::TimeTicks now = base::TimeTicks::Now();
+  gpu_info_.initialization_time = now - start_time_;
+  startup_metric_utils::GetGpu().RecordGpuInitialized(now);
 
   // This metric code may be removed after the following investigation:
   // crbug.com/1350257
@@ -552,12 +561,12 @@ void GpuServiceImpl::UpdateGPUInfo() {
       TRACE_ID_LOCAL(this), start_time_);
   TRACE_EVENT_NESTABLE_ASYNC_END_WITH_TIMESTAMP0(
       kGpuInitializationEventCategory, kGpuInitializationEvent,
-      TRACE_ID_LOCAL(this), base::TimeTicks::Now());
+      TRACE_ID_LOCAL(this), now);
 }
 
-void GpuServiceImpl::UpdateGPUInfoGL() {
+void GpuServiceImpl::UpdateGPUInfoGL(gl::GLDisplay* display) {
   DCHECK(main_runner_->BelongsToCurrentThread());
-  gpu::CollectGraphicsInfoGL(&gpu_info_, GetContextState()->display());
+  gpu::CollectGraphicsInfoGL(&gpu_info_, display);
   gpu_host_->DidUpdateGPUInfo(gpu_info_);
 }
 
@@ -918,6 +927,16 @@ void GpuServiceImpl::BindClientGmbInterface(
       client_id, std::move(pending_receiver), this, io_runner_);
 }
 
+#if !BUILDFLAG(IS_CHROMEOS)
+void GpuServiceImpl::BindWebNNContextProvider(
+    mojo::PendingReceiver<webnn::mojom::WebNNContextProvider> pending_receiver,
+    int client_id) {
+  CHECK(base::FeatureList::IsEnabled(
+      webnn::features::kEnableMachineLearningNeuralNetworkService));
+  webnn::WebNNContextProviderImpl::Create(std::move(pending_receiver));
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
 void GpuServiceImpl::CreateGpuMemoryBuffer(
     gfx::GpuMemoryBufferId id,
     const gfx::Size& size,
@@ -1111,7 +1130,8 @@ void GpuServiceImpl::EstablishGpuChannel(int32_t client_id,
       // This returns a null handle, which is treated by the client as a failure
       // case.
       std::move(callback).Run(mojo::ScopedMessagePipeHandle(), gpu::GPUInfo(),
-                              gpu::GpuFeatureInfo());
+                              gpu::GpuFeatureInfo(),
+                              gpu::SharedImageCapabilities());
       return;
     }
 
@@ -1126,13 +1146,15 @@ void GpuServiceImpl::EstablishGpuChannel(int32_t client_id,
 
   auto channel_token = base::UnguessableToken::Create();
   gpu::GpuChannel* gpu_channel = gpu_channel_manager_->EstablishChannel(
-      channel_token, client_id, client_tracing_id, is_gpu_host);
+      channel_token, client_id, client_tracing_id, is_gpu_host, gpu_extra_info_,
+      gpu_memory_buffer_factory_.get());
 
   if (!gpu_channel) {
     // This returns a null handle, which is treated by the client as a failure
     // case.
     std::move(callback).Run(mojo::ScopedMessagePipeHandle(), gpu::GPUInfo(),
-                            gpu::GpuFeatureInfo());
+                            gpu::GpuFeatureInfo(),
+                            gpu::SharedImageCapabilities());
     return;
   }
   mojo::MessagePipe pipe;
@@ -1140,9 +1162,9 @@ void GpuServiceImpl::EstablishGpuChannel(int32_t client_id,
 
   media_gpu_channel_manager_->AddChannel(client_id, channel_token);
 
-  gpu_channel->SetGpuExtraInfo(gpu_extra_info_);
-  std::move(callback).Run(std::move(pipe.handle1), gpu_info_,
-                          gpu_feature_info_);
+  std::move(callback).Run(
+      std::move(pipe.handle1), gpu_info_, gpu_feature_info_,
+      gpu_channel->shared_image_stub()->factory()->MakeCapabilities());
 }
 
 void GpuServiceImpl::SetChannelClientPid(int32_t client_id,
@@ -1247,7 +1269,7 @@ void GpuServiceImpl::GpuSwitched(gl::GpuPreference active_gpu_heuristic) {
     ui::GpuSwitchingManager::GetInstance()->NotifyGpuSwitched(
         active_gpu_heuristic);
   }
-  GpuServiceImpl::UpdateGPUInfoGL();
+  GpuServiceImpl::UpdateGPUInfoGL(GetContextState()->display());
 }
 
 void GpuServiceImpl::DisplayAdded() {
@@ -1349,7 +1371,7 @@ void GpuServiceImpl::OnBackgroundedOnMainThread() {
     visibility_changed_callback_.Run(false);
     if (gpu_preferences_.enable_gpu_benchmarking_extension) {
       ++gpu_info_.visibility_callback_call_count;
-      UpdateGPUInfoGL();
+      UpdateGPUInfoGL(GetContextState()->display());
     }
   }
 }
@@ -1371,7 +1393,7 @@ void GpuServiceImpl::OnForegroundedOnMainThread() {
     visibility_changed_callback_.Run(true);
     if (gpu_preferences_.enable_gpu_benchmarking_extension) {
       ++gpu_info_.visibility_callback_call_count;
-      UpdateGPUInfoGL();
+      UpdateGPUInfoGL(GetContextState()->display());
     }
   }
   gpu_channel_manager_->OnApplicationForegounded();

@@ -21,7 +21,6 @@
 #include "components/password_manager/core/browser/password_store_interface.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "content/public/browser/web_contents.h"
-#include "ui/android/window_android.h"
 #include "ui/gfx/native_widget_types.h"
 
 using autofill::mojom::FocusedFieldType;
@@ -83,8 +82,7 @@ AllPasswordsBottomSheetController::AllPasswordsBottomSheetController(
 
 AllPasswordsBottomSheetController::~AllPasswordsBottomSheetController() {
   if (authenticator_) {
-    authenticator_->Cancel(
-        device_reauth::DeviceAuthRequester::kAllPasswordsList);
+    authenticator_->Cancel();
   }
 }
 
@@ -121,16 +119,15 @@ void AllPasswordsBottomSheetController::OnCredentialSelected(
     // WebContents. And AllPasswordBottomSheetController is owned by
     // PasswordAccessoryController.
     DCHECK(client_);
-    scoped_refptr<device_reauth::DeviceAuthenticator> authenticator =
+    std::unique_ptr<device_reauth::DeviceAuthenticator> authenticator =
         client_->GetDeviceAuthenticator();
     if (password_manager_util::CanUseBiometricAuth(authenticator.get(),
                                                    client_)) {
       authenticator_ = std::move(authenticator);
-      authenticator_->Authenticate(
-          device_reauth::DeviceAuthRequester::kAllPasswordsList,
+      authenticator_->AuthenticateWithMessage(
+          u"",
           base::BindOnce(&AllPasswordsBottomSheetController::OnReauthCompleted,
-                         base::Unretained(this), password),
-          /*use_last_valid_auth=*/true);
+                         base::Unretained(this), password));
       return;
     }
 

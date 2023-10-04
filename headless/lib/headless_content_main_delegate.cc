@@ -401,12 +401,7 @@ HeadlessContentMainDelegate::RunProcess(
   browser_runner->Run();
   browser_runner->Shutdown();
 
-  int exit_code = browser_->exit_code();
-
-  browser_.reset();
-
-  // Return an int here to disable calling content::BrowserMain.
-  return exit_code;
+  return browser_->exit_code();
 }
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -463,6 +458,14 @@ absl::optional<int> HeadlessContentMainDelegate::PreBrowserMain() {
 #endif
   return absl::nullopt;
 }
+
+#if BUILDFLAG(IS_WIN)
+bool HeadlessContentMainDelegate::ShouldHandleConsoleControlEvents() {
+  // Handle console control events so that orderly shutdown can be performed by
+  // HeadlessContentBrowserClient's override of SessionEnding.
+  return true;
+}
+#endif
 
 content::ContentClient* HeadlessContentMainDelegate::CreateContentClient() {
   return &content_client_;

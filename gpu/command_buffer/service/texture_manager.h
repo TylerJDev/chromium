@@ -82,14 +82,6 @@ class GPU_GLES2_EXPORT TexturePassthrough final
   void BindToServiceId(GLuint service_id);
 #endif
 
-#if BUILDFLAG(IS_APPLE)
-  // Return true if and only if the decoder should BindTexImage / CopyTexImage
-  // us before sampling.
-  bool is_bind_pending() const { return is_bind_pending_; }
-  void set_bind_pending() { is_bind_pending_ = true; }
-  void clear_bind_pending() { is_bind_pending_ = false; }
-#endif
-
   void SetEstimatedSize(size_t size);
   size_t estimated_size() const { return estimated_size_; }
 
@@ -104,9 +96,6 @@ class GPU_GLES2_EXPORT TexturePassthrough final
   const GLuint owned_service_id_ = 0;
 
   bool have_context_;
-#if BUILDFLAG(IS_APPLE)
-  bool is_bind_pending_ = false;
-#endif
 
   size_t estimated_size_ = 0;
 
@@ -753,7 +742,6 @@ struct DecoderTextureState {
   bool force_int_or_srgb_cube_texture_complete;
   bool unpack_alignment_workaround_with_unpack_buffer;
   bool unpack_overlapping_rows_separately_unpack_buffer;
-  bool unpack_image_height_workaround_with_unpack_buffer;
 };
 
 // This class keeps track of the textures and their sizes so we can do NPOT and

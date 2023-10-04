@@ -87,6 +87,7 @@ class StaticSelection;
 class Text;
 class TypeConversions;
 class UnionTypesTest;
+class HTMLImageElement;
 
 template <typename NodeType>
 class StaticNodeTypeList;
@@ -527,6 +528,7 @@ class Internals final : public ScriptWrappable {
 
   void forceLoseCanvasContext(OffscreenCanvas* offscreencanvas,
                               const String& context_type);
+  void disableCanvasAcceleration(HTMLCanvasElement* canvas);
 
   void setScrollChain(ScrollState*,
                       const HeapVector<Member<Element>>& elements,
@@ -641,6 +643,10 @@ class Internals final : public ScriptWrappable {
   void setBackForwardCacheRestorationBufferSize(unsigned int maxSize);
 
   InternalsUkmRecorder* initializeUKMRecorder();
+
+  // Returns scripts that created an image, as observed by
+  // the LCPScriptObserver Probe.
+  Vector<String> getCreatorScripts(HTMLImageElement* img);
 
  private:
   Document* ContextDocument() const;

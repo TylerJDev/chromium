@@ -8,12 +8,16 @@
 #include <tuple>
 #include <vector>
 
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/time/time.h"
 #include "chrome/browser/cart/cart_service_factory.h"
+#include "chrome/browser/commerce/shopping_service_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/new_tab_page/modules/history_clusters/cart/cart_processor.h"
+#include "chrome/browser/new_tab_page/modules/history_clusters/discount/discount.mojom.h"
+#include "chrome/browser/new_tab_page/modules/history_clusters/discount/discount_processor.h"
 #include "chrome/browser/new_tab_page/modules/history_clusters/history_clusters_module_service.h"
 #include "chrome/browser/new_tab_page/modules/history_clusters/history_clusters_module_service_factory.h"
 #include "chrome/browser/new_tab_page/modules/history_clusters/history_clusters_module_util.h"
@@ -44,6 +48,17 @@ constexpr int kMinRequiredVisits = 3;
 
 constexpr int kMinRequiredRelatedSearches = 2;
 
+constexpr char kDismissReasonMetricName[] =
+    "NewTabPage.HistoryClusters.DismissReason";
+
+// This enum must match NTPHistoryClustersDismissReason in enums.xml. Do not
+// reorder or remove items, and update kMaxValue when new items are added.
+enum NTPHistoryClustersDismissReason {
+  kNotInterested = 0,
+  kDone = 1,
+  kMaxValue = kDone,
+};
+
 }  // namespace
 
 HistoryClustersPageHandlerV2::HistoryClustersPageHandlerV2(
@@ -60,6 +75,12 @@ HistoryClustersPageHandlerV2::HistoryClustersPageHandlerV2(
           ntp_features::kNtpChromeCartInHistoryClusterModule)) {
     cart_processor_ = std::make_unique<CartProcessor>(
         CartServiceFactory::GetForProfile(profile_));
+  }
+
+  if (base::FeatureList::IsEnabled(
+          ntp_features::kNtpHistoryClustersModuleDiscounts)) {
+    discount_processor_ = std::make_unique<DiscountProcessor>(
+        commerce::ShoppingServiceFactory::GetForBrowserContext(profile_));
   }
 }
 
@@ -156,6 +177,22 @@ void HistoryClustersPageHandlerV2::GetCartForCluster(
   cart_processor_->GetCartForCluster(std::move(cluster), std::move(callback));
 }
 
+void HistoryClustersPageHandlerV2::GetDiscountsForCluster(
+    history_clusters::mojom::ClusterPtr cluster,
+    GetDiscountsForClusterCallback callback) {
+  if (!base::FeatureList::IsEnabled(
+          ntp_features::kNtpHistoryClustersModuleDiscounts)) {
+    std::move(callback).Run(
+        base::flat_map<
+            GURL, std::vector<
+                      ntp::history_clusters::discount::mojom::DiscountPtr>>());
+    return;
+  }
+  DCHECK(discount_processor_);
+  discount_processor_->GetDiscountsForCluster(std::move(cluster),
+                                              std::move(callback));
+}
+
 void HistoryClustersPageHandlerV2::ShowJourneysSidePanel(
     const std::string& query) {
   // TODO(crbug.com/1341399): Revisit integration with the side panel once the
@@ -193,4 +230,20 @@ void HistoryClustersPageHandlerV2::UpdateClusterVisitsInteractionState(
   history_service->UpdateVisitsInteractionState(
       visit_ids, static_cast<history::ClusterVisit::InteractionState>(state),
       base::BindOnce([]() {}), &update_visits_task_tracker_);
+
+  switch (state) {
+    case history_clusters::mojom::InteractionState::kHidden:
+      base::UmaHistogramEnumeration(
+          kDismissReasonMetricName,
+          NTPHistoryClustersDismissReason::kNotInterested);
+      break;
+    case history_clusters::mojom::InteractionState::kDone:
+      base::UmaHistogramEnumeration(kDismissReasonMetricName,
+                                    NTPHistoryClustersDismissReason::kDone);
+      break;
+    case history_clusters::mojom::InteractionState::kDefault:
+      // Do nothing. Can happen when performing an 'Undo' action on the client,
+      // which restores a cluster to the Default state.
+      break;
+  }
 }

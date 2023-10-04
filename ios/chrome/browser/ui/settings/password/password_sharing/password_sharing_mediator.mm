@@ -4,19 +4,49 @@
 
 #import "ios/chrome/browser/ui/settings/password/password_sharing/password_sharing_mediator.h"
 
+#import "base/strings/sys_string_conversions.h"
+#import "components/password_manager/core/browser/password_form.h"
+#import "components/password_manager/core/browser/sharing/password_sender_service.h"
 #import "components/password_manager/core/browser/sharing/recipients_fetcher.h"
 #import "components/password_manager/core/browser/sharing/recipients_fetcher_impl.h"
+#import "components/password_manager/core/browser/ui/credential_ui_entry.h"
+#import "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
 #import "components/signin/public/identity_manager/identity_manager.h"
+#import "ios/chrome/app/tests_hook.h"
 #import "ios/chrome/browser/ui/settings/password/password_sharing/password_sharing_mediator_delegate.h"
 #import "ios/chrome/browser/ui/settings/password/password_sharing/recipient_info.h"
 #import "ios/chrome/common/channel_info.h"
 #import "services/network/public/cpp/shared_url_loader_factory.h"
 
+namespace {
+
 using password_manager::FetchFamilyMembersRequestStatus;
 using password_manager::RecipientInfo;
+using password_manager::RecipientsFetcher;
+
+std::unique_ptr<RecipientsFetcher> CreateRecipientsFetcher(
+    scoped_refptr<network::SharedURLLoaderFactory> sharedURLLoaderFactory,
+    signin::IdentityManager* identityManager) {
+  std::unique_ptr<RecipientsFetcher> test_recipients_fetcher =
+      tests_hook::GetOverriddenRecipientsFetcher();
+  if (test_recipients_fetcher) {
+    return test_recipients_fetcher;
+  }
+  return std::make_unique<password_manager::RecipientsFetcherImpl>(
+      GetChannel(), sharedURLLoaderFactory, identityManager);
+}
+
+}  // namespace
 
 @interface PasswordSharingMediator () {
-  std::unique_ptr<password_manager::RecipientsFetcher> _recipientsFetcher;
+  // Fetches information about the potential sharing recipients of the user.
+  std::unique_ptr<RecipientsFetcher> _recipientsFetcher;
+
+  // Sends passwords to specified recipients.
+  raw_ptr<password_manager::PasswordSenderService> _passwordSenderService;
+
+  // Service providing a view on user's saved passwords.
+  raw_ptr<password_manager::SavedPasswordsPresenter> _savedPasswordsPresenter;
 }
 
 @property(nonatomic, weak) id<PasswordSharingMediatorDelegate> delegate;
@@ -26,16 +56,21 @@ using password_manager::RecipientInfo;
 @implementation PasswordSharingMediator
 
 - (instancetype)initWithDelegate:(id<PasswordSharingMediatorDelegate>)delegate
-          SharedURLLoaderFactory:
+          sharedURLLoaderFactory:
               (scoped_refptr<network::SharedURLLoaderFactory>)
                   sharedURLLoaderFactory
-                 identityManager:(signin::IdentityManager*)identityManager {
+                 identityManager:(signin::IdentityManager*)identityManager
+         savedPasswordsPresenter:
+             (password_manager::SavedPasswordsPresenter*)savedPasswordsPresenter
+           passwordSenderService:
+               (password_manager::PasswordSenderService*)passwordSenderService {
   self = [super init];
   if (self) {
     _delegate = delegate;
     _recipientsFetcher =
-        std::make_unique<password_manager::RecipientsFetcherImpl>(
-            GetChannel(), sharedURLLoaderFactory, identityManager);
+        CreateRecipientsFetcher(sharedURLLoaderFactory, identityManager);
+    _passwordSenderService = passwordSenderService;
+    _savedPasswordsPresenter = savedPasswordsPresenter;
 
     __weak __typeof__(self) weakSelf = self;
     _recipientsFetcher->FetchFamilyMembers(base::BindOnce(
@@ -45,6 +80,23 @@ using password_manager::RecipientInfo;
         }));
   }
   return self;
+}
+
+- (void)sendSelectedPasswordsToRecipients:
+    (NSArray<RecipientInfoForIOSDisplay*>*)recipients {
+  std::vector<password_manager::PasswordForm> passwords;
+  for (const password_manager::CredentialUIEntry& credential :
+       self.selectedCredentials) {
+    std::vector<password_manager::PasswordForm> credential_forms =
+        _savedPasswordsPresenter->GetCorrespondingPasswordForms(credential);
+    passwords.insert(passwords.end(), credential_forms.begin(),
+                     credential_forms.end());
+  }
+  for (RecipientInfoForIOSDisplay* recipient in recipients) {
+    _passwordSenderService->SendPasswords(
+        passwords, {.user_id = base::SysNSStringToUTF8(recipient.userID),
+                    .public_key = recipient.publicKey});
+  }
 }
 
 #pragma mark - Private methods

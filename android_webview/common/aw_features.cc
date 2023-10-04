@@ -11,18 +11,10 @@ namespace features {
 
 // Alphabetical:
 
-// Enables package name logging for the most popular WebView embedders that are
-// on a dynamically generated allowlist.
-// The filtering for package names will be done on the server side using this
-// flag
-BASE_FEATURE(kWebViewAppsPackageNamesServerSideAllowlist,
-             "WebViewAppsPackageNamesServerSideAllowlist",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Enable brotli compression support in WebView.
 BASE_FEATURE(kWebViewBrotliSupport,
              "WebViewBrotliSupport",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Check layer_tree_frame_sink_id when return resources to compositor.
 BASE_FEATURE(kWebViewCheckReturnResources,
@@ -41,11 +33,20 @@ BASE_FEATURE(kWebViewConnectionlessSafeBrowsing,
              "WebViewConnectionlessSafeBrowsing",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Kill switch for adding CHECKs to loading pak files.
+BASE_FEATURE(kWebViewCheckPakFileDescriptors,
+             "WebViewCheckPakFileDescriptors",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // Cache origins which have camera/mic permissions approved to allow subsequent
 // calls to enumerate devices to return device labels.
 BASE_FEATURE(kWebViewEnumerateDevicesCache,
              "WebViewEnumerateDevicesCache",
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kWebViewExitReasonMetric,
+             "WebViewExitReasonMetric",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enable WebView to automatically darken the page in FORCE_DARK_AUTO mode if
 // the app's theme is dark.
@@ -106,23 +107,23 @@ BASE_FEATURE(kWebViewRecordAppDataDirectorySize,
              "WebViewRecordAppDataDirectorySize",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Whether to report frame metrics to the Android.Jank.FrameDuration and
-// Android.Jank.FrameJankStatus histograms.
-BASE_FEATURE(kWebViewReportFrameMetrics,
-             "WebViewReportFrameMetrics",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Flag to restrict main frame Web Content to verified web content. Verification
 // happens via Digital Asset Links.
 BASE_FEATURE(kWebViewRestrictSensitiveContent,
              "WebViewRestrictSensitiveContent",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enable doing a JNI call to check safe browsing safe mode status before doing
-// a safe browsing check.
-BASE_FEATURE(kWebViewSafeBrowsingSafeMode,
-             "WebViewSafeBrowsingSafeMode",
-             base::FEATURE_ENABLED_BY_DEFAULT);
+// Enable detection of loading mature sites (according to Google SafeSearch)
+// on WebViews running on supervised user accounts.
+BASE_FEATURE(kWebViewSupervisedUserSiteDetection,
+             "WebViewSupervisedUserSiteDetection",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enable blocking the loading of mature sites (according to Google SafeSearch)
+// on WebViews running on supervised user accounts.
+BASE_FEATURE(kWebViewSupervisedUserSiteBlock,
+             "WebViewSupervisedUserSiteBlock",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Disallows window.{alert, prompt, confirm} if triggered inside a subframe that
 // is not same origin with the main frame.
@@ -145,6 +146,12 @@ BASE_FEATURE(kWebViewUseMetricsUploadService,
 BASE_FEATURE(kWebViewPropagateNetworkSignals,
              "webViewPropagateNetworkSignals",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Provide the unreduced product version from the AwContentBrowserClient API,
+// regardless of the user agent reduction policy.
+BASE_FEATURE(kWebViewUnreducedProductVersion,
+             "WebViewUnreducedPrductVersion",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enable raster in wide color gamut for apps that use webview in a wide color
 // gamut activity.

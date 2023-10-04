@@ -8,11 +8,15 @@
 #include "base/functional/callback_forward.h"
 #include "base/values.h"
 #include "chrome/browser/ui/webui/web_app_internals/web_app_internals.mojom.h"
-#include "chrome/browser/web_applications/isolated_web_apps/install_isolated_web_app_from_command_line.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_installation_manager.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 
 class Profile;
+
+namespace content {
+class WebUI;
+}
 
 // Handles API requests from chrome://web-app-internals page by implementing
 // mojom::WebAppInternalsHandler.
@@ -23,7 +27,7 @@ class WebAppInternalsHandler : public mojom::WebAppInternalsHandler {
       base::OnceCallback<void(base::Value root)> callback);
 
   WebAppInternalsHandler(
-      Profile* profile,
+      content::WebUI* web_ui,
       mojo::PendingReceiver<mojom::WebAppInternalsHandler> receiver);
 
   WebAppInternalsHandler(const WebAppInternalsHandler&) = delete;
@@ -37,17 +41,27 @@ class WebAppInternalsHandler : public mojom::WebAppInternalsHandler {
   void InstallIsolatedWebAppFromDevProxy(
       const GURL& url,
       InstallIsolatedWebAppFromDevProxyCallback callback) override;
+  void SelectFileAndInstallIsolatedWebAppFromDevBundle(
+      SelectFileAndInstallIsolatedWebAppFromDevBundleCallback callback)
+      override;
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   void ClearExperimentalWebAppIsolationData(
       ClearExperimentalWebAppIsolationDataCallback callback) override;
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
  private:
+  class IsolatedWebAppDevBundleSelectListener;
+
+  void OnIsolatedWebAppDevModeBundleSelected(
+      SelectFileAndInstallIsolatedWebAppFromDevBundleCallback callback,
+      absl::optional<base::FilePath> path);
   void OnInstallIsolatedWebAppFromDevModeProxy(
       InstallIsolatedWebAppFromDevProxyCallback callback,
-      web_app::MaybeInstallIsolatedWebAppCommandSuccess result);
+      web_app::IsolatedWebAppInstallationManager::
+          MaybeInstallIsolatedWebAppCommandSuccess result);
 
-  const raw_ptr<Profile> profile_;
+  const raw_ref<content::WebUI> web_ui_;
+  const raw_ref<Profile> profile_;
   mojo::Receiver<mojom::WebAppInternalsHandler> receiver_;
   base::WeakPtrFactory<WebAppInternalsHandler> weak_ptr_factory_{this};
 };

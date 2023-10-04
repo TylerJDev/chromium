@@ -25,8 +25,10 @@ class AddressFieldTest
 
  protected:
   std::unique_ptr<FormField> Parse(AutofillScanner* scanner,
+                                   const GeoIpCountryCode& client_country,
                                    const LanguageCode& page_language) override {
-    return AddressField::Parse(scanner, page_language, GetActivePatternSource(),
+    return AddressField::Parse(scanner, client_country, page_language,
+                               *GetActivePatternSource(),
                                /*log_manager=*/nullptr);
   }
 };
@@ -98,10 +100,22 @@ TEST_P(AddressFieldTest, ParseStreetNameAndHouseNumberAndApartmentNumber) {
 // Tests that an address field after a |ADDRESS_HOME_STREET_NAME|,
 // |ADDRESS_HOME_HOUSE_NUMBER| combination is classified as
 // |ADDRESS_HOME_LINE2| instead of |ADDRESS_HOME_LINE1|.
-TEST_P(AddressFieldTest, ParseAsAddressLine2AfterStreetName) {
+TEST_P(AddressFieldTest, ParseAsAddressLine2AfterStreetNameNotEnabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      features::kAutofillStructuredFieldsDisableAddressLines);
   AddTextFormFieldData("street", "Street", ADDRESS_HOME_STREET_NAME);
   AddTextFormFieldData("house-number", "House no.", ADDRESS_HOME_HOUSE_NUMBER);
   AddTextFormFieldData("address", "Address", ADDRESS_HOME_LINE2);
+  ClassifyAndVerify();
+}
+
+TEST_P(AddressFieldTest, ParseAsAddressLine2AfterStreetNameEnabled) {
+  base::test::ScopedFeatureList scoped_feature_list(
+      features::kAutofillStructuredFieldsDisableAddressLines);
+  AddTextFormFieldData("street", "Street", ADDRESS_HOME_STREET_NAME);
+  AddTextFormFieldData("house-number", "House no.", ADDRESS_HOME_HOUSE_NUMBER);
+  AddTextFormFieldData("address", "Address", UNKNOWN_TYPE);
   ClassifyAndVerify();
 }
 
@@ -173,6 +187,21 @@ TEST_P(AddressFieldTest, ParseOverflow) {
       features::kAutofillEnableSupportForAddressOverflow);
 
   AddTextFormFieldData("complemento", "Complemento", ADDRESS_HOME_OVERFLOW);
+  ClassifyAndVerify();
+}
+
+// Tests that overflow field is correctly classified.
+TEST_P(AddressFieldTest, ParseOverflowAndLandmark) {
+  // TODO(crbug.com/1441904): Remove once launched.
+  base::test::ScopedFeatureList features;
+  features.InitWithFeatures(
+      /*enabled_features=*/
+      {features::kAutofillEnableSupportForAddressOverflow,
+       features::kAutofillEnableSupportForAddressOverflowAndLandmark},
+      /*disabled_features=*/{});
+
+  AddTextFormFieldData("additional_info", "Complemento e ponto de referência",
+                       ADDRESS_HOME_OVERFLOW_AND_LANDMARK);
   ClassifyAndVerify();
 }
 

@@ -152,7 +152,9 @@ class ArcIdleManagerTest : public testing::Test {
     TestDelegateImpl(const TestDelegateImpl&) = delete;
     TestDelegateImpl& operator=(const TestDelegateImpl&) = delete;
 
-    void SetInteractiveMode(ArcBridgeService* bridge, bool enable) override {
+    void SetInteractiveMode(ArcPowerBridge* arc_power_bridge,
+                            ArcBridgeService* bridge,
+                            bool enable) override {
       // enable means "interactive enabled", so "true" is "not idle".
       if (enable) {
         ++(test_->interactive_enabled_counter_);
@@ -190,8 +192,12 @@ class ArcIdleManagerTest : public testing::Test {
 };
 
 // Tests that ArcIdleManager can be constructed and destructed.
-
 TEST_F(ArcIdleManagerTest, TestConstructDestruct) {}
+
+// Tests that powerbridge early death causes no DCHECKs in observer list.
+TEST_F(ArcIdleManagerTest, TestEarlyPowerBridgeDeath) {
+  arc_idle_manager()->OnWillDestroyArcPowerBridge();
+}
 
 // Tests that ArcIdleManager responds appropriately to various observers.
 TEST_F(ArcIdleManagerTest, TestThrottleInstance) {
@@ -250,9 +256,19 @@ TEST_F(ArcIdleManagerTest, TestThrottleInstance) {
   EXPECT_EQ(5U, interactive_enabled_counter());
   EXPECT_EQ(6U, interactive_disabled_counter());
 
+  // ResumeVm event when not idle causes additional idle-disable event.
+  arc_idle_manager()->OnVmResumed();
+  EXPECT_EQ(6U, interactive_enabled_counter());
+  EXPECT_EQ(6U, interactive_disabled_counter());
+
   // Reset.
   arc_window_observer()->SetActive(false);
-  EXPECT_EQ(5U, interactive_enabled_counter());
+  EXPECT_EQ(6U, interactive_enabled_counter());
+  EXPECT_EQ(7U, interactive_disabled_counter());
+
+  // ResumeVm event when idle does not generate switch events.
+  arc_idle_manager()->OnVmResumed();
+  EXPECT_EQ(6U, interactive_enabled_counter());
   EXPECT_EQ(7U, interactive_disabled_counter());
 }
 

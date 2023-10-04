@@ -4,6 +4,7 @@
 
 #include "content/browser/mojo_binder_policy_map_impl.h"
 
+#include "base/feature_list.h"
 #include "base/no_destructor.h"
 #include "content/common/dom_automation_controller.mojom.h"
 #include "content/common/frame.mojom.h"
@@ -21,6 +22,9 @@
 #include "third_party/blink/public/mojom/frame/back_forward_cache_controller.mojom.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom.h"
 #include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom.h"
+#if BUILDFLAG(IS_MAC)
+#include "third_party/blink/public/mojom/input/text_input_host.mojom.h"
+#endif
 #include "third_party/blink/public/mojom/loader/code_cache.mojom.h"
 #include "third_party/blink/public/mojom/manifest/manifest_observer.mojom.h"
 #include "third_party/blink/public/mojom/media/renderer_audio_output_stream_factory.mojom.h"
@@ -28,6 +32,13 @@
 #include "third_party/blink/public/mojom/page/display_cutout.mojom.h"
 
 namespace content {
+
+#if BUILDFLAG(IS_MAC)
+// Put crbug.com/115920 fix under flag, so we can measure its CWV impact.
+BASE_FEATURE(kTextInputHostMojoCapabilityControlWorkaround,
+             "TextInputHostMojoCapabilityControlWorkaround",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
 
 namespace {
 
@@ -79,6 +90,18 @@ void RegisterNonAssociatedPoliciesForSameOriginPrerendering(
   // since we wait for a response from code cache when loading resources.
   map.SetNonAssociatedPolicy<blink::mojom::CodeCacheHost>(
       MojoBinderNonAssociatedPolicy::kGrant);
+
+#if BUILDFLAG(IS_MAC)
+  // Set policy to Grant for TextInputHost.
+  // This is used to return macOS IME sync call results to the browser process,
+  // and will hang entire Chrome if paused.
+  // This is a prospective fix added for crbug.com/1480850
+  if (base::FeatureList::IsEnabled(
+          kTextInputHostMojoCapabilityControlWorkaround)) {
+    map.SetNonAssociatedPolicy<blink::mojom::TextInputHost>(
+        MojoBinderNonAssociatedPolicy::kGrant);
+  }
+#endif
 }
 
 // Register policies for channel-associated interfaces registered in

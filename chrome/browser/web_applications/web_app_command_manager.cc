@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/containers/contains.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_forward.h"
@@ -24,7 +25,9 @@
 #include "chrome/browser/web_applications/web_app_install_manager.h"
 #include "chrome/browser/web_applications/web_app_install_utils.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_contents/web_app_url_loader.h"
 #include "chrome/browser/web_applications/web_contents/web_contents_manager.h"
+#include "chrome/common/chrome_features.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
@@ -81,6 +84,7 @@ void WebAppCommandManager::SetProvider(base::PassKey<WebAppProvider>,
                                        WebAppProvider& provider) {
   provider_ = &provider;
   lock_manager_.SetProvider(PassKey(), provider);
+  url_loader_ = provider_->web_contents_manager().CreateUrlLoader();
 }
 
 void WebAppCommandManager::Start() {
@@ -144,17 +148,21 @@ void WebAppCommandManager::StartCommand(WebAppCommand* command,
   auto command_it = commands_.find(command->id());
   DCHECK(command_it != commands_.end());
 #endif
+  DVLOG(2) << "Starting command: " << CreateCommandMetadata(*command);
   if (command->lock_description().IncludesSharedWebContents()) {
     CHECK(shared_web_contents_);
+    url_loader_->PrepareForLoad(shared_web_contents_.get(),
+                                std::move(start_command));
+  } else {
+    std::move(start_command).Run();
   }
-  DVLOG(2) << "Starting command: " << CreateCommandMetadata(*command);
-  std::move(start_command).Run();
 }
 
 void WebAppCommandManager::Shutdown() {
   // Ignore duplicate shutdowns for unittests.
-  if (is_in_shutdown_)
+  if (is_in_shutdown_) {
     return;
+  }
   is_in_shutdown_ = true;
   AddValueToLog(base::Value("Shutdown has begun"));
 
@@ -169,8 +177,9 @@ void WebAppCommandManager::Shutdown() {
     }
   }
   for (const auto& command_ptr : commands_to_shutdown) {
-    if (!command_ptr)
+    if (!command_ptr) {
       continue;
+    }
     command_ptr->OnShutdown();
   }
   commands_.clear();
@@ -256,7 +265,9 @@ void WebAppCommandManager::AddValueToLog(base::Value value) {
   // production builds.
   DVLOG(1) << value.DebugString();
 #endif
-  static constexpr const int kMaxLogLength = 20;
+  static const size_t kMaxLogLength =
+      base::FeatureList::IsEnabled(features::kRecordWebAppDebugInfo) ? 1000
+                                                                     : 20;
   command_debug_log_.push_front(std::move(value));
   if (command_debug_log_.size() > kMaxLogLength)
     command_debug_log_.resize(kMaxLogLength);
@@ -269,10 +280,11 @@ content::WebContents* WebAppCommandManager::EnsureWebContentsCreated(
 
 content::WebContents* WebAppCommandManager::EnsureWebContentsCreated() {
   DCHECK(profile_);
-  if (!shared_web_contents_)
+  if (!shared_web_contents_) {
     shared_web_contents_ = content::WebContents::Create(
         content::WebContents::CreateParams(profile_));
-  web_app::CreateWebAppInstallTabHelpers(shared_web_contents_.get());
+    web_app::CreateWebAppInstallTabHelpers(shared_web_contents_.get());
+  }
 
   return shared_web_contents_.get();
 }

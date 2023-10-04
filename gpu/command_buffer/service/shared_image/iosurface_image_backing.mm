@@ -6,6 +6,7 @@
 
 #include <EGL/egl.h>
 #import <Metal/Metal.h>
+#include <dawn/native/MetalBackend.h>
 
 #include "base/apple/scoped_cftyperef.h"
 #include "base/apple/scoped_nsobject.h"
@@ -18,6 +19,7 @@
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/dawn_context_provider.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
+#include "gpu/command_buffer/service/shared_image/dawn_fallback_image_representation.h"
 #include "gpu/command_buffer/service/shared_image/iosurface_image_backing_factory.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_gl_utils.h"
@@ -38,12 +40,7 @@
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/scoped_binders.h"
 #include "ui/gl/scoped_make_current.h"
-
-// Usage of BUILDFLAG(USE_DAWN) needs to be after the include for
-// ui/gl/buildflags.h
-#if BUILDFLAG(USE_DAWN)
-#include <dawn/native/MetalBackend.h>
-#endif  // BUILDFLAG(USE_DAWN)
+#include "ui/gl/scoped_restore_texture.h"
 
 namespace gpu {
 
@@ -91,21 +88,21 @@ gfx::BufferFormat GetBufferFormatForPlane(viz::SharedImageFormat format,
 
 #if BUILDFLAG(SKIA_USE_METAL)
 
-base::scoped_nsprotocol<id<MTLTexture>> CreateMetalTexture(
+base::apple::scoped_nsprotocol<id<MTLTexture>> CreateMetalTexture(
     id<MTLDevice> mtl_device,
     IOSurfaceRef io_surface,
     const gfx::Size& size,
     viz::SharedImageFormat format,
     int plane_index) {
   TRACE_EVENT0("gpu", "IOSurfaceImageBackingFactory::CreateMetalTexture");
-  base::scoped_nsprotocol<id<MTLTexture>> mtl_texture;
+  base::apple::scoped_nsprotocol<id<MTLTexture>> mtl_texture;
   MTLPixelFormat mtl_pixel_format =
       static_cast<MTLPixelFormat>(ToMTLPixelFormat(format, plane_index));
   if (mtl_pixel_format == MTLPixelFormatInvalid) {
     return mtl_texture;
   }
 
-  base::scoped_nsobject<MTLTextureDescriptor> mtl_tex_desc(
+  base::apple::scoped_nsobject<MTLTextureDescriptor> mtl_tex_desc(
       [MTLTextureDescriptor new]);
   [mtl_tex_desc setTextureType:MTLTextureType2D];
   [mtl_tex_desc
@@ -134,7 +131,7 @@ base::scoped_nsprotocol<id<MTLTexture>> CreateMetalTexture(
 }
 
 std::vector<skgpu::graphite::BackendTexture> CreateGraphiteMetalTextures(
-    std::vector<base::scoped_nsprotocol<id<MTLTexture>>> mtl_textures,
+    std::vector<base::apple::scoped_nsprotocol<id<MTLTexture>>> mtl_textures,
     const viz::SharedImageFormat format,
     const gfx::Size& size) {
   int num_planes = format.NumberOfPlanes();
@@ -399,7 +396,7 @@ class IOSurfaceImageBacking::SkiaGraphiteIOSurfaceRepresentation
       SharedImageBacking* backing,
       MemoryTypeTracker* tracker,
       skgpu::graphite::Recorder* recorder,
-      std::vector<base::scoped_nsprotocol<id<MTLTexture>>> mtl_textures)
+      std::vector<base::apple::scoped_nsprotocol<id<MTLTexture>>> mtl_textures)
       : SkiaGraphiteImageRepresentation(manager, backing, tracker),
         recorder_(recorder),
         mtl_textures_(std::move(mtl_textures)) {
@@ -482,7 +479,7 @@ class IOSurfaceImageBacking::SkiaGraphiteIOSurfaceRepresentation
   }
 
   const raw_ptr<skgpu::graphite::Recorder> recorder_;
-  std::vector<base::scoped_nsprotocol<id<MTLTexture>>> mtl_textures_;
+  std::vector<base::apple::scoped_nsprotocol<id<MTLTexture>>> mtl_textures_;
   std::vector<sk_sp<SkSurface>> write_surfaces_;
 };
 #endif
@@ -556,7 +553,7 @@ DawnIOSurfaceRepresentation::DawnIOSurfaceRepresentation(
     SharedImageBacking* backing,
     MemoryTypeTracker* tracker,
     wgpu::Device device,
-    base::ScopedCFTypeRef<IOSurfaceRef> io_surface,
+    base::apple::ScopedCFTypeRef<IOSurfaceRef> io_surface,
     const gfx::Size& io_surface_size,
     wgpu::TextureFormat wgpu_format,
     std::vector<wgpu::TextureFormat> view_formats)
@@ -600,7 +597,8 @@ wgpu::Texture DawnIOSurfaceRepresentation::BeginAccess(
   wgpu::DawnTextureInternalUsageDescriptor internalDesc;
   internalDesc.internalUsage =
       wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::TextureBinding;
-  if (wgpu_format_ != wgpu::TextureFormat::R8BG8Biplanar420Unorm) {
+  if (wgpu_format_ != wgpu::TextureFormat::R8BG8Biplanar420Unorm &&
+      wgpu_format_ != wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm) {
     internalDesc.internalUsage |= wgpu::TextureUsage::RenderAttachment;
   }
 
@@ -739,6 +737,7 @@ IOSurfaceImageBacking::IOSurfaceImageBacking(
       io_surface_size_(IOSurfaceGetWidth(io_surface_),
                        IOSurfaceGetHeight(io_surface_)),
       io_surface_format_(IOSurfaceGetPixelFormat(io_surface_)),
+      io_surface_num_planes_(IOSurfaceGetPlaneCount(io_surface_)),
       io_surface_id_(io_surface_id),
       gl_target_(gl_target),
       framebuffer_attachment_angle_(framebuffer_attachment_angle),
@@ -885,13 +884,15 @@ IOSurfaceImageBacking::RetainGLTexture() {
                                 &gl_texture, nullptr);
     // Set the IOSurface to be initially unbound from the GL texture.
     gl_texture->SetEstimatedSize(GetEstimatedSize());
-    gl_texture->set_bind_pending();
     gl_textures.push_back(std::move(gl_texture));
   }
 
-  return new IOSurfaceBackingEGLState(this, egl_display, context,
-                                      gl::GLSurface::GetCurrent(), gl_target_,
-                                      std::move(gl_textures));
+  scoped_refptr<IOSurfaceBackingEGLState> egl_state =
+      new IOSurfaceBackingEGLState(this, egl_display, context,
+                                   gl::GLSurface::GetCurrent(), gl_target_,
+                                   std::move(gl_textures));
+  egl_state->set_bind_pending();
+  return egl_state;
 }
 
 void IOSurfaceImageBacking::ReleaseGLTexture(
@@ -1032,10 +1033,13 @@ std::unique_ptr<DawnImageRepresentation> IOSurfaceImageBacking::ProduceDawn(
   if (io_surface_format_ == 'BGRA') {
     wgpu_format = wgpu::TextureFormat::BGRA8Unorm;
   }
-  // TODO(crbug.com/1293514): Remove this if condition after using single
+  // TODO(crbug.com/1293514): Remove these if conditions after using single
   // multiplanar mailbox for which wgpu_format should already be correct.
   if (io_surface_format_ == '420v') {
     wgpu_format = wgpu::TextureFormat::R8BG8Biplanar420Unorm;
+  }
+  if (io_surface_format_ == 'x420') {
+    wgpu_format = wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm;
   }
   if (wgpu_format == wgpu::TextureFormat::Undefined) {
     LOG(ERROR) << "Unsupported format for Dawn: " << format().ToString();
@@ -1049,7 +1053,7 @@ std::unique_ptr<DawnImageRepresentation> IOSurfaceImageBacking::ProduceDawn(
   }
 
   CHECK_EQ(backend_type, wgpu::BackendType::Vulkan);
-  return std::make_unique<DawnImageRepresentationFallback>(
+  return std::make_unique<DawnFallbackImageRepresentation>(
       manager, this, tracker, wgpu::Device(device), wgpu_format,
       std::move(view_formats));
 #else
@@ -1113,8 +1117,7 @@ IOSurfaceImageBacking::ProduceSkiaGraphite(
       LOG(ERROR) << "Could not create Dawn Representation";
       return nullptr;
     }
-    const bool is_yuv_plane =
-        format().is_single_plane() && (io_surface_format_ == '420v');
+    const bool is_yuv_plane = io_surface_num_planes_ > 1;
     // Use GPU main recorder since this should only be called for
     // fulfilling Graphite promise images on GPU main thread.
     return SkiaGraphiteDawnImageRepresentation::Create(
@@ -1125,14 +1128,15 @@ IOSurfaceImageBacking::ProduceSkiaGraphite(
   } else {
     CHECK_EQ(context_state->gr_context_type(), GrContextType::kGraphiteMetal);
 #if BUILDFLAG(SKIA_USE_METAL)
-    std::vector<base::scoped_nsprotocol<id<MTLTexture>>> mtl_textures;
+    std::vector<base::apple::scoped_nsprotocol<id<MTLTexture>>> mtl_textures;
     mtl_textures.reserve(format().NumberOfPlanes());
 
     for (int plane = 0; plane < format().NumberOfPlanes(); plane++) {
       auto plane_size = format().GetPlaneSize(plane, size());
-      base::scoped_nsprotocol<id<MTLTexture>> mtl_texture = CreateMetalTexture(
-          context_state->metal_context_provider()->GetMTLDevice(),
-          io_surface_.get(), plane_size, format(), plane);
+      base::apple::scoped_nsprotocol<id<MTLTexture>> mtl_texture =
+          CreateMetalTexture(
+              context_state->metal_context_provider()->GetMTLDevice(),
+              io_surface_.get(), plane_size, format(), plane);
       if (!mtl_texture) {
         LOG(ERROR) << "Failed to create MTLTexture from IOSurface";
         return nullptr;
@@ -1182,9 +1186,7 @@ void IOSurfaceImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
     egl_fence->ServerWait();
   }
   for (auto iter : egl_state_map_) {
-    for (const auto& texture : iter.second->gl_textures_) {
-      texture->set_bind_pending();
-    }
+    iter.second->set_bind_pending();
   }
 }
 
@@ -1260,10 +1262,7 @@ bool IOSurfaceImageBacking::IOSurfaceBackingEGLStateBeginAccess(
 
   // If the GL texture is already bound (the bind is not marked as pending),
   // then early-out.
-  bool is_bind_pending = base::ranges::any_of(
-      egl_state->gl_textures_,
-      [](const auto& texture) { return texture->is_bind_pending(); });
-  if (!is_bind_pending) {
+  if (!egl_state->is_bind_pending()) {
     return true;
   }
 
@@ -1296,6 +1295,15 @@ bool IOSurfaceImageBacking::IOSurfaceBackingEGLStateBeginAccess(
       if (format().is_single_plane()) {
         plane = io_surface_plane_;
         buffer_format = ToBufferFormat(format());
+        // See comments in IOSurfaceImageBackingFactory::CreateSharedImage about
+        // RGBA versus BGRA when using Skia Ganesh GL backend or ANGLE.
+        if (io_surface_format_ == 'BGRA') {
+          if (buffer_format == gfx::BufferFormat::RGBA_8888) {
+            buffer_format = gfx::BufferFormat::BGRA_8888;
+          } else if (buffer_format == gfx::BufferFormat::RGBX_8888) {
+            buffer_format = gfx::BufferFormat::BGRX_8888;
+          }
+        }
       } else {
         // For multiplanar formats (without external sampler) get planar buffer
         // format.
@@ -1322,9 +1330,14 @@ bool IOSurfaceImageBacking::IOSurfaceBackingEGLStateBeginAccess(
             format().NumberOfPlanes());
   for (int plane_index = 0; plane_index < format().NumberOfPlanes();
        plane_index++) {
-    ScopedRestoreTexture scoped_restore(gl::g_current_gl_context,
-                                        egl_state->GetGLTarget(),
-                                        egl_state->GetGLServiceId(plane_index));
+    // NOTE: We pass `restore_prev_even_if_invalid=true` to maintain behavior
+    // from when this class was using a duplicate-but-not-identical utility.
+    // TODO(crbug.com/1367187): Eliminate this behavior with a Finch
+    // killswitch.
+    gl::ScopedRestoreTexture scoped_restore(
+        gl::g_current_gl_context, egl_state->GetGLTarget(),
+        /*restore_prev_even_if_invalid=*/true,
+        egl_state->GetGLServiceId(plane_index));
     // Un-bind the IOSurface from the GL texture (this will be a no-op if it is
     // not yet bound).
     egl_state->egl_surfaces_[plane_index]->ReleaseTexImage();
@@ -1334,9 +1347,8 @@ bool IOSurfaceImageBacking::IOSurfaceBackingEGLStateBeginAccess(
       LOG(ERROR) << "Failed to bind ScopedEGLSurfaceIOSurface to target";
       return false;
     }
-
-    egl_state->gl_textures_[plane_index]->clear_bind_pending();
   }
+  egl_state->clear_bind_pending();
 
   return true;
 }
@@ -1408,17 +1420,23 @@ void IOSurfaceImageBacking::IOSurfaceBackingEGLStateEndAccess(
     DCHECK(egl_state->egl_surfaces_.empty() ||
            static_cast<int>(egl_state->egl_surfaces_.size()) ==
                format().NumberOfPlanes());
-    for (int plane_index = 0; plane_index < format().NumberOfPlanes();
-         plane_index++) {
-      if (!egl_state->gl_textures_[plane_index]->is_bind_pending()) {
-        if (!egl_state->egl_surfaces_.empty()) {
-          ScopedRestoreTexture scoped_restore(
+    if (!egl_state->is_bind_pending()) {
+      if (!egl_state->egl_surfaces_.empty()) {
+        for (int plane_index = 0; plane_index < format().NumberOfPlanes();
+             plane_index++) {
+          // NOTE: We pass `restore_prev_even_if_invalid=true` to maintain
+          // behavior from when this class was using a
+          // duplicate-but-not-identical utility.
+          // TODO(crbug.com/1367187): Eliminate this behavior with a Finch
+          // killswitch.
+          gl::ScopedRestoreTexture scoped_restore(
               gl::g_current_gl_context, egl_state->GetGLTarget(),
+              /*restore_prev_even_if_invalid=*/true,
               egl_state->GetGLServiceId(plane_index));
           egl_state->egl_surfaces_[plane_index]->ReleaseTexImage();
         }
-        egl_state->gl_textures_[plane_index]->set_bind_pending();
       }
+      egl_state->set_bind_pending();
     }
   }
 }

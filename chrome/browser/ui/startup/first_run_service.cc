@@ -148,17 +148,6 @@ PolicyEffect ComputeDevicePolicyEffect(Profile& profile) {
   if (chromeos::BrowserParamsProxy::Get()->IsCurrentUserEphemeral()) {
     return PolicyEffect::kSilenced;
   }
-
-  // TODO(b/273237511): Remove direct usage of DeviceEphemeralUsersEnabled
-  // policy in branch M118 in favor of newly added function
-  // `BrowserParamsProxy::Get()->IsCurrentUserEphemeral()`.
-  crosapi::mojom::DeviceSettings* device_settings =
-      g_browser_process->browser_policy_connector()->GetDeviceSettings();
-  if (device_settings->deprecated_device_ephemeral_users_enabled ==
-      crosapi::mojom::DeviceSettings::OptionalBool::kTrue) {
-    // Corresponding policy: DeviceEphemeralUsersEnabled=true
-    return PolicyEffect::kSilenced;
-  }
 #endif
 
   return PolicyEffect::kNone;
@@ -355,8 +344,8 @@ void FirstRunService::FinishFirstRun(FinishedReason reason) {
     // after sign-in, the extended info is fetched and used for the sync
     // opt-in screen.
     profile_name_resolver_ = std::make_unique<ProfileNameResolver>(
-        &identity_manager_.get(),
-        identity_manager_->GetPrimaryAccountId(signin::ConsentLevel::kSignin));
+        &identity_manager_.get(), identity_manager_->GetPrimaryAccountInfo(
+                                      signin::ConsentLevel::kSignin));
     profile_name_resolver_->RunWithProfileName(base::BindOnce(
         &FirstRunService::FinishProfileSetUp, weak_ptr_factory_.GetWeakPtr()));
   } else if (reason == FinishedReason::kSkippedByPolicies) {
@@ -455,7 +444,8 @@ FirstRunService* FirstRunServiceFactory::GetForBrowserContextIfExists(
       GetInstance()->GetServiceForBrowserContext(context, /*create=*/false));
 }
 
-KeyedService* FirstRunServiceFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+FirstRunServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
   if (!ShouldOpenFirstRun(profile)) {
@@ -482,7 +472,7 @@ KeyedService* FirstRunServiceFactory::BuildServiceInstanceFor(
   }
 #endif
 
-  auto* instance = new FirstRunService(
+  std::unique_ptr<FirstRunService> instance = std::make_unique<FirstRunService>(
       *profile, *IdentityManagerFactory::GetForProfile(profile));
   base::UmaHistogramBoolean("ProfilePicker.FirstRun.ServiceCreated", true);
 

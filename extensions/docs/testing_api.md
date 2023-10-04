@@ -131,9 +131,9 @@ otherwise.
 Asserts that `chrome.runtime.lastError.message` is equivalent to
 `expectedError`, printing out the expected and actual errors otherwise.
 
-#### assertThrows(fn, self?, args, expectedError?)
+#### assertThrows(fn, self?, args[], expectedError?)
 Asserts that executing `fn` with the context object of `self` (if defined) and
-the specified `arguments` throws a runtime error, which is then validated
+the specified `args` array throws a runtime error, which is then validated
 against `expectedError`.  `expectedError` may be either a string (which must
 match exactly) or a `RegExp`.
 
@@ -240,16 +240,16 @@ two separate test functions, passed serially in the array to
 ```js
 chrome.test.runTests([
   function createTab() {
-    chrome.tabs.create({url: 'http://example.com'}, callbackPass(() => {
+    chrome.tabs.create({url: 'http://example.com'}, () => {
       <verify state>
       chrome.test.succeed();
-    }));
+    });
   },
   function initializeStorage() {
-    chrome.storage.local.set({foo: 'bar'}, callbackPass(() => {
+    chrome.storage.local.set({foo: 'bar'}, () => {
       <verify state>
       chrome.test.succeed();
-    }));
+    });
   },
   function nextStep() {
     ...

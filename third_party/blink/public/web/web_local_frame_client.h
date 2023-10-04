@@ -67,6 +67,7 @@
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_provider.h"
 #include "third_party/blink/public/platform/resource_load_info_notifier_wrapper.h"
+#include "third_party/blink/public/platform/url_loader_throttle_provider.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_content_security_policy_struct.h"
 #include "third_party/blink/public/platform/web_content_settings_client.h"
@@ -694,6 +695,11 @@ class BLINK_EXPORT WebLocalFrameClient {
     return nullptr;
   }
 
+  virtual std::unique_ptr<WebURLLoaderThrottleProviderForFrame>
+  CreateWebURLLoaderThrottleProviderForFrame() {
+    return nullptr;
+  }
+
   virtual std::unique_ptr<URLLoader> CreateURLLoaderForTesting();
 
   virtual void OnStopLoading() {}
@@ -709,10 +715,6 @@ class BLINK_EXPORT WebLocalFrameClient {
   CreateWebSocketHandshakeThrottle() {
     return nullptr;
   }
-
-  // AppCache ------------------------------------------------------------
-  virtual void UpdateSubresourceFactory(
-      std::unique_ptr<blink::PendingURLLoaderFactoryBundle> pending_factory) {}
 
   // Misc ----------------------------------------------------------------
 

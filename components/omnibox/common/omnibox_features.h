@@ -22,9 +22,7 @@ BASE_DECLARE_FEATURE(kGroupingFrameworkForZPS);
 BASE_DECLARE_FEATURE(kGroupingFrameworkForNonZPS);
 BASE_DECLARE_FEATURE(kOmniboxDemoteByType);
 BASE_DECLARE_FEATURE(kPreferNonShortcutMatchesWhenDeduping);
-BASE_DECLARE_FEATURE(kPreferTailOverHistoryClusterSuggestions);
 BASE_DECLARE_FEATURE(kSingleSortAndCullPass);
-BASE_DECLARE_FEATURE(kUpdateResultDebounce);
 
 // Features below this line should be sorted alphabetically by their comments.
 
@@ -75,14 +73,19 @@ BASE_DECLARE_FEATURE(kDocumentProviderNoSetting);
 BASE_DECLARE_FEATURE(kDocumentProviderNoSyncRequirement);
 BASE_DECLARE_FEATURE(kDomainSuggestions);
 
+// Consent helper types
+BASE_DECLARE_FEATURE(kPrefBasedDataCollectionConsentHelper);
+
 // Suggestions UI - these affect the UI or function of the suggestions popup.
 BASE_DECLARE_FEATURE(kAdaptiveSuggestionsCount);
 BASE_DECLARE_FEATURE(kClipboardSuggestionContentHidden);
 BASE_DECLARE_FEATURE(kSuppressClipboardSuggestionAfterFirstUsed);
+BASE_DECLARE_FEATURE(kCompanyEntityIconAdjustment);
 BASE_DECLARE_FEATURE(kCr2023ActionChips);
 BASE_DECLARE_FEATURE(kCr2023ActionChipsIcons);
 BASE_DECLARE_FEATURE(kSuggestionAnswersColorReverse);
 BASE_DECLARE_FEATURE(kMostVisitedTiles);
+BASE_DECLARE_FEATURE(kMostVisitedTilesHorizontalRenderGroup);
 BASE_DECLARE_FEATURE(kRichAutocompletion);
 BASE_DECLARE_FEATURE(kNtpRealboxPedals);
 BASE_DECLARE_FEATURE(kOmniboxActionsUISimplification);
@@ -111,11 +114,6 @@ BASE_DECLARE_FEATURE(kOmniboxSteadyStateHeight);
 BASE_DECLARE_FEATURE(kOmniboxSteadyStateTextStyle);
 
 BASE_DECLARE_FEATURE(kOmniboxSteadyStateTextColor);
-
-BASE_DECLARE_FEATURE(kDiscardTemporaryInputOnTabSwitch);
-BASE_DECLARE_FEATURE(kRedoCurrentMatch);
-BASE_DECLARE_FEATURE(kRevertModelBeforeClosingPopup);
-BASE_DECLARE_FEATURE(kUseExistingAutocompleteClient);
 
 // Omnibox & Suggestions UI - these affect both the omnibox and the suggestions
 // popup.
@@ -153,6 +151,11 @@ BASE_DECLARE_FEATURE(kMergeSubtypes);
 // Returns true if the Omnibox CR23 `feature`, which depends on customize
 // chrome, should be enabled.
 bool IsOmniboxCr23CustomizeGuardedFeatureEnabled(const base::Feature& feature);
+
+// Allows for touch down events to send a signal to |SearchPrefetchService| to
+// start prefetching the suggestion. The feature only applies to search
+// suggestions and only controls whether the signal is sent.
+BASE_DECLARE_FEATURE(kOmniboxTouchDownTriggerForPrefetch);
 
 }  // namespace omnibox
 

@@ -16,6 +16,7 @@
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/utf_string_conversions.h"
+#include "content/public/common/content_features.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace ui {
@@ -304,8 +305,9 @@ class CONTENT_EXPORT WebContentsAccessibilityAndroid
       JNIEnv* env,
       std::u16string str) {
     // Check if this string has already been added to the cache.
-    if (common_string_cache_.find(str) != common_string_cache_.end()) {
-      return common_string_cache_[str];
+    auto it = common_string_cache_.find(str);
+    if (it != common_string_cache_.end()) {
+      return it->second;
     }
 
     // Otherwise, convert the string and add it to the cache, then return.

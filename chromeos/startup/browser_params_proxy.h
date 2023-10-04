@@ -108,6 +108,8 @@ class COMPONENT_EXPORT(CHROMEOS_STARTUP) BrowserParamsProxy {
 
   bool IsFlossAvailable() const;
 
+  bool IsFlossAvailabilityCheckNeeded() const;
+
   bool IsCurrentUserDeviceOwner() const;
 
   bool IsCurrentUserEphemeral() const;
@@ -142,7 +144,7 @@ class COMPONENT_EXPORT(CHROMEOS_STARTUP) BrowserParamsProxy {
 
   bool IsPdfOcrEnabled() const;
 
-  bool IsDriveFsBulkPinningEnabled() const;
+  bool IsDriveFsBulkPinningAvailable() const;
 
   bool IsSysUiDownloadsIntegrationV2Enabled() const;
 

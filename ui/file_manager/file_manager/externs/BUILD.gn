@@ -38,7 +38,6 @@ js_library("command_handler_deps") {
     "//ui/file_manager/file_manager/foreground/js:directory_model",
     "//ui/file_manager/file_manager/foreground/js:directory_tree_naming_controller",
     "//ui/file_manager/file_manager/foreground/js:file_selection",
-    "//ui/file_manager/file_manager/foreground/js:file_transfer_controller",
     "//ui/file_manager/file_manager/foreground/js:naming_controller",
     "//ui/file_manager/file_manager/foreground/js:providers_model",
     "//ui/file_manager/file_manager/foreground/js:spinner_controller",
@@ -50,9 +49,6 @@ js_library("command_handler_deps") {
 
 js_library("directory_change_event") {
   deps = [ ":files_app_entry_interfaces" ]
-}
-
-js_library("drive_dialog_controller") {
 }
 
 js_library("entries_changed_event") {

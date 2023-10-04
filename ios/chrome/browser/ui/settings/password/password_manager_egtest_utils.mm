@@ -10,7 +10,7 @@
 #import "ios/chrome/browser/ui/settings/password/password_settings_app_interface.h"
 #import "ios/chrome/browser/ui/settings/password/passwords_table_view_constants.h"
 #import "ios/chrome/browser/ui/settings/settings_root_table_constants.h"
-#import "ios/chrome/grit/ios_chromium_strings.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
@@ -83,6 +83,12 @@ NSString* GetDetailTextForPasswordCheckUIState(PasswordCheckUIState state,
   }
 }
 
+id<GREYMatcher> DeletePasswordConfirmationButton() {
+  return grey_allOf(ButtonWithAccessibilityLabel(
+                        l10n_util::GetNSString(IDS_IOS_DELETE_ACTION_TITLE)),
+                    grey_interactable(), nullptr);
+}
+
 }  // anonymous namespace
 
 namespace password_manager_test_utils {
@@ -123,19 +129,31 @@ id<GREYMatcher> EditPasswordConfirmationButton() {
                     grey_interactable(), nullptr);
 }
 
-id<GREYMatcher> DeleteButtonForUsernameAndPassword(NSString* username,
-                                                   NSString* password) {
+id<GREYMatcher> UsernameTextfieldForUsernameAndSites(NSString* username,
+                                                     NSString* sites) {
   return grey_allOf(
       grey_accessibilityID([NSString
-          stringWithFormat:@"%@%@%@", kDeleteButtonForPasswordDetailsId,
-                           username, password]),
+          stringWithFormat:@"%@%@%@", kUsernameTextfieldForPasswordDetailsId,
+                           username, sites]),
       grey_interactable(), nullptr);
 }
 
-id<GREYMatcher> DeletePasswordConfirmationButton() {
-  return grey_allOf(ButtonWithAccessibilityLabel(
-                        l10n_util::GetNSString(IDS_IOS_DELETE_ACTION_TITLE)),
-                    grey_interactable(), nullptr);
+id<GREYMatcher> PasswordTextfieldForUsernameAndSites(NSString* username,
+                                                     NSString* sites) {
+  return grey_allOf(
+      grey_accessibilityID([NSString
+          stringWithFormat:@"%@%@%@", kPasswordTextfieldForPasswordDetailsId,
+                           username, sites]),
+      grey_interactable(), nullptr);
+}
+
+id<GREYMatcher> DeleteButtonForUsernameAndSites(NSString* username,
+                                                NSString* sites) {
+  return grey_allOf(
+      grey_accessibilityID([NSString
+          stringWithFormat:@"%@%@%@", kDeleteButtonForPasswordDetailsId,
+                           username, sites]),
+      grey_interactable(), nullptr);
 }
 
 GREYElementInteraction* GetInteractionForIssuesListItem(
@@ -212,9 +230,9 @@ void TapNavigationBarEditButton() {
       performAction:grey_tap()];
 }
 
-void DeleteCredential(NSString* username, NSString* password) {
-  [[EarlGrey selectElementWithMatcher:DeleteButtonForUsernameAndPassword(
-                                          username, password)]
+void DeleteCredential(NSString* username, NSString* sites) {
+  [[EarlGrey
+      selectElementWithMatcher:DeleteButtonForUsernameAndSites(username, sites)]
       performAction:grey_tap()];
 
   [[EarlGrey selectElementWithMatcher:DeletePasswordConfirmationButton()]

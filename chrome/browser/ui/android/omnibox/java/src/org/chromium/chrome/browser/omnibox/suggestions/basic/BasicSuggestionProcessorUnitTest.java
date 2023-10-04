@@ -17,6 +17,7 @@ import android.graphics.drawable.BitmapDrawable;
 import androidx.annotation.DrawableRes;
 import androidx.test.filters.SmallTest;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -36,6 +37,7 @@ import org.chromium.chrome.browser.omnibox.ShadowUrlBarData;
 import org.chromium.chrome.browser.omnibox.UrlBarEditingTextStateProvider;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxImageSupplier;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.omnibox.suggestions.SuggestionHost;
 import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewProperties;
 import org.chromium.chrome.browser.omnibox.test.R;
@@ -46,7 +48,6 @@ import org.chromium.components.omnibox.OmniboxSuggestionType;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.url.GURL;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.util.HashMap;
 import java.util.List;
@@ -56,7 +57,7 @@ import java.util.Map;
  * Tests for {@link BasicSuggestionProcessor}.
  */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(manifest = Config.NONE, shadows = {ShadowGURL.class, ShadowUrlBarData.class})
+@Config(manifest = Config.NONE, shadows = {ShadowUrlBarData.class})
 public class BasicSuggestionProcessorUnitTest {
     private static final @DrawableRes int ICON_BOOKMARK = R.drawable.btn_star;
     private static final @DrawableRes int ICON_GLOBE = R.drawable.ic_globe_24dp;
@@ -81,7 +82,6 @@ public class BasicSuggestionProcessorUnitTest {
     private static final Map<Integer, String> SUGGESTION_TYPE_NAMES;
     static {
         Map<Integer, String> map = new HashMap<>();
-        ;
         map.put(OmniboxSuggestionType.URL_WHAT_YOU_TYPED, "URL_WHAT_YOU_TYPED");
         map.put(OmniboxSuggestionType.HISTORY_URL, "HISTORY_URL");
         map.put(OmniboxSuggestionType.HISTORY_TITLE, "HISTORY_TITLE");
@@ -132,6 +132,12 @@ public class BasicSuggestionProcessorUnitTest {
         doReturn("").when(mUrlBarText).getTextWithoutAutocomplete();
         mProcessor = new BasicSuggestionProcessor(ContextUtils.getApplicationContext(),
                 mSuggestionHost, mUrlBarText, mImageSupplier, mIsBookmarked);
+        OmniboxResourceProvider.disableCachesForTesting();
+    }
+
+    @After
+    public void tearDown() {
+        OmniboxResourceProvider.reenableCachesForTesting();
     }
 
     /**
@@ -422,8 +428,7 @@ public class BasicSuggestionProcessorUnitTest {
         mProcessor.onNativeInitialized();
         // URLs that are rejected by UrlBarData should not be presented to the User.
         ShadowUrlBarData.sShouldShowNextUrl = false;
-        createUrlSuggestion(
-                OmniboxSuggestionType.URL_WHAT_YOU_TYPED, "", new GURL(JUnitTestGURLs.URL_1));
+        createUrlSuggestion(OmniboxSuggestionType.URL_WHAT_YOU_TYPED, "", JUnitTestGURLs.URL_1);
         Assert.assertNull(mModel.get(SuggestionViewProperties.TEXT_LINE_2_TEXT));
     }
 }

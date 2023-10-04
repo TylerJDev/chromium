@@ -37,7 +37,7 @@ import java.util.Random;
  * reconstruct a GURL in Java, allowing it to be much faster in the common case and easier to use.
  */
 @JNINamespace("url")
-@DoNotMock("Create a real instance instead. For Robolectric, see JUnitTestGURLs.java")
+@DoNotMock("Create a real instance instead.")
 public class GURL {
     private static final String TAG = "GURL";
     /* package */ static final int SERIALIZER_VERSION = 1;
@@ -135,8 +135,6 @@ public class GURL {
     @CalledByNative
     private void init(String spec, boolean isValid, Parsed parsed) {
         mSpec = spec;
-        // Ensure that the spec only contains US-ASCII or the parsed indices will be wrong.
-        assert mSpec.matches("\\A\\p{ASCII}*\\z");
         mIsValid = isValid;
         mParsed = parsed;
     }

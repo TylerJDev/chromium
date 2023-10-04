@@ -7,6 +7,7 @@
 # for information on starlark/lucicfg
 
 load("//lib/branches.star", "branches")
+load("//lib/chrome_settings.star", "chrome_settings")
 load("//project.star", "settings")
 
 lucicfg.check_version(
@@ -22,6 +23,7 @@ lucicfg.config(
     config_dir = "generated",
     tracked_files = [
         "builders/*/*/*",
+        "builders/gn_args_locations.json",
         "cq-builders.md",
         "cq-usage/default.cfg",
         "cq-usage/full.cfg",
@@ -140,6 +142,10 @@ luci.notify(
     tree_closing_enabled = True,
 )
 
+chrome_settings.per_builder_outputs(
+    root_dir = "builders",
+)
+
 # An all-purpose public realm.
 luci.realm(
     name = "public",
@@ -232,6 +238,10 @@ luci.builder.defaults.test_presentation.set(resultdb.test_presentation(grouping_
 exec("//swarming.star")
 
 exec("//recipes.star")
+exec("//gn_args/gn_args.star")
+exec("//targets/basic_suites.star")
+exec("//targets/compound_suites.star")
+exec("//targets/matrix_compound_suites.star")
 exec("//targets/mixins.star")
 exec("//targets/targets.star")
 exec("//targets/variants.star")

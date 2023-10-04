@@ -308,7 +308,9 @@
     "location": "external_component",
     "platforms": ["chromeos"],
     "allowlist": [
-      "EC8EA268128FECE14CEC68B90686D87755D87083"  // http://crbug.com/854695
+      "EC8EA268128FECE14CEC68B90686D87755D87083",  // http://crbug.com/854695
+      "A4CC6F00ACF41015AF38F1D5C98E97C2B8B3B320",  // http://crbug.com/1483151
+      "4E09F1C1EEC4D27F1F7DF18BA3643307107A7C41"   // http://crbug.com/1483151
     ]
   }],
   "enterprise.platformKeysPrivate": {
@@ -493,6 +495,7 @@
     "location": "policy",
     "platforms": ["chromeos", "lacros"],
     "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03", // Badge Based Auth Extension
       "7FE4A999359A456C4B0FB7B7AD85CEA29CA50519", // Login screen APIs test extension
       "3F5995FE79A861F019C6F093BEF98D73FA9D3A5F"  // Login screen APIs in-session test extension
     ]
@@ -511,6 +514,14 @@
     "allowlist": [
       "7FE4A999359A456C4B0FB7B7AD85CEA29CA50519", // Login screen APIs test extension
       "3F5995FE79A861F019C6F093BEF98D73FA9D3A5F"  // Login screen APIs in-session test extension
+    ]
+  }, {
+    "channel": "stable",
+    "extension_types": ["extension", "login_screen_extension"],
+    "location": "policy",
+    "platforms": ["chromeos", "lacros"],
+    "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03" // Badge Based Auth Extension
     ]
   }],
   "loginScreenUi": [{
@@ -539,6 +550,7 @@
     "location": "policy",
     "platforms": ["chromeos"],
     "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03",   // Badge Based Auth Extension
       "EC3DE21E048B67319893889529354DFBFA96FD23",   // https://crbug.com/1233881
       "A19608AC34215B127FF9D7C006D67F5C8ED8146D",   // https://crbug.com/1233881
       // https://crbug.com/1194693
@@ -608,8 +620,7 @@
       "allowlist": [
         "B44D08FD98F1523ED5837D78D0A606EA9D6206E5"  // Web Store
       ]
-    },
-    {
+    }, {
       "channel": "stable",
       "extension_types": ["platform_app"],
       "session_types": ["kiosk"]
@@ -617,6 +628,14 @@
       "channel": "stable",
       "dependencies": ["behavior:imprivata_login_screen_extension"],
       "extension_types": ["login_screen_extension"]
+    }, {
+      "channel": "stable",
+      "extension_types": ["login_screen_extension"],
+      "location": "policy",
+      "platforms": ["chromeos"],
+      "allowlist": [
+        "93B7178E8C275515C38D4F43D9DF4648F0EA9B03" // Badge Based Auth Extension
+      ]
     }
   ],
   "mediaPlayerPrivate": {

@@ -94,8 +94,13 @@ enum class WarningType;
 // Shows the settings page allowing the user to clear their browsing data.
 - (void)showClearBrowsingDataSettings;
 
-// Shows the Safety Check page and start Safety Check.
-- (void)showSafetyCheckSettingsAndStartSafetyCheck;
+// Shows the Safety Check page and starts the Safety Check for `referrer`.
+// `showHalfSheet` determines whether the Safety Check will be displayed as a
+// half-sheet, or full-page modal.
+- (void)showAndStartSafetyCheckInHalfSheet:(BOOL)showHalfSheet
+                                  referrer:
+                                      (password_manager::PasswordCheckReferrer)
+                                          referrer;
 
 // Shows the Safe Browsing page.
 - (void)showSafeBrowsingSettings;
@@ -130,7 +135,7 @@ enum class WarningType;
     (password_manager::PasswordCheckReferrer)referrer;
 
 // Opens the Password Issues list displaying compromised, weak or reused
-// credentials for `referrer`.
+// credentials for `warningType` and `referrer`.
 - (void)
     showPasswordIssuesWithWarningType:(password_manager::WarningType)warningType
                              referrer:(password_manager::PasswordCheckReferrer)

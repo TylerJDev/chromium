@@ -2995,6 +2995,22 @@ TEST_F(GLES2ImplementationTest, FramebufferTextureMultiviewOVR) {
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 
+TEST_F(GLES2ImplementationTest, TexImage2DSharedImageCHROMIUM) {
+  GLbyte data[16] = {0};
+  struct Cmds {
+    cmds::TexImage2DSharedImageCHROMIUMImmediate cmd;
+    GLbyte data[16];
+  };
+
+  for (int jj = 0; jj < 16; ++jj) {
+    data[jj] = static_cast<GLbyte>(jj);
+  }
+  Cmds expected;
+  expected.cmd.Init(1, &data[0]);
+  gl_->TexImage2DSharedImageCHROMIUM(1, &data[0]);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+}
+
 TEST_F(GLES2ImplementationTest, EndSharedImageAccessDirectCHROMIUM) {
   struct Cmds {
     cmds::EndSharedImageAccessDirectCHROMIUM cmd;
@@ -3033,8 +3049,8 @@ TEST_F(GLES2ImplementationTest, ConvertYUVAMailboxesToRGBINTERNAL) {
     data[jj] = static_cast<GLbyte>(jj);
   }
   Cmds expected;
-  expected.cmd.Init(1, 2, 3, &data[0]);
-  gl_->ConvertYUVAMailboxesToRGBINTERNAL(1, 2, 3, &data[0]);
+  expected.cmd.Init(1, 2, 3, 4, 5, 6, 7, &data[0]);
+  gl_->ConvertYUVAMailboxesToRGBINTERNAL(1, 2, 3, 4, 5, 6, 7, &data[0]);
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 
@@ -3335,5 +3351,38 @@ TEST_F(GLES2ImplementationTest,
   gl_->GetFramebufferPixelLocalStorageParameterivANGLE(123, 2, &result);
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
   EXPECT_EQ(static_cast<ResultType>(1), result);
+}
+
+TEST_F(GLES2ImplementationTest, ClipControlEXT) {
+  struct Cmds {
+    cmds::ClipControlEXT cmd;
+  };
+  Cmds expected;
+  expected.cmd.Init(1, 2);
+
+  gl_->ClipControlEXT(1, 2);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+}
+
+TEST_F(GLES2ImplementationTest, PolygonModeANGLE) {
+  struct Cmds {
+    cmds::PolygonModeANGLE cmd;
+  };
+  Cmds expected;
+  expected.cmd.Init(1, 2);
+
+  gl_->PolygonModeANGLE(1, 2);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+}
+
+TEST_F(GLES2ImplementationTest, PolygonOffsetClampEXT) {
+  struct Cmds {
+    cmds::PolygonOffsetClampEXT cmd;
+  };
+  Cmds expected;
+  expected.cmd.Init(1, 2, 3);
+
+  gl_->PolygonOffsetClampEXT(1, 2, 3);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_UNITTEST_AUTOGEN_H_

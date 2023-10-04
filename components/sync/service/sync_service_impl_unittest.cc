@@ -13,6 +13,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
@@ -37,9 +38,9 @@
 #include "components/sync/test/fake_data_type_controller.h"
 #include "components/sync/test/fake_sync_api_component_factory.h"
 #include "components/sync/test/fake_sync_engine.h"
-#include "components/sync/test/mock_trusted_vault_client.h"
 #include "components/sync/test/sync_client_mock.h"
 #include "components/sync/test/sync_service_impl_bundle.h"
+#include "components/trusted_vault/test/fake_trusted_vault_client.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -50,6 +51,7 @@ using testing::AtLeast;
 using testing::ByMove;
 using testing::Eq;
 using testing::Invoke;
+using testing::IsEmpty;
 using testing::IsNull;
 using testing::Not;
 using testing::Return;
@@ -185,12 +187,15 @@ class SyncServiceImplTest : public ::testing::Test {
     component_factory()->set_first_time_sync_configure_done(true);
     // Set first sync time before initialize to simulate a complete sync setup.
     SyncPrefs sync_prefs(prefs());
-    sync_prefs.SetSyncRequested(true);
     sync_prefs.SetSelectedTypes(
         /*keep_everything_synced=*/true,
         /*registered_types=*/UserSelectableTypeSet::All(),
         /*selected_types=*/UserSelectableTypeSet::All());
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+    ASSERT_TRUE(sync_prefs.IsInitialSyncFeatureSetupComplete());
+#else   // BUILDFLAG(IS_CHROMEOS_ASH)
     sync_prefs.SetInitialSyncFeatureSetupComplete();
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
   }
 
   void SetInvalidationsEnabled() {
@@ -237,7 +242,7 @@ class SyncServiceImplTest : public ::testing::Test {
     return sync_service_impl_bundle_.sync_invalidations_service();
   }
 
-  MockTrustedVaultClient* trusted_vault_client() {
+  trusted_vault::FakeTrustedVaultClient* trusted_vault_client() {
     return sync_service_impl_bundle_.trusted_vault_client();
   }
 
@@ -294,7 +299,6 @@ TEST_F(SyncServiceImplTest, NeedsConfirmation) {
   // Mimic the sync setup being pending (SetInitialSyncFeatureSetupComplete()
   // not invoked).
   SyncPrefs sync_prefs(prefs());
-  sync_prefs.SetSyncRequested(true);
   sync_prefs.SetSelectedTypes(
       /*keep_everything_synced=*/true,
       /*registered_types=*/UserSelectableTypeSet::All(),
@@ -377,25 +381,7 @@ TEST_F(SyncServiceImplTest, DisabledByPolicyBeforeInit) {
             service()->GetTransportState());
 }
 
-class SyncServiceImplTestWithIgnoreSyncRequestedFeature
-    : public SyncServiceImplTest,
-      public ::testing::WithParamInterface<bool> {
- public:
-  SyncServiceImplTestWithIgnoreSyncRequestedFeature() {
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
-    scoped_feature_list_.InitWithFeatureState(
-        kSyncIgnoreSyncRequestedPreference, GetParam());
-#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
-  }
-
-  ~SyncServiceImplTestWithIgnoreSyncRequestedFeature() override = default;
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-TEST_P(SyncServiceImplTestWithIgnoreSyncRequestedFeature,
-       DisabledByPolicyBeforeInitThenPolicyRemoved) {
+TEST_F(SyncServiceImplTest, DisabledByPolicyBeforeInitThenPolicyRemoved) {
   PopulatePrefsForInitialSyncFeatureSetupComplete();
   prefs()->SetManagedPref(prefs::internal::kSyncManaged, base::Value(true));
   SignInWithSyncConsent();
@@ -452,10 +438,6 @@ TEST_P(SyncServiceImplTestWithIgnoreSyncRequestedFeature,
   EXPECT_TRUE(service()->IsSyncFeatureEnabled());
   EXPECT_TRUE(service()->IsSyncFeatureActive());
 }
-
-INSTANTIATE_TEST_SUITE_P(SyncIgnoreSyncRequestedPreference,
-                         SyncServiceImplTestWithIgnoreSyncRequestedFeature,
-                         ::testing::Values(false, true));
 
 // Verify that disable by enterprise policy works even after the backend has
 // been initialized.
@@ -570,7 +552,7 @@ TEST_F(SyncServiceImplTest,
   ASSERT_TRUE(
       service()->GetUserSettings()->IsInitialSyncFeatureSetupComplete());
   ASSERT_EQ(SyncService::DisableReasonSet(), service()->GetDisableReasons());
-  ASSERT_EQ(0, component_factory()->clear_transport_data_call_count());
+  ASSERT_TRUE(component_factory()->HasTransportDataIncludingFirstSync());
 
   // Sign-out.
   signin::PrimaryAccountMutator* account_mutator =
@@ -587,7 +569,7 @@ TEST_F(SyncServiceImplTest,
   EXPECT_EQ(SyncService::DisableReasonSet(
                 {SyncService::DISABLE_REASON_NOT_SIGNED_IN}),
             service()->GetDisableReasons());
-  EXPECT_EQ(1, component_factory()->clear_transport_data_call_count());
+  EXPECT_FALSE(component_factory()->HasTransportDataIncludingFirstSync());
 #if BUILDFLAG(IS_IOS)
   SyncPrefs sync_prefs(prefs());
   EXPECT_FALSE(
@@ -626,7 +608,7 @@ TEST_F(SyncServiceImplTest,
   // Wait for SyncServiceImpl to be notified.
   base::RunLoop().RunUntilIdle();
 
-  EXPECT_EQ(1, component_factory()->clear_transport_data_call_count());
+  EXPECT_FALSE(component_factory()->HasTransportDataIncludingFirstSync());
 #if BUILDFLAG(IS_IOS)
   EXPECT_FALSE(
       sync_prefs.IsOptedInForBookmarksAndReadingListAccountStorageForTesting());
@@ -672,7 +654,7 @@ TEST_F(
             service()->GetTransportState());
 
   // This call represents the initial passphrase type coming in from the server.
-  service()->SetPassphraseType(PassphraseType::kCustomPassphrase);
+  service()->PassphraseTypeChanged(PassphraseType::kCustomPassphrase);
 
   // UserSelectableType::kAutofill should have been disabled.
   EXPECT_FALSE(service()->GetUserSettings()->GetSelectedTypes().Has(
@@ -701,7 +683,7 @@ TEST_F(
 
   // This call represents the passphrase type being determined again after a
   // browser restart.
-  service()->SetPassphraseType(PassphraseType::kCustomPassphrase);
+  service()->PassphraseTypeChanged(PassphraseType::kCustomPassphrase);
 
   // UserSelectableType::kAutofill should stay enabled.
   EXPECT_TRUE(service()->GetUserSettings()->GetSelectedTypes().Has(
@@ -751,7 +733,7 @@ TEST_F(
 
   // This call represents the initial passphrase type coming in from the server,
   // the user has no custom passphrase before signing in.
-  service()->SetPassphraseType(PassphraseType::kKeystorePassphrase);
+  service()->PassphraseTypeChanged(PassphraseType::kKeystorePassphrase);
 
   // UserSelectableType::kAutofill should have been enabled.
   ASSERT_TRUE(service()->GetUserSettings()->GetSelectedTypes().Has(
@@ -759,7 +741,7 @@ TEST_F(
 
   // This call represents setting a custom passphrase either locally or coming
   // in from the server.
-  service()->SetPassphraseType(PassphraseType::kCustomPassphrase);
+  service()->PassphraseTypeChanged(PassphraseType::kCustomPassphrase);
 
   // UserSelectableType::kAutofill should stay enabled.
   EXPECT_TRUE(service()->GetUserSettings()->GetSelectedTypes().Has(
@@ -959,17 +941,33 @@ TEST_F(SyncServiceImplTest, StopAndClearWillClearDataAndSwitchToTransportMode) {
 
   ASSERT_EQ(SyncService::TransportState::ACTIVE,
             service()->GetTransportState());
-  ASSERT_EQ(0, component_factory()->clear_transport_data_call_count());
+  ASSERT_TRUE(component_factory()->HasTransportDataIncludingFirstSync());
 
   service()->StopAndClear();
+
+  EXPECT_FALSE(component_factory()->HasTransportDataIncludingFirstSync());
 
   // Even though Sync-the-feature is disabled, there's still an (unconsented)
   // signed-in account, so Sync-the-transport should still be running.
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(SyncService::TransportState::ACTIVE,
             service()->GetTransportState());
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  // On Ash, sync-the-feature remains on. Note however that this is not a
+  // common scenario, because in most case StopAndClear() would be issued from
+  // a codepath that would prevent either sync-the-feature (e.g. dashboard
+  // reset) or sync-the-transport (e.g. unrecoverable error) from starting.
+  EXPECT_TRUE(service()->IsSyncFeatureEnabled());
+  EXPECT_TRUE(service()->IsSyncFeatureActive());
+#else   // BUILDFLAG(IS_CHROMEOS_ASH)
+  // Except for Ash, StopAndClear() turns sync-the-feature off because
+  // IsInitialSyncFeatureSetupComplete() becomes false.
+  EXPECT_FALSE(
+      service()->GetUserSettings()->IsInitialSyncFeatureSetupComplete());
   EXPECT_FALSE(service()->IsSyncFeatureEnabled());
-  EXPECT_EQ(1, component_factory()->clear_transport_data_call_count());
+  EXPECT_FALSE(service()->IsSyncFeatureActive());
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 }
 
 // Verify that sync transport data is cleared when the service is initializing
@@ -977,16 +975,18 @@ TEST_F(SyncServiceImplTest, StopAndClearWillClearDataAndSwitchToTransportMode) {
 // This code path doesn't exist on ChromeOS-Ash, since signout is not possible.
 #if !BUILDFLAG(IS_CHROMEOS_ASH)
 TEST_F(SyncServiceImplTest, ClearTransportDataOnInitializeWhenSignedOut) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+
   // Clearing prefs can be triggered only after `IdentityManager` finishes
   // loading the list of accounts, so wait for it to complete.
   identity_test_env()->WaitForRefreshTokensLoaded();
 
-  ASSERT_EQ(0, component_factory()->clear_transport_data_call_count());
+  ASSERT_TRUE(component_factory()->HasTransportDataIncludingFirstSync());
 
   // Don't sign-in before creating the service.
   InitializeService();
 
-  EXPECT_EQ(1, component_factory()->clear_transport_data_call_count());
+  EXPECT_FALSE(component_factory()->HasTransportDataIncludingFirstSync());
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
@@ -1001,13 +1001,25 @@ TEST_F(SyncServiceImplTest, StopSyncAndClearTwiceDoesNotCrash) {
 
   // Disable sync.
   service()->StopAndClear();
-  EXPECT_FALSE(service()->IsSyncFeatureEnabled());
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  // On Ash, sync-the-feature remains on. Note however that this is not a
+  // common scenario, because in most case StopAndClear() would be issued from
+  // a codepath that would prevent either sync-the-feature (e.g. dashboard
+  // reset) or sync-the-transport (e.g. unrecoverable error) from starting.
+  ASSERT_TRUE(service()->IsSyncFeatureEnabled());
+#else   // BUILDFLAG(IS_CHROMEOS_ASH)
+  // Except for Ash, StopAndClear() turns sync-the-feature off because
+  // IsInitialSyncFeatureSetupComplete() becomes false.
+  ASSERT_FALSE(
+      service()->GetUserSettings()->IsInitialSyncFeatureSetupComplete());
+  ASSERT_FALSE(service()->IsSyncFeatureEnabled());
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
   // Calling StopAndClear while already stopped should not crash. This may
   // (under some circumstances) happen when the user enables sync again but hits
   // the cancel button at the end of the process.
   service()->StopAndClear();
-  EXPECT_FALSE(service()->IsSyncFeatureEnabled());
 }
 
 // Verify that credential errors get returned from GetAuthError().
@@ -1201,10 +1213,16 @@ TEST_F(SyncServiceImplTest, DisableSyncOnClient) {
   // TODO(crbug.com/1462552): Update once kSync becomes unreachable or is
   // deleted from the codebase. See ConsentLevel::kSync documentation for
   // details.
-  EXPECT_CALL(
-      *trusted_vault_client(),
-      ClearLocalDataForAccount(Eq(identity_manager()->GetPrimaryAccountInfo(
-          signin::ConsentLevel::kSync))));
+  const std::string primary_account_gaia_id =
+      identity_manager()
+          ->GetPrimaryAccountInfo(signin::ConsentLevel::kSync)
+          .gaia;
+  // Store some trusted vault keys explicitly to verify that trusted vault local
+  // state is cleared upon DISABLE_SYNC_ON_CLIENT.
+  trusted_vault_client()->StoreKeys(
+      primary_account_gaia_id, /*keys=*/{{1, 2, 3}}, /*last_key_version=*/1);
+  ASSERT_THAT(trusted_vault_client()->GetStoredKeys(primary_account_gaia_id),
+              Not(IsEmpty()));
 
   SyncProtocolError client_cmd;
   client_cmd.action = DISABLE_SYNC_ON_CLIENT;
@@ -1250,6 +1268,10 @@ TEST_F(SyncServiceImplTest, DisableSyncOnClient) {
   EXPECT_EQ(SyncService::TransportState::ACTIVE,
             service()->GetTransportState());
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
+  // TrustedVault data should have been cleared.
+  EXPECT_THAT(trusted_vault_client()->GetStoredKeys(primary_account_gaia_id),
+              IsEmpty());
 
   EXPECT_GT(get_controller(BOOKMARKS)->model()->clear_metadata_call_count(), 0);
 
@@ -1479,7 +1501,7 @@ TEST_F(SyncServiceImplTest,
 TEST_F(SyncServiceImplTest, ShouldEnableAndDisableInvalidationsForSessions) {
   PopulatePrefsForInitialSyncFeatureSetupComplete();
   SignInWithSyncConsent();
-  InitializeService({{SESSIONS, false}, {TYPED_URLS, false}});
+  InitializeService({{SESSIONS, false}, {BOOKMARKS, false}});
   base::RunLoop().RunUntilIdle();
 
   EXPECT_CALL(*sync_invalidations_service(),
@@ -1548,9 +1570,6 @@ TEST_F(SyncServiceImplTest,
 }
 
 TEST_F(SyncServiceImplTest, ShouldCallStopUponResetEngineIfAlreadyShutDown) {
-  base::test::ScopedFeatureList feature_list(
-      syncer::kSyncAllowClearingMetadataWhenDataTypeIsStopped);
-
   // The intention here is to stop sync without clearing metadata by getting to
   // a sync paused state by simulating a credential rejection error.
 
@@ -1899,6 +1918,101 @@ TEST_F(SyncServiceImplTest,
             service()->GetTransportState());
   EXPECT_EQ(ModelTypeSet(),
             service()->GetTypesWithPendingDownloadForInitialSync());
+}
+
+TEST_F(SyncServiceImplTest, EarlyCallToGetTypesWithUnsyncedDataShouldNotCrash) {
+  InitializeService();
+  base::MockCallback<base::OnceCallback<void(ModelTypeSet)>> cb;
+  EXPECT_CALL(cb, Run(ModelTypeSet()));
+  service()->GetTypesWithUnsyncedData(cb.Get());
+}
+
+TEST_F(SyncServiceImplTest,
+       ShouldOnlyForwardEnabledTypesToSyncClientUponGetLocalDataDescriptions) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  SignInWithSyncConsent();
+  // Only PASSWORDS datatype is enabled.
+  InitializeService({{PASSWORDS, true}});
+  base::RunLoop().RunUntilIdle();
+
+  ASSERT_EQ(service()->GetActiveDataTypes(), ModelTypeSet({NIGORI, PASSWORDS}));
+
+  // PASSWORDS and BOOKMARKS is queried from the sync service.
+  ModelTypeSet requested_types{PASSWORDS, BOOKMARKS};
+  // Only PASSWORDS datatype is queried from the sync client.
+  EXPECT_CALL(*sync_client(),
+              GetLocalDataDescriptions(ModelTypeSet{PASSWORDS}, ::testing::_));
+
+  service()->GetLocalDataDescriptions(requested_types, base::DoNothing());
+}
+
+TEST_F(SyncServiceImplTest,
+       ShouldNotForwardToSyncClientUponGetLocalDataDescriptionsIfSyncDisabled) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  prefs()->SetManagedPref(prefs::internal::kSyncManaged, base::Value(true));
+  SignInWithSyncConsent();
+  InitializeService({{PASSWORDS, true}, {BOOKMARKS, true}});
+  base::RunLoop().RunUntilIdle();
+
+  // Sync was disabled due to the policy.
+  EXPECT_EQ(SyncService::DisableReasonSet(
+                {SyncService::DISABLE_REASON_ENTERPRISE_POLICY}),
+            service()->GetDisableReasons());
+  EXPECT_EQ(SyncService::TransportState::DISABLED,
+            service()->GetTransportState());
+
+  // PASSWORDS and BOOKMARKS is queried from the sync service.
+  ModelTypeSet requested_types{PASSWORDS, BOOKMARKS};
+  // No query to the sync client.
+  EXPECT_CALL(*sync_client(),
+              GetLocalDataDescriptions(ModelTypeSet{}, ::testing::_))
+      .Times(0);
+
+  service()->GetLocalDataDescriptions(requested_types, base::DoNothing());
+}
+
+TEST_F(SyncServiceImplTest,
+       ShouldOnlyForwardEnabledTypesToSyncClientUponTriggerLocalDataMigration) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  SignInWithSyncConsent();
+  // Only PASSWORDS datatype is enabled.
+  InitializeService({{PASSWORDS, true}});
+  base::RunLoop().RunUntilIdle();
+
+  ASSERT_EQ(service()->GetActiveDataTypes(), ModelTypeSet({NIGORI, PASSWORDS}));
+
+  // PASSWORDS and BOOKMARKS is queried from the sync service.
+  ModelTypeSet requested_types{PASSWORDS, BOOKMARKS};
+  // Only PASSWORDS datatype is queried from the sync client.
+  EXPECT_CALL(*sync_client(),
+              TriggerLocalDataMigration(ModelTypeSet{PASSWORDS}));
+
+  service()->TriggerLocalDataMigration(ModelTypeSet{PASSWORDS, BOOKMARKS});
+}
+
+TEST_F(
+    SyncServiceImplTest,
+    ShouldNotForwardToSyncClientUponTriggerLocalDataMigrationIfSyncDisabled) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  prefs()->SetManagedPref(prefs::internal::kSyncManaged, base::Value(true));
+  SignInWithSyncConsent();
+  InitializeService({{PASSWORDS, true}, {BOOKMARKS, true}});
+  base::RunLoop().RunUntilIdle();
+
+  // Sync was disabled due to the policy.
+  EXPECT_EQ(SyncService::DisableReasonSet(
+                {SyncService::DISABLE_REASON_ENTERPRISE_POLICY}),
+            service()->GetDisableReasons());
+  EXPECT_EQ(SyncService::TransportState::DISABLED,
+            service()->GetTransportState());
+
+  // PASSWORDS and BOOKMARKS is queried from the sync service.
+  ModelTypeSet requested_types{PASSWORDS, BOOKMARKS};
+  // No query to the sync client.
+  EXPECT_CALL(*sync_client(), TriggerLocalDataMigration(ModelTypeSet{}))
+      .Times(0);
+
+  service()->TriggerLocalDataMigration(requested_types);
 }
 
 }  // namespace

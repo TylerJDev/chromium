@@ -31,7 +31,9 @@ ArcNotificationDelegate::CreateCustomMessageView(
 }
 
 void ArcNotificationDelegate::Close(bool by_user) {
-  DCHECK(item_);
+  if (!item_) {
+    return;
+  }
   item_->Close(by_user);
 }
 
@@ -56,6 +58,11 @@ void ArcNotificationDelegate::SettingsClick() {
 void ArcNotificationDelegate::ExpandStateChanged(bool expanded) {
   DCHECK(item_);
   item_->SetExpandState(expanded);
+}
+
+void ArcNotificationDelegate::SnoozeButtonClicked() {
+  DCHECK(item_);
+  item_->OpenSnooze();
 }
 
 }  // namespace ash

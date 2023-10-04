@@ -31,6 +31,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_function.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
+#include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/dom/ignore_opens_during_unload_count_incrementer.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
@@ -727,7 +728,7 @@ void LocalFrameMojoHandler::AdvanceFocusForIME(
     return;
 
   next_element->scrollIntoViewIfNeeded(true /*centerIfNeeded*/);
-  next_element->Focus();
+  next_element->Focus(FocusParams(FocusTrigger::kUserGesture));
 }
 
 void LocalFrameMojoHandler::ReportContentSecurityPolicyViolation(
@@ -957,9 +958,7 @@ void LocalFrameMojoHandler::GetFirstRectForRange(const gfx::Range& range) {
   WebPluginContainerImpl* plugin_container = frame_->GetWebPluginContainer();
   if (plugin_container) {
     // Pepper-free PDF will reach here.
-    FrameWidget* frame_widget = frame_->GetWidgetForLocalRoot();
-    rect = frame_widget->BlinkSpaceToEnclosedDIPs(
-        plugin_container->Plugin()->GetPluginCaretBounds());
+    rect = plugin_container->Plugin()->GetPluginCaretBounds();
   } else {
     // TODO(crbug.com/702990): Remove `pepper_has_caret` once pepper is removed.
     bool pepper_has_caret = client->GetCaretBoundsFromFocusedPlugin(rect);
@@ -984,7 +983,7 @@ void LocalFrameMojoHandler::GetStringForRange(
     GetStringForRangeCallback callback) {
   gfx::Point baseline_point;
   ui::mojom::blink::AttributedStringPtr attributed_string = nullptr;
-  base::ScopedCFTypeRef<CFAttributedStringRef> string =
+  base::apple::ScopedCFTypeRef<CFAttributedStringRef> string =
       SubstringUtil::AttributedSubstringInRange(
           frame_, base::checked_cast<WTF::wtf_size_t>(range.start()),
           base::checked_cast<WTF::wtf_size_t>(range.length()), baseline_point);
@@ -1003,7 +1002,7 @@ void LocalFrameMojoHandler::BindReportingObserver(
 
 void LocalFrameMojoHandler::UpdateOpener(
     const absl::optional<blink::FrameToken>& opener_frame_token) {
-  if (auto* web_frame = WebFrame::FromCoreFrame(frame_)) {
+  if (WebFrame::FromCoreFrame(frame_)) {
     Frame* opener_frame = nullptr;
     if (opener_frame_token)
       opener_frame = Frame::ResolveFrame(opener_frame_token.value());
@@ -1288,7 +1287,8 @@ void LocalFrameMojoHandler::OnPortalActivated(
       frame_, portal_token, std::move(portal), std::move(portal_client),
       std::move(data.message), ports, std::move(callback));
 
-  ThreadDebugger* debugger = MainThreadDebugger::Instance();
+  v8::Isolate* isolate = dom_window->GetIsolate();
+  ThreadDebugger* debugger = MainThreadDebugger::Instance(isolate);
   if (debugger)
     debugger->ExternalAsyncTaskStarted(data.sender_stack_trace_id);
   dom_window->DispatchEvent(*event);
@@ -1317,6 +1317,26 @@ void LocalFrameMojoHandler::UpdateBrowserControlsState(
 
   frame_->GetWidgetForLocalRoot()->UpdateBrowserControlsState(constraints,
                                                               current, animate);
+}
+
+void LocalFrameMojoHandler::SetV8CompileHints(
+    base::ReadOnlySharedMemoryRegion data) {
+  CHECK(base::FeatureList::IsEnabled(blink::features::kConsumeCompileHints));
+  Page* page = GetPage();
+  if (page == nullptr) {
+    return;
+  }
+  base::ReadOnlySharedMemoryMapping mapping = data.Map();
+  if (!mapping.IsValid()) {
+    return;
+  }
+  const int64_t* memory = mapping.GetMemoryAs<int64_t>();
+  if (memory == nullptr) {
+    return;
+  }
+
+  page->GetV8CrowdsourcedCompileHintsConsumer().SetData(memory,
+                                                        mapping.size() / 8);
 }
 
 void LocalFrameMojoHandler::SnapshotDocumentForViewTransition(

@@ -266,7 +266,7 @@ function abortSignalAnyMemoryTests(signalInterface, controllerInterface) {
     })();
 
     // Running GC async in high priority tasks should complete before the timeout.
-    await runAsyncGC(/*highPriority*/true);
+    await runAsyncGC({priority: 'user-blocking'});
     assert_false(fired, 'GC should complete before the timeout fires');
     assert_equals(wr1.deref(), undefined, 'signal1 should be GCed');
     assert_equals(wr2.deref(), undefined, 'signal2 should be GCed');

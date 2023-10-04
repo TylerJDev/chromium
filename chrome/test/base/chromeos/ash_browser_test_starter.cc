@@ -148,6 +148,12 @@ bool AshBrowserTestStarter::PrepareEnvironmentForLacros() {
   lacros_args.emplace_back(base::StringPrintf("--%s=%s", switches::kGaiaUrl,
                                               base_url().spec().c_str()));
   lacros_args.emplace_back("--enable-features=ApiAccessibilityServicePrivate");
+  // Disable gpu process in Lacros since hardware accelerated rendering is
+  // not possible yet in Ash X11 backend. See details in crbug/1478369.
+  lacros_args.emplace_back("--disable-gpu");
+  // Disable gpu sandbox in Lacros since it fails in Linux emulator environment.
+  // See details in crbug/1483530.
+  lacros_args.emplace_back("--disable-gpu-sandbox");
   command_line->AppendSwitchASCII(ash::switches::kLacrosChromeAdditionalArgs,
                                   base::JoinString(lacros_args, "####"));
 
@@ -213,11 +219,6 @@ void AshBrowserTestStarter::StartLacros(InProcessBrowserTest* test_class_obj) {
   crosapi::BrowserManager::Get()->RemoveObserver(&observer);
 
   CHECK(crosapi::BrowserManager::Get()->IsRunning());
-
-  // Create a new ash browser window so browser() can work.
-  Profile* profile = ProfileManager::GetActiveUserProfile();
-  chrome::NewEmptyWindow(profile);
-  test_class_obj->SelectFirstBrowser();
 }
 
 }  // namespace test

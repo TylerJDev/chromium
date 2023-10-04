@@ -9,6 +9,7 @@
 #include "ash/public/cpp/accelerator_actions.h"
 #include "ash/public/cpp/accelerators.h"
 #include "ash/public/mojom/accelerator_info.mojom-shared.h"
+#include "base/containers/contains.h"
 #include "base/hash/md5.h"
 #include "base/hash/md5_boringssl.h"
 #include "base/strings/strcat.h"
@@ -21,9 +22,9 @@ namespace ash {
 namespace {
 
 // The total number of Ash accelerators.
-constexpr int kAshAcceleratorsTotalNum = 147;
+constexpr int kAshAcceleratorsTotalNum = 148;
 // The hash of Ash accelerators.
-constexpr char kAshAcceleratorsHash[] = "6b946ad3ceb8263615f2c47dc7e240a8";
+constexpr char kAshAcceleratorsHash[] = "6c4f544746a603c9075b45cc093a64bf";
 
 std::string ToActionName(ash::AcceleratorAction action) {
   return base::StrCat(
@@ -94,13 +95,11 @@ class AcceleratorLayoutMetadataTest : public testing::Test {
 
  protected:
   bool ShouldNotHaveLayouts(ash::AcceleratorAction action) {
-    return kAshAcceleratorsWithoutLayout.find(action) !=
-           kAshAcceleratorsWithoutLayout.end();
+    return base::Contains(kAshAcceleratorsWithoutLayout, action);
   }
 
   bool HasLayouts(ash::AcceleratorAction action) {
-    return ash_accelerator_with_layouts_.find(action) !=
-           ash_accelerator_with_layouts_.end();
+    return base::Contains(ash_accelerator_with_layouts_, action);
   }
 
   // Ash accelerator with layouts.

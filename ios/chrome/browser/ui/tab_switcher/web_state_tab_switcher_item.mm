@@ -9,7 +9,7 @@
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/url/url_util.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
-#import "ios/chrome/browser/snapshots/snapshot_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
 #import "ios/chrome/browser/tabs/tab_title_util.h"
 #import "ios/web/public/web_state.h"
 
@@ -26,7 +26,7 @@ const CGFloat kSymbolSize = 16;
 
 - (instancetype)initWithWebState:(web::WebState*)webState {
   DCHECK(webState);
-  self = [super initWithIdentifier:webState->GetStableIdentifier()];
+  self = [super initWithIdentifier:webState->GetUniqueIdentifier()];
   if (self) {
     _webState = webState->GetWeakPtr();
 

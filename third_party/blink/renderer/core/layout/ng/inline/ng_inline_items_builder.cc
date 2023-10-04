@@ -195,8 +195,8 @@ NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::BoxInfo::BoxInfo(
     : style(*item.Style()),
       item_index(item_index),
       should_create_box_fragment(item.ShouldCreateBoxFragment()),
-      text_metrics(style.GetFontHeight()) {
-  DCHECK(&style);
+      text_metrics(style->GetFontHeight()) {
+  DCHECK(style);
 }
 
 // True if this inline box should create a box fragment when it has |child|.
@@ -205,7 +205,7 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::BoxInfo::
     ShouldCreateBoxFragmentForChild(const BoxInfo& child) const {
   // When a child inline box has margins, the parent has different width/height
   // from the union of children.
-  const ComputedStyle& child_style = child.style;
+  const ComputedStyle& child_style = *child.style;
   if (child_style.MayHaveMargin())
     return true;
 
@@ -278,8 +278,9 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendEmptyTextItem(
 template <typename OffsetMappingBuilder>
 void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::
     AppendGeneratedBreakOpportunity(LayoutObject* layout_object) {
-  if (block_flow_->IsNGSVGText())
+  if (block_flow_->IsSVGText()) {
     return;
+  }
   DCHECK(layout_object);
   typename OffsetMappingBuilder::SourceNodeScope scope(&mapping_builder_,
                                                        nullptr);
@@ -1001,7 +1002,7 @@ NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendBreakOpportunity(
 template <typename OffsetMappingBuilder>
 void NGInlineItemsBuilderTemplate<
     OffsetMappingBuilder>::ExitAndEnterSvgTextChunk(LayoutText& layout_text) {
-  DCHECK(block_flow_->IsNGSVGText());
+  DCHECK(block_flow_->IsSVGText());
   DCHECK(text_chunk_offsets_);
 
   if (bidi_context_.empty())
@@ -1021,8 +1022,9 @@ void NGInlineItemsBuilderTemplate<
 template <typename OffsetMappingBuilder>
 void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::EnterSvgTextChunk(
     const ComputedStyle* style) {
-  if (LIKELY(!block_flow_->IsNGSVGText() || !text_chunk_offsets_))
+  if (LIKELY(!block_flow_->IsSVGText() || !text_chunk_offsets_)) {
     return;
+  }
   EnterBidiContext(nullptr, style, kLeftToRightIsolateCharacter,
                    kRightToLeftIsolateCharacter,
                    kPopDirectionalIsolateCharacter);
@@ -1054,7 +1056,7 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendAtomicInline(
   RestoreTrailingCollapsibleSpaceIfRemoved();
   Append(NGInlineItem::kAtomicInline, kObjectReplacementCharacter,
          layout_object);
-  has_ruby_ = has_ruby_ || layout_object->IsRubyRun();
+  has_ruby_ = has_ruby_ || layout_object->IsRubyColumn();
 
   // When this atomic inline is inside of an inline box, the height of the
   // inline box can be different from the height of the atomic inline. Ensure

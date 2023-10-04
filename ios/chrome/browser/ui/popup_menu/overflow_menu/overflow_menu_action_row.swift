@@ -5,6 +5,29 @@
 import SwiftUI
 import ios_chrome_common_ui_colors_swift
 
+/// Custom toggle style for Overflow Menu Action rows, consisting of a circle
+/// border when the toggle is off and a circle with checkmark when the toggle
+/// is on.
+struct OverflowMenuActionToggleStyle: ToggleStyle {
+  static let onStyle = AnyShapeStyle(.tint)
+  static let offStyle = AnyShapeStyle(Color.grey500)
+
+  @ViewBuilder
+  func makeBody(configuration: Configuration) -> some View {
+    Button {
+      configuration.isOn.toggle()
+    } label: {
+      Label {
+        configuration.label
+      } icon: {
+        Image(systemName: configuration.isOn ? "checkmark.circle.fill" : "circle")
+          .foregroundStyle(configuration.isOn ? Self.onStyle : Self.offStyle)
+          .imageScale(.large)
+      }
+    }
+  }
+}
+
 /// A view that displays an action in the overflow menu.
 @available(iOS 15, *)
 struct OverflowMenuActionRow: View {
@@ -18,6 +41,9 @@ struct OverflowMenuActionRow: View {
   /// The size of the "N" IPH icon.
   private static let newLabelIconWidth: CGFloat = 15
 
+  // The duration that the view's highlight should persist.
+  private static let highlightDuration: DispatchTimeInterval = .seconds(2)
+
   /// The action for this row.
   @ObservedObject var action: OverflowMenuAction
 
@@ -30,46 +56,65 @@ struct OverflowMenuActionRow: View {
   }
 
   var body: some View {
-    Button(
-      action: {
-        guard !isEditing else {
-          return
+    button
+      .listRowBackground(background)
+      .onChange(of: action.highlighted) { _ in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.highlightDuration) {
+          action.highlighted = false
         }
-        metricsHandler?.popupMenuTookAction()
-        action.handler()
-      },
-      label: {
-        rowContent
-          .contentShape(Rectangle())
       }
-    )
-    .accessibilityIdentifier(action.accessibilityIdentifier)
-    .disabled(!action.enabled || action.enterpriseDisabled)
-    .if(!action.useSystemRowColoring) { view in
-      view.accentColor(.textPrimary)
-    }
-    .listRowSeparatorTint(.overflowMenuSeparator)
+      .onAppear {
+        if action.highlighted {
+          DispatchQueue.main.asyncAfter(deadline: .now() + Self.highlightDuration) {
+            action.highlighted = false
+          }
+        }
+      }
+      .accessibilityIdentifier(action.accessibilityIdentifier)
+      .disabled(!action.enabled || action.enterpriseDisabled)
+      .if(!isEditing) { view in
+        view.contextMenu {
+          ForEach(action.longPressItems) { item in
+            Section {
+              Button {
+                item.handler()
+              } label: {
+                Label(item.title, systemImage: item.symbolName)
+              }
+            }
+          }
+        }
+      }
+      .if(!action.useSystemRowColoring) { view in
+        view.accentColor(.textPrimary)
+      }
+      .listRowSeparatorTint(.overflowMenuSeparator)
   }
 
   @ViewBuilder
   private var rowContent: some View {
     if isEditing {
       HStack {
+        Toggle(isOn: $action.shown.animation()) {
+          Text(action.name)
+        }
+        .toggleStyle(OverflowMenuActionToggleStyle())
+        .labelStyle(.iconOnly)
+        .tint(.chromeBlue)
+        .accessibilityRemoveTraits(.isSelected)
         rowIcon
-        name
+        centerTextView
         Spacer()
-        Toggle(isOn: $action.shown.animation()) {}
-          .labelsHidden()
-          .tint(.chromeBlue)
       }
       .padding([.trailing], Self.editRowEndPadding)
+      .accessibilityElement(children: .combine)
     } else {
       HStack {
         // If there is no icon, the text should be centered.
         if rowIcon == nil {
           Spacer()
         }
-        name
+        centerTextView
         if action.displayNewLabelIcon {
           newLabelIconView
         }
@@ -82,8 +127,45 @@ struct OverflowMenuActionRow: View {
     }
   }
 
+  /// The row's middle text content
+  @ViewBuilder
+  private var centerTextView: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      name
+      subtitle
+    }
+  }
+
+  // The button view, which is replaced by just a plain view when this is in
+  // edit mode.
+  @ViewBuilder
+  var button: some View {
+    if isEditing {
+      rowContent
+    } else {
+      Button(
+        action: {
+          metricsHandler?.popupMenuTookAction()
+          metricsHandler?.popupMenuUserSelectedAction()
+          action.handler()
+        },
+        label: {
+          rowContent
+            .contentShape(Rectangle())
+        }
+      )
+    }
+  }
+
   private var name: some View {
     Text(action.name).lineLimit(1)
+  }
+
+  @ViewBuilder
+  private var subtitle: some View {
+    if let subtitle = action.subtitle {
+      Text(subtitle).lineLimit(1).font(.caption).foregroundColor(.textTertiary)
+    }
   }
 
   private var rowIcon: OverflowMenuRowIcon? {
@@ -92,6 +174,15 @@ struct OverflowMenuActionRow: View {
         symbolName: symbolName, systemSymbol: action.systemSymbol,
         monochromeSymbol: action.monochromeSymbol)
     }
+  }
+
+  /// The background color for this row.
+  var background: some View {
+    let color =
+      action.highlighted
+      ? Color("destination_highlight_color") : Color(.secondarySystemGroupedBackground)
+    // `.listRowBackground cannot be animated, so apply the animation to the color directly.
+    return color.animation(.default)
   }
 
   // The "N" IPH icon view.

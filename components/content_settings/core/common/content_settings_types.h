@@ -18,6 +18,10 @@ enum class ContentSettingsType : int32_t {
   // "DEFAULT" is only used as an argument to the Content Settings Window
   // opener; there it means "whatever was last shown".
   DEFAULT = -1,
+  // This setting governs whether cookies are enabled by the user in the
+  // provided context. However, it may be overridden by other settings. This
+  // enum should NOT be read directly to determine whether cookies are enabled;
+  // the client should instead rely on the CookieSettings API.
   COOKIES = 0,
   IMAGES,
   JAVASCRIPT,
@@ -37,11 +41,6 @@ enum class ContentSettingsType : int32_t {
   PROTOCOL_HANDLERS,
   DEPRECATED_PPAPI_BROKER,
   AUTOMATIC_DOWNLOADS,
-
-  // MIDI stands for Musical Instrument Digital Interface. It is a standard that
-  // allows electronic musical instruments, computers, and other devices to
-  // communicate with each other.
-  MIDI,
 
   // Advanced device-specific functions on MIDI devices. MIDI-SysEx
   // communications can be used for changing the MIDI device's persistent state
@@ -64,6 +63,11 @@ enum class ContentSettingsType : int32_t {
   // Website setting which stores metadata for the subresource filter to aid in
   // decisions for whether or not to show the UI.
   ADS_DATA,
+
+  // MIDI stands for Musical Instrument Digital Interface. It is a standard that
+  // allows electronic musical instruments, computers, and other devices to
+  // communicate with each other.
+  MIDI,
 
   // This content setting type is for caching password protection service's
   // verdicts of each origin.
@@ -239,7 +243,10 @@ enum class ContentSettingsType : int32_t {
 
   // Website setting to store permissions metadata granted to paths on the local
   // file system via the File System Access API. |FILE_SYSTEM_WRITE_GUARD| is
-  // the corresponding "guard" setting.
+  // the corresponding "guard" setting. The stored data represents valid
+  // permission only if |FILE_SYSTEM_ACCESS_EXTENDED_PERMISSION| is enabled
+  // via user opt-in. Otherwise, they represent "recently granted but revoked
+  // permission", which are used to restore the permission.
   FILE_SYSTEM_ACCESS_CHOOSER_DATA,
 
   // Stores a grant that allows a relying party to send a request for identity
@@ -340,8 +347,23 @@ enum class ContentSettingsType : int32_t {
   // Stores per origin metadata for cookie controls.
   COOKIE_CONTROLS_METADATA,
 
-  // Setting for supporting 3PCD.
+  // Content Setting for 3PC accesses granted via 3PC deprecation trial.
   TPCD_SUPPORT,
+
+  // Content setting used to indicate whether entering picture-in-picture
+  // automatically should be enabled.
+  AUTO_PICTURE_IN_PICTURE,
+
+  // Content Setting for 3PC accesses granted by metadata delivered via the
+  // component updater service. This type will only be used when
+  // `net::features::kTpcdMetadataGrants` is enabled.
+  TPCD_METADATA_GRANTS,
+
+  // Whether user has opted into keeping file/directory permissions persistent
+  // between visits for a given origin. When enabled, permission metadata stored
+  // under |FILE_SYSTEM_ACCESS_CHOOSER_DATA| can auto-grant incoming permission
+  // request.
+  FILE_SYSTEM_ACCESS_EXTENDED_PERMISSION,
 
   NUM_TYPES,
 };

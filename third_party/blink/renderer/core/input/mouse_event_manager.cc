@@ -167,20 +167,19 @@ void MouseEventManager::Trace(Visitor* visitor) const {
 MouseEventManager::MouseEventBoundaryEventDispatcher::
     MouseEventBoundaryEventDispatcher(MouseEventManager* mouse_event_manager,
                                       const WebMouseEvent* web_mouse_event)
-    : mouse_event_manager_(mouse_event_manager),
+    : BoundaryEventDispatcher(event_type_names::kMouseover,
+                              event_type_names::kMouseout,
+                              event_type_names::kMouseenter,
+                              event_type_names::kMouseleave),
+      mouse_event_manager_(mouse_event_manager),
       web_mouse_event_(web_mouse_event) {}
 
-void MouseEventManager::MouseEventBoundaryEventDispatcher::DispatchOut(
+void MouseEventManager::MouseEventBoundaryEventDispatcher::Dispatch(
     EventTarget* target,
-    EventTarget* related_target) {
-  Dispatch(target, related_target, event_type_names::kMouseout,
-           *web_mouse_event_, false);
-}
-
-void MouseEventManager::MouseEventBoundaryEventDispatcher::DispatchOver(
-    EventTarget* target,
-    EventTarget* related_target) {
-  if (target) {
+    EventTarget* related_target,
+    const AtomicString& type,
+    bool check_for_listener) {
+  if (target && type == event_type_names::kMouseover) {
     HTMLImageElement* image_element =
         DynamicTo<HTMLImageElement>(target->ToNode());
     if (image_element && image_element->IsLCPElement()) {
@@ -189,43 +188,7 @@ void MouseEventManager::MouseEventBoundaryEventDispatcher::DispatchOver(
       paint_timing.SetLCPMouseoverDispatched();
     }
   }
-  Dispatch(target, related_target, event_type_names::kMouseover,
-           *web_mouse_event_, false);
-}
-
-void MouseEventManager::MouseEventBoundaryEventDispatcher::DispatchLeave(
-    EventTarget* target,
-    EventTarget* related_target,
-    bool check_for_listener) {
-  Dispatch(target, related_target, event_type_names::kMouseleave,
-           *web_mouse_event_, check_for_listener);
-}
-
-void MouseEventManager::MouseEventBoundaryEventDispatcher::DispatchEnter(
-    EventTarget* target,
-    EventTarget* related_target,
-    bool check_for_listener) {
-  Dispatch(target, related_target, event_type_names::kMouseenter,
-           *web_mouse_event_, check_for_listener);
-}
-
-AtomicString
-MouseEventManager::MouseEventBoundaryEventDispatcher::GetLeaveEvent() {
-  return event_type_names::kMouseleave;
-}
-
-AtomicString
-MouseEventManager::MouseEventBoundaryEventDispatcher::GetEnterEvent() {
-  return event_type_names::kMouseenter;
-}
-
-void MouseEventManager::MouseEventBoundaryEventDispatcher::Dispatch(
-    EventTarget* target,
-    EventTarget* related_target,
-    const AtomicString& type,
-    const WebMouseEvent& web_mouse_event,
-    bool check_for_listener) {
-  mouse_event_manager_->DispatchMouseEvent(target, type, web_mouse_event,
+  mouse_event_manager_->DispatchMouseEvent(target, type, *web_mouse_event_,
                                            nullptr, related_target,
                                            check_for_listener);
 }
@@ -437,6 +400,8 @@ void MouseEventManager::SetElementUnderMouse(
   Element* last_element_under_mouse = element_under_mouse_;
   element_under_mouse_ = target;
 
+  // TODO(mustaq): Why do we need the `ScrollableArea` code below and not in
+  // `PointerEventManager::SetElementUnderPointer()`?
   PaintLayer* layer_for_last_node =
       event_handling_util::LayerForNode(last_element_under_mouse);
   PaintLayer* layer_for_node_under_mouse =
@@ -529,10 +494,11 @@ WebInputEventResult MouseEventManager::HandleMouseFocus(
   for (; element; element = element->ParentOrShadowHostElement()) {
     if (element->IsFocusable() && element->IsFocusedElementInDocument())
       return WebInputEventResult::kNotHandled;
-    if (element->IsMouseFocusable() || element->DelegatesFocus())
+    if (element->IsFocusable() || element->DelegatesFocus()) {
       break;
+    }
   }
-  DCHECK(!element || element->IsMouseFocusable() || element->DelegatesFocus());
+  DCHECK(!element || element->IsFocusable() || element->DelegatesFocus());
 
   // To fix <rdar://problem/4895428> Can't drag selected ToDo, we don't focus
   // a node on mouse down if it's selected and inside a focused node. It will
@@ -563,9 +529,10 @@ WebInputEventResult MouseEventManager::HandleMouseFocus(
   // If focus shift is blocked, we eat the event. Note we should never
   // clear swallowEvent if the page already set it (e.g., by canceling
   // default behavior).
-  if (element && !element->IsMouseFocusable() &&
-      SlideFocusOnShadowHostIfNecessary(*element))
+  if (element && !element->IsFocusable() &&
+      SlideFocusOnShadowHostIfNecessary(*element)) {
     return WebInputEventResult::kHandledSystem;
+  }
 
   // We call setFocusedElement even with !element in order to blur
   // current focus element when a link is clicked; this is expected by
@@ -584,9 +551,9 @@ bool MouseEventManager::SlideFocusOnShadowHostIfNecessary(
   if (Element* delegated_target = element.GetFocusableArea()) {
     // Use FocusType::kMouse instead of FocusType::kForward
     // in order to prevent :focus-visible from being set
-    delegated_target->Focus(FocusParams(SelectionBehaviorOnFocus::kReset,
-                                        mojom::blink::FocusType::kMouse,
-                                        nullptr));
+    delegated_target->Focus(FocusParams(
+        SelectionBehaviorOnFocus::kReset, mojom::blink::FocusType::kMouse,
+        nullptr, FocusOptions::Create(), FocusTrigger::kUserGesture));
     return true;
   }
   return false;

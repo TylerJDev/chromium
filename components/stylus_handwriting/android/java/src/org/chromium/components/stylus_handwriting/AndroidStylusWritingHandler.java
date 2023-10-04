@@ -4,24 +4,26 @@
 
 package org.chromium.components.stylus_handwriting;
 
+import static android.view.PointerIcon.TYPE_HANDWRITING;
+
 import android.content.ComponentName;
 import android.content.Context;
+import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Build;
 import android.provider.Settings;
-import android.view.PointerIcon;
 import android.view.View;
+import android.view.inputmethod.EditorBoundsInfo;
 import android.view.inputmethod.InputMethodInfo;
 import android.view.inputmethod.InputMethodManager;
 
-import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import org.chromium.base.Log;
-import org.chromium.blink_public.common.BlinkFeatures;
-import org.chromium.content_public.browser.ContentFeatureMap;
 import org.chromium.content_public.browser.StylusWritingHandler;
+import org.chromium.content_public.browser.StylusWritingImeCallback;
 import org.chromium.content_public.browser.WebContents;
-import org.chromium.ui.base.ViewAndroidDelegate.StylusWritingCursorHandler;
 
 import java.util.List;
 
@@ -29,10 +31,8 @@ import java.util.List;
  * Allows stylus handwriting using the Android stylus writing APIs introduced in Android T.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-public class AndroidStylusWritingHandler
-        implements StylusWritingHandler, StylusApiOption, StylusWritingCursorHandler {
+public class AndroidStylusWritingHandler implements StylusWritingHandler, StylusApiOption {
     private static final String TAG = "AndroidStylus";
-    private static @Nullable Integer sHandwritingPointerType = getHandwritingHoverPointer();
 
     private final InputMethodManager mInputMethodManager;
     private View mTargetView;
@@ -56,9 +56,17 @@ public class AndroidStylusWritingHandler
 
         InputMethodManager inputMethodManager = context.getSystemService(InputMethodManager.class);
         List<InputMethodInfo> inputMethods = inputMethodManager.getInputMethodList();
-        ComponentName defaultImePackage =
-                ComponentName.unflattenFromString(Settings.Secure.getString(
-                        context.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD));
+        String defaultIme = Settings.Secure.getString(
+                context.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+
+        if (defaultIme == null) {
+            Log.d(TAG,
+                    "Stylus handwriting feature is not supported as "
+                            + "default IME could not be fetched.");
+            return false;
+        }
+
+        ComponentName defaultImePackage = ComponentName.unflattenFromString(defaultIme);
 
         for (InputMethodInfo inputMethod : inputMethods) {
             if (!inputMethod.getComponent().equals(defaultImePackage)) continue;
@@ -71,13 +79,6 @@ public class AndroidStylusWritingHandler
 
         Log.d(TAG, "Couldn't find IME");
         return false;
-    }
-
-    private static @Nullable Integer getHandwritingHoverPointer() {
-        // Android handwriting hover icon is supported from Android U.
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-                ? PointerIcon.TYPE_HANDWRITING
-                : null;
     }
 
     AndroidStylusWritingHandler(Context context) {
@@ -98,20 +99,17 @@ public class AndroidStylusWritingHandler
     }
 
     @Override
-    public void onWindowFocusChanged(Context context, boolean hasFocus) {}
-
-    @Override
     public boolean canShowSoftKeyboard() {
-        // TODO(mahesh.ma): We can return false here when Android stylus writing service has widget
-        // toolbar that can allow editing commands like add space, backspace, perform editor actions
-        // like next, prev, search, go etc, or an option to show/hide keyboard. Until then it is
-        // better to allow showing soft keyboard for above operations. It can be noted that Platform
-        // Edit text behaviour is also to show soft keyboard during stylus writing in Android T.
-        return true;
+        // We can return false here when Android stylus writing service has widget toolbar that can
+        // allow editing commands like add space, backspace, perform editor actions like next, prev,
+        // search, go etc, or an option to show/hide keyboard. Until then it is better to allow
+        // showing soft keyboard for above operations. It can be noted that Platform Edit text
+        // behaviour is also to show soft keyboard during stylus writing in Android T.
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
     }
 
     @Override
-    public boolean requestStartStylusWriting() {
+    public boolean requestStartStylusWriting(StylusWritingImeCallback imeCallback) {
         Log.d(TAG, "Requesting Stylus Writing");
         StylusApiOption.recordStylusHandwritingTriggered(Api.ANDROID);
         mInputMethodManager.startStylusHandwriting(mTargetView);
@@ -119,18 +117,29 @@ public class AndroidStylusWritingHandler
     }
 
     @Override
-    public StylusWritingCursorHandler getStylusWritingCursorHandler() {
-        return this;
+    public EditorBoundsInfo onEditElementFocusedForStylusWriting(
+            Rect focusedEditBounds, Point cursorPosition, float scaleFactor, int contentOffsetY) {
+        RectF bounds = new RectF(focusedEditBounds.left / scaleFactor,
+                focusedEditBounds.top / scaleFactor, focusedEditBounds.right / scaleFactor,
+                focusedEditBounds.bottom / scaleFactor);
+        return new EditorBoundsInfo.Builder()
+                .setEditorBounds(bounds)
+                .setHandwritingBounds(bounds)
+                .build();
     }
 
     @Override
-    public boolean didHandleCursorUpdate(View currentView) {
-        if (sHandwritingPointerType == null) return false;
-        // Enable this icon behind feature flag that shows hover Icon in expanded area of target.
-        if (!ContentFeatureMap.isEnabled(BlinkFeatures.STYLUS_POINTER_ADJUSTMENT)) return false;
+    public EditorBoundsInfo onFocusedNodeChanged(Rect editableBoundsOnScreenDip, boolean isEditable,
+            View currentView, float scaleFactor, int contentOffsetY) {
+        RectF bounds = new RectF(editableBoundsOnScreenDip);
+        return new EditorBoundsInfo.Builder()
+                .setEditorBounds(bounds)
+                .setHandwritingBounds(bounds)
+                .build();
+    }
 
-        currentView.setPointerIcon(
-                PointerIcon.getSystemIcon(currentView.getContext(), sHandwritingPointerType));
-        return true;
+    @Override
+    public int getStylusPointerIcon() {
+        return TYPE_HANDWRITING;
     }
 }

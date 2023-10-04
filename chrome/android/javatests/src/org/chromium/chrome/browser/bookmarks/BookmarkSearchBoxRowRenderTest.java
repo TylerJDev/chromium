@@ -96,8 +96,8 @@ public class BookmarkSearchBoxRowRenderTest {
                             .with(BookmarkSearchBoxRowProperties.SHOPPING_CHIP_VISIBILITY, false)
                             .build();
 
-            PropertyModelChangeProcessor.create(
-                    mPropertyModel, bookmarkSearchBoxRow, BookmarkSearchBoxRowViewBinder::bind);
+            PropertyModelChangeProcessor.create(mPropertyModel, bookmarkSearchBoxRow,
+                    BookmarkSearchBoxRowViewBinder.createViewBinder());
         });
     }
 
@@ -117,5 +117,17 @@ public class BookmarkSearchBoxRowRenderTest {
                         -> mPropertyModel.set(
                                 BookmarkSearchBoxRowProperties.SHOPPING_CHIP_VISIBILITY, true));
         mRenderTestRule.render(mContentView, "withShoppingChip");
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    public void testWithSearchText() throws IOException {
+        TestThreadUtils.runOnUiThreadBlocking(() -> {
+            mPropertyModel.set(BookmarkSearchBoxRowProperties.SEARCH_TEXT, "foo");
+            mPropertyModel.set(
+                    BookmarkSearchBoxRowProperties.CLEAR_SEARCH_TEXT_BUTTON_VISIBILITY, true);
+        });
+        mRenderTestRule.render(mContentView, "searchText");
     }
 }

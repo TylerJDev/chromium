@@ -95,8 +95,9 @@ class ProfileDataRemover : public content::BrowsingDataRemover::Observer {
       // All the Profile data has been wiped. Clear the last signed in username
       // as well, so that the next signin doesn't trigger the account
       // change dialog.
-      profile_->GetPrefs()->ClearPref(prefs::kGoogleServicesLastGaiaId);
-      profile_->GetPrefs()->ClearPref(prefs::kGoogleServicesLastUsername);
+      profile_->GetPrefs()->ClearPref(prefs::kGoogleServicesLastSyncingGaiaId);
+      profile_->GetPrefs()->ClearPref(
+          prefs::kGoogleServicesLastSyncingUsername);
     }
 
     origin_runner_->PostTask(FROM_HERE, std::move(callback_));
@@ -175,6 +176,7 @@ jboolean SigninManagerAndroid::IsForceSigninEnabled(JNIEnv* env) {
 }
 
 void SigninManagerAndroid::OnSigninAllowedPrefChanged() const {
+  VLOG(1) << "::OnSigninAllowedPrefChanged() " << IsSigninAllowed();
   Java_SigninManagerImpl_onSigninAllowedByPolicyChanged(
       base::android::AttachCurrentThread(), java_signin_manager_,
       IsSigninAllowed());

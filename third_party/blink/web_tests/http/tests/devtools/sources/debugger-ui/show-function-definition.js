@@ -5,6 +5,9 @@
 import {TestRunner} from 'test_runner';
 import {ConsoleTestRunner} from 'console_test_runner';
 
+import * as UI from 'devtools/ui/legacy/legacy.js';
+import * as Sources from 'devtools/panels/sources/sources.js';
+
 (async function() {
   TestRunner.addResult(`Tests that "Show Function Definition" jumps to the correct location.\n`);
   await TestRunner.loadLegacyModule('console');
@@ -17,12 +20,12 @@ import {ConsoleTestRunner} from 'console_test_runner';
       }
   `);
 
-  var panel = UI.panels.sources;
+  var panel = Sources.SourcesPanel.SourcesPanel.instance();
 
   TestRunner.runTestSuite([
     function testRevealFunctionDefinition(next) {
       TestRunner.addSniffer(panel, 'showUISourceCode', showUISourceCodeHook);
-      UI.context.flavor(SDK.ExecutionContext).evaluate({expression: 'jumpToMe', silent: true}).then(didGetFunction);
+      UI.Context.Context.instance().flavor(SDK.ExecutionContext).evaluate({expression: 'jumpToMe', silent: true}).then(didGetFunction);
 
       function didGetFunction(result) {
         var error = !result.object || !!result.exceptionDetails;
@@ -30,7 +33,7 @@ import {ConsoleTestRunner} from 'console_test_runner';
         panel.showFunctionDefinition(result.object);
       }
 
-      function showUISourceCodeHook(uiSourceCode, lineNumber, columnNumber, forceShowInPanel) {
+      function showUISourceCodeHook(uiSourceCode, {lineNumber, columnNumber}, forceShowInPanel) {
         // lineNumber and columnNumber are 0-based
         ++lineNumber;
         ++columnNumber;

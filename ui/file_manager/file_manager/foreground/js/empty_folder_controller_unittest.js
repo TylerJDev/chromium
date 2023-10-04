@@ -17,8 +17,8 @@ import {PropStatus} from '../../externs/ts/state.js';
 import {VolumeInfo} from '../../externs/volume_info.js';
 import {constants} from '../../foreground/js/constants.js';
 import {clearSearch, updateSearch} from '../../state/ducks/search.js';
+import {convertVolumeInfoAndMetadataToVolume} from '../../state/ducks/volumes.js';
 import {createFakeVolumeMetadata, setUpFileManagerOnWindow, setupStore} from '../../state/for_tests.js';
-import {convertVolumeInfoAndMetadataToVolume} from '../../state/reducers/volumes.js';
 import {getEmptyState, getStore} from '../../state/store.js';
 
 import {DirectoryModel} from './directory_model.js';
@@ -276,7 +276,6 @@ export async function testShownForODFS(done) {
  * @suppress {accessControls} access private method in test.
  */
 export function testShowNoSearchResult() {
-  util.isSearchV2Enabled = () => true;
   const store = getStore();
   store.init(getEmptyState());
   // Test 1: Store indicates we are not searching. No matter if the directory is

@@ -149,7 +149,7 @@ class PageContentAnnotationsServiceTest : public testing::Test {
 
     // Instantiate service.
     service_ = std::make_unique<PageContentAnnotationsService>(
-        /*autocomplete_provider_client=*/nullptr, "en-US",
+        /*autocomplete_provider_client=*/nullptr, "en-US", "us",
         optimization_guide_model_provider_.get(), history_service_.get(),
         template_url_service_.get(),
         /*zero_suggest_cache_service=*/nullptr,
@@ -238,6 +238,22 @@ TEST_F(PageContentAnnotationsServiceTest, ObserveLocalVisitNonSearch) {
 #endif
 
   VisitURL(GURL("https://example.com"), u"test", visit_id,
+           /*local_navigation_id=*/1,
+           /*is_synced_visit=*/false);
+
+  task_environment_.FastForwardBy(base::Seconds(5));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, NonHTTPUrlIgnored) {
+  history::VisitID visit_id = 1;
+
+#if BUILDFLAG(BUILD_WITH_TFLITE_LIB)
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id))
+      .Times(0);
+#endif
+
+  VisitURL(GURL("data:,"), u"test", visit_id,
            /*local_navigation_id=*/1,
            /*is_synced_visit=*/false);
 
@@ -347,8 +363,8 @@ TEST_F(PageContentAnnotationsServiceRemotePageMetadataTest,
        RegistersTypeWhenFeatureEnabled) {
   std::vector<proto::OptimizationType> registered_optimization_types =
       optimization_guide_decider()->registered_optimization_types();
-  EXPECT_EQ(registered_optimization_types.size(), 1u);
-  EXPECT_EQ(registered_optimization_types[0], proto::PAGE_ENTITIES);
+  EXPECT_TRUE(
+      base::Contains(registered_optimization_types, proto::PAGE_ENTITIES));
 }
 
 TEST_F(PageContentAnnotationsServiceRemotePageMetadataTest,
@@ -390,8 +406,8 @@ TEST_F(PageContentAnnotationsServiceSalientImageMetadataTest,
        RegistersTypeWhenFeatureEnabled) {
   std::vector<proto::OptimizationType> registered_optimization_types =
       optimization_guide_decider()->registered_optimization_types();
-  EXPECT_EQ(registered_optimization_types.size(), 1u);
-  EXPECT_EQ(registered_optimization_types[0], proto::SALIENT_IMAGE);
+  EXPECT_TRUE(
+      base::Contains(registered_optimization_types, proto::SALIENT_IMAGE));
 }
 
 TEST_F(PageContentAnnotationsServiceSalientImageMetadataTest,

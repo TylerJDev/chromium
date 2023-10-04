@@ -18,6 +18,7 @@
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
@@ -48,6 +49,7 @@
 #include "ui/accessibility/accessibility_switches.h"
 #include "ui/accessibility/ax_enum_util.h"
 #include "ui/accessibility/ax_event_intent.h"
+#include "ui/accessibility/ax_mode_histogram_logger.h"
 #include "ui/accessibility/ax_node.h"
 #include "ui/accessibility/ax_role_properties.h"
 #include "ui/accessibility/ax_tree_id.h"
@@ -113,7 +115,7 @@ class ScopedFreezeAXTreeSource {
   }
 
  private:
-  blink::WebAXContext* context_;
+  raw_ptr<blink::WebAXContext, ExperimentalRenderer> context_;
 };
 
 RenderAccessibilityImpl::RenderAccessibilityImpl(
@@ -124,7 +126,6 @@ RenderAccessibilityImpl::RenderAccessibilityImpl(
       render_accessibility_manager_(render_accessibility_manager),
       render_frame_(render_frame),
       plugin_tree_source_(nullptr),
-      reset_token_(0),
       ukm_timer_(std::make_unique<base::ElapsedTimer>()),
       last_ukm_source_id_(ukm::kInvalidSourceId),
       serialize_post_lifecycle_(serialize_post_lifecycle) {
@@ -149,6 +150,15 @@ RenderAccessibilityImpl::RenderAccessibilityImpl(
   // Do not ignore SVG grouping (<g>) elements on ChromeOS, which is needed so
   // Select-to-Speak can read SVG text nodes in natural reading order.
   settings->SetAccessibilityIncludeSvgGElement(true);
+#endif
+
+#if BUILDFLAG(IS_FUCHSIA)
+  // TODO(crbug.com/1477047): WebSemanticsTest expects the events to be posted
+  // on a different thread.
+  // https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/ui/a11y/lib/semantics/tests/web_semantics_tests.cc#232
+  // The test facility needs to be updated, but we need sometime to make the
+  // change.
+  serialize_post_lifecycle_ = false;
 #endif
 
   // Optionally disable AXMenuList, which makes the internal pop-up menu
@@ -215,6 +225,7 @@ void RenderAccessibilityImpl::DidCommitProvisionalLoad(
 }
 
 void RenderAccessibilityImpl::AccessibilityModeChanged(const ui::AXMode& mode) {
+  CHECK(reset_token_);
   ui::AXMode old_mode = accessibility_mode_;
   DCHECK(!mode.is_mode_off())
       << "Should not be reached when turning a11y off; rather, the "
@@ -222,6 +233,7 @@ void RenderAccessibilityImpl::AccessibilityModeChanged(const ui::AXMode& mode) {
 
   if (old_mode == mode) {
     DCHECK(ax_context_);
+    NOTREACHED() << "Do not call AccessibilityModeChanged unless it changes.";
     return;
   }
 
@@ -257,6 +269,11 @@ void RenderAccessibilityImpl::AccessibilityModeChanged(const ui::AXMode& mode) {
   DCHECK(ax_context_);
   DCHECK_EQ(accessibility_mode_, ax_context_->GetAXMode());
 
+  // Log individual mode flags transitioning to the set state, as well as usage
+  // of named bundles of node flags.
+  ui::RecordAccessibilityModeHistograms(ui::AXHistogramPrefix::kBlink,
+                                        accessibility_mode_, old_mode);
+
   // Build (or rebuild) the accessibility tree with the new mode.
   if (was_on) {
     ax_context_->MarkDocumentDirty();
@@ -265,6 +282,11 @@ void RenderAccessibilityImpl::AccessibilityModeChanged(const ui::AXMode& mode) {
   // Fire a load complete event so that any ATs present can treat the page as
   // fresh and newly loaded.
   FireLoadCompleteIfLoaded();
+}
+
+void RenderAccessibilityImpl::set_reset_token(uint32_t reset_token) {
+  CHECK(reset_token);
+  reset_token_ = reset_token;
 }
 
 void RenderAccessibilityImpl::FireLoadCompleteIfLoaded() {
@@ -454,11 +476,10 @@ void RenderAccessibilityImpl::PerformAction(const ui::AXActionData& data) {
       // not change.
       if (!ax_image_annotator_) {
         CreateAXImageAnnotator();
-        // Walk the tree to discover images, and mark them dirty so that
-        // they get added to the annotator.
+        // Rebuild the document tree so that images become annotated.
         DCHECK(ax_context_);
         ScopedFreezeAXTreeSource freeze(ax_context_.get());
-        ax_context_->MarkAllImageAXObjectsDirty();
+        ax_context_->MarkDocumentDirty();
       }
       break;
     case ax::mojom::Action::kSignalEndOfTest:
@@ -489,9 +510,10 @@ void RenderAccessibilityImpl::PerformAction(const ui::AXActionData& data) {
   }
 }
 
-void RenderAccessibilityImpl::Reset(int32_t reset_token) {
+void RenderAccessibilityImpl::Reset(uint32_t reset_token) {
   DCHECK(ax_context_);
   DCHECK(!accessibility_mode_.is_mode_off());
+  CHECK(reset_token);
   reset_token_ = reset_token;
   ax_context_->ResetSerializer();
   FireLoadCompleteIfLoaded();
@@ -560,6 +582,11 @@ void RenderAccessibilityImpl::HandleAXEvent(const ui::AXEvent& event) {
     } else {
       legacy_event_schedule_mode_ =
           LegacyEventScheduleMode::kProcessEventsImmediately;
+    }
+    if (event.event_type == ax::mojom::Event::kLoadStart) {
+      loading_stage_ = LoadingStage::kPreload;
+    } else if (event.event_type == ax::mojom::Event::kLoadComplete) {
+      loading_stage_ = LoadingStage::kLoadCompleted;
     }
   }
 
@@ -1352,21 +1379,20 @@ void RenderAccessibilityImpl::SendPendingAccessibilityEvents() {
     AddImageAnnotationDebuggingAttributes(updates_and_events->updates);
   }
 
+  CHECK(reset_token_);
   if (serialize_post_lifecycle_) {
     render_accessibility_manager_->HandleAccessibilityEvents(
-        std::move(updates_and_events), reset_token_,
+        std::move(updates_and_events), *reset_token_,
         base::BindOnce(&RenderAccessibilityImpl::OnSerializationReceived,
                        weak_factory_for_pending_events_.GetWeakPtr()));
   } else {
     legacy_event_schedule_status_ = LegacyEventScheduleStatus::kWaitingForAck;
     render_accessibility_manager_->HandleAccessibilityEvents(
-        std::move(updates_and_events), reset_token_,
+        std::move(updates_and_events), *reset_token_,
         base::BindOnce(
             &RenderAccessibilityImpl::LegacyOnAccessibilityEventsHandled,
             weak_factory_for_pending_events_.GetWeakPtr()));
   }
-  reset_token_ = 0;
-
   if (need_to_send_location_changes) {
     SendLocationChanges();
   }
@@ -1400,6 +1426,18 @@ void RenderAccessibilityImpl::SendPendingAccessibilityEvents() {
       "Accessibility.Performance.SendPendingAccessibilityEvents",
       elapsed_time_ms);
 
+  if (loading_stage_ == LoadingStage::kPostLoad) {
+    // Track serialization after document load in order to measure the
+    // contribution of serialization to interaction latency.
+    UMA_HISTOGRAM_TIMES(
+        "Accessibility.Performance.SendPendingAccessibilityEvents.PostLoad",
+        elapsed_time_ms);
+  }
+
+  if (loading_stage_ == LoadingStage::kLoadCompleted) {
+    loading_stage_ = LoadingStage::kPostLoad;
+  }
+
   if (ukm_timer_->Elapsed() >= kMinUKMDelay) {
     MaybeSendUKM();
   }
@@ -1408,7 +1446,8 @@ void RenderAccessibilityImpl::SendPendingAccessibilityEvents() {
 void RenderAccessibilityImpl::SendLocationChanges() {
   TRACE_EVENT0("accessibility", "RenderAccessibilityImpl::SendLocationChanges");
   DCHECK(ax_context_);
-  ax_context_->SerializeLocationChanges();
+  CHECK(reset_token_);
+  ax_context_->SerializeLocationChanges(*reset_token_);
 }
 
 void RenderAccessibilityImpl::LegacyOnAccessibilityEventsHandled() {
@@ -1679,6 +1718,13 @@ void RenderAccessibilityImpl::ConnectionClosed() {
     legacy_event_schedule_status_ = LegacyEventScheduleStatus::kNotWaiting;
   }
   serialization_in_flight_ = false;
+}
+
+void RenderAccessibilityImpl::RecordInaccessiblePdfUkm() {
+  ukm::builders::Accessibility_InaccessiblePDFs(
+      GetMainDocument().GetUkmSourceId())
+      .SetSeen(true)
+      .Record(ukm_recorder_.get());
 }
 
 void RenderAccessibilityImpl::MaybeSendUKM() {

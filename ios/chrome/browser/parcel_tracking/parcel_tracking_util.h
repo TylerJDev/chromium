@@ -6,11 +6,46 @@
 #define IOS_CHROME_BROWSER_PARCEL_TRACKING_PARCEL_TRACKING_UTIL_H_
 
 #import "base/feature_list.h"
+#import "components/commerce/core/proto/parcel.pb.h"
+#import "ios/web/public/annotations/custom_text_checking_result.h"
+
+class ChromeBrowserState;
+
+namespace commerce {
+class ShoppingService;
+}  // namespace commerce
+
+@protocol ParcelTrackingOptInCommands;
 
 // Feature flag to enable the parcel tracking feature.
 BASE_DECLARE_FEATURE(kIOSParcelTracking);
 
+// Enum for the different values of the parcel tracking opt-in status.
+enum class IOSParcelTrackingOptInStatus {
+  kNeverTrack = 0,
+  kAlwaysTrack = 1,
+  kAskToTrack = 2,
+};
+
 // Returns true if the parcel tracking feature is enabled.
 bool IsIOSParcelTrackingEnabled();
+
+// Returns true if the user is eligible for the parcel tracking opt-in prompt.
+// The user must have never before seen the prompt and must be signed in.
+bool IsUserEligibleParcelTrackingOptInPrompt(ChromeBrowserState* browser_state);
+
+// Takes NSArray<CustomTextCheckingResult*>* `result` and returns a
+// corresponding vector of parcel carrier and tracking number pairs.
+std::vector<std::pair<commerce::ParcelIdentifier::Carrier, std::string>>
+ConvertCustomTextCheckingResult(NSArray<CustomTextCheckingResult*>* result);
+
+// Tracks the list of parcels. If successful and `display_infobar` is true,
+// triggers an infobar display.
+void TrackParcels(
+    commerce::ShoppingService* shopping_service,
+    NSArray<CustomTextCheckingResult*>* parcels,
+    std::string domain,
+    id<ParcelTrackingOptInCommands> parcel_tracking_commands_handler,
+    bool display_infobar);
 
 #endif  // IOS_CHROME_BROWSER_PARCEL_TRACKING_PARCEL_TRACKING_UTIL_H_

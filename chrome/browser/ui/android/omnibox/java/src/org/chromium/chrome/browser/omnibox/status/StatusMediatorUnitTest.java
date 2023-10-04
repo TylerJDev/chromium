@@ -94,6 +94,7 @@ public final class StatusMediatorUnitTest {
     private @Mock Tab mTab;
 
     private @Mock WebContents mWebContents;
+    private @Mock StatusView mStatusView;
 
     Context mContext;
     Resources mResources;
@@ -156,6 +157,26 @@ public final class StatusMediatorUnitTest {
         mMediator.setShowIconsWhenUrlFocused(true);
         Assert.assertEquals(R.drawable.ic_logo_googleg_20dp,
                 mModel.get(StatusProperties.STATUS_ICON_RESOURCE).getIconResForTesting());
+    }
+
+    @Test
+    @SmallTest
+    public void testStatusViewHoverActions() {
+        // Tooltip and hover highlight should be set when StatusViewIcon is visible.
+        mMediator.setStatusIconShown(true);
+        StatusViewBinder.applyStatusIconAndTooltipProperties(mModel, mStatusView);
+        Assert.assertEquals(R.string.accessibility_menu_info,
+                mModel.get(StatusProperties.STATUS_VIEW_TOOLTIP_TEXT));
+        Assert.assertEquals(R.drawable.status_view_ripple,
+                mModel.get(StatusProperties.STATUS_VIEW_HOVER_HIGHLIGHT));
+
+        // Tooltip and hover highlight should NOT be set when StatusViewIcon is gone.
+        mMediator.setStatusIconShown(false);
+        StatusViewBinder.applyStatusIconAndTooltipProperties(mModel, mStatusView);
+        Assert.assertEquals(
+                Resources.ID_NULL, mModel.get(StatusProperties.STATUS_VIEW_TOOLTIP_TEXT));
+        Assert.assertEquals(
+                Resources.ID_NULL, mModel.get(StatusProperties.STATUS_VIEW_HOVER_HIGHLIGHT));
     }
 
     @Test
@@ -467,7 +488,8 @@ public final class StatusMediatorUnitTest {
         Assert.assertFalse(mMediator.isStoreIconShowing());
 
         // Try to show the store icon.
-        mMediator.showStoreIcon(mWindowAndroid, JUnitTestGURLs.BLUE_1, mStoreIconDrawable, 0, true);
+        mMediator.showStoreIcon(
+                mWindowAndroid, JUnitTestGURLs.BLUE_1.getSpec(), mStoreIconDrawable, 0, true);
         Assert.assertFalse(mMediator.isStoreIconShowing());
     }
 
@@ -481,7 +503,8 @@ public final class StatusMediatorUnitTest {
         Assert.assertFalse(mMediator.isStoreIconShowing());
 
         // Try to show the store icon.
-        mMediator.showStoreIcon(mWindowAndroid, JUnitTestGURLs.BLUE_1, mStoreIconDrawable, 0, true);
+        mMediator.showStoreIcon(
+                mWindowAndroid, JUnitTestGURLs.BLUE_1.getSpec(), mStoreIconDrawable, 0, true);
         Assert.assertTrue(mMediator.isStoreIconShowing());
         Assert.assertEquals(IconTransitionType.ROTATE,
                 mModel.get(StatusProperties.STATUS_ICON_RESOURCE).getTransitionType());
@@ -495,7 +518,8 @@ public final class StatusMediatorUnitTest {
         Assert.assertFalse(mMediator.isStoreIconShowing());
 
         // Show store icon again.
-        mMediator.showStoreIcon(mWindowAndroid, JUnitTestGURLs.BLUE_1, mStoreIconDrawable, 0, true);
+        mMediator.showStoreIcon(
+                mWindowAndroid, JUnitTestGURLs.BLUE_1.getSpec(), mStoreIconDrawable, 0, true);
         Assert.assertTrue(mMediator.isStoreIconShowing());
 
         // Simulate that we need to switch back to the default icon.
@@ -514,7 +538,7 @@ public final class StatusMediatorUnitTest {
 
         // Try to show the store icon.
         mMediator.showStoreIcon(
-                mWindowAndroid, JUnitTestGURLs.BLUE_1, mStoreIconDrawable, 0, false);
+                mWindowAndroid, JUnitTestGURLs.BLUE_1.getSpec(), mStoreIconDrawable, 0, false);
         Assert.assertTrue(mMediator.isStoreIconShowing());
         Assert.assertEquals(IconTransitionType.ROTATE,
                 mModel.get(StatusProperties.STATUS_ICON_RESOURCE).getTransitionType());
@@ -601,9 +625,7 @@ public final class StatusMediatorUnitTest {
      * @param isIncognito Whether the current page is in an incognito mode.
      */
     private void setupStoreIconForTesting(boolean isIncognito) {
-        doReturn(JUnitTestGURLs.getGURL(JUnitTestGURLs.BLUE_1))
-                .when(mLocationBarDataProvider)
-                .getCurrentGurl();
+        doReturn(JUnitTestGURLs.BLUE_1).when(mLocationBarDataProvider).getCurrentGurl();
         doReturn(isIncognito).when(mLocationBarDataProvider).isIncognito();
     }
 }

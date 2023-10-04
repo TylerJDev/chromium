@@ -1259,76 +1259,6 @@ suite('NewTabPageRealboxTest', () => {
     assertEquals(1, testProxy.handler.getCallCount('openAutocompleteMatch'));
   });
 
-  test('Clicking a match navigates to it', async () => {
-    // Input is expected to have been focused before any navigation.
-    realbox.$.input.dispatchEvent(new Event('focus'));
-
-    realbox.$.input.value = 'hello';
-    realbox.$.input.dispatchEvent(new InputEvent('input'));
-
-    const matches = [createSearchMatch(), createUrlMatch()];
-    testProxy.callbackRouterRemote.autocompleteResultChanged({
-      input: mojoString16(realbox.$.input.value.trimStart()),
-      matches,
-      suggestionGroupsMap: {},
-    });
-    await testProxy.callbackRouterRemote.$.flushForTesting();
-    assertTrue(areMatchesShowing());
-
-    const matchEls =
-        realbox.$.matches.shadowRoot!.querySelectorAll('cr-realbox-match');
-    assertEquals(2, matchEls.length);
-
-    // Right clicks are ignored.
-    const rightClick = new MouseEvent('click', {
-      bubbles: true,
-      button: 2,
-      cancelable: true,
-      composed: true,  // So it propagates across shadow DOM boundary.
-    });
-    matchEls[0]!.dispatchEvent(rightClick);
-    assertFalse(rightClick.defaultPrevented);
-    assertEquals(0, testProxy.handler.getCallCount('openAutocompleteMatch'));
-
-    // Middle clicks are accepted.
-    const middleClick = new MouseEvent('click', {
-      bubbles: true,
-      button: 1,
-      cancelable: true,
-      composed: true,  // So it propagates across shadow DOM boundary.
-    });
-    matchEls[0]!.dispatchEvent(middleClick);
-    assertTrue(middleClick.defaultPrevented);
-
-    await testProxy.handler.whenCalled('openAutocompleteMatch').then((args) => {
-      assertEquals(0, args.line);
-      assertEquals(matches[0]!.destinationUrl.url, args.url.url);
-      assertTrue(args.areMatchesShowing);
-      assertEquals(1, args.mouseButton);
-    });
-    assertEquals(1, testProxy.handler.getCallCount('openAutocompleteMatch'));
-
-    testProxy.handler.reset();
-
-    // Left clicks are accepted.
-    const leftClick = new MouseEvent('click', {
-      bubbles: true,
-      button: 0,
-      cancelable: true,
-      composed: true,  // So it propagates across shadow DOM boundary.
-    });
-    matchEls[0]!.dispatchEvent(leftClick);
-    assertTrue(leftClick.defaultPrevented);
-
-    await testProxy.handler.whenCalled('openAutocompleteMatch').then((args) => {
-      assertEquals(0, args.line);
-      assertEquals(matches[0]!.destinationUrl.url, args.url.url);
-      assertTrue(args.areMatchesShowing);
-      assertEquals(0, args.mouseButton);
-    });
-    assertEquals(1, testProxy.handler.getCallCount('openAutocompleteMatch'));
-  });
-
   //============================================================================
   // Test Deletion
   //============================================================================
@@ -1355,65 +1285,6 @@ suite('NewTabPageRealboxTest', () => {
         window.getComputedStyle(matchEls[0]!.$.remove).display, 'none');
     assertNotEquals(
         window.getComputedStyle(matchEls[1]!.$.remove).display, 'none');
-  });
-
-  test('Can remove match using the remove button', async () => {
-    realbox.$.input.value = 'hello';
-    realbox.$.input.dispatchEvent(new InputEvent('input'));
-
-    const matches =
-        [createSearchMatch(), createUrlMatch({supportsDeletion: true})];
-    testProxy.callbackRouterRemote.autocompleteResultChanged({
-      input: mojoString16(realbox.$.input.value.trimStart()),
-      matches,
-      suggestionGroupsMap: {},
-    });
-    await testProxy.callbackRouterRemote.$.flushForTesting();
-    assertTrue(areMatchesShowing());
-
-    const matchEls =
-        realbox.$.matches.shadowRoot!.querySelectorAll('cr-realbox-match');
-    assertEquals(2, matchEls.length);
-
-    // Select the second match.
-    const arrowUpEvent = new KeyboardEvent('keydown', {
-      bubbles: true,
-      cancelable: true,
-      composed: true,  // So it propagates across shadow DOM boundary.
-      key: 'ArrowUp',
-    });
-    realbox.$.input.dispatchEvent(arrowUpEvent);
-    assertTrue(arrowUpEvent.defaultPrevented);
-    assertTrue(matchEls[1]!.hasAttribute(Attributes.SELECTED));
-
-    // By pressing 'Enter' on the button.
-    const enter = new KeyboardEvent('keydown', {
-      bubbles: true,
-      cancelable: true,
-      composed: true,  // So it propagates across shadow DOM boundary.
-      key: 'Enter',
-    });
-    matchEls[1]!.$.remove.dispatchEvent(enter);
-    assertTrue(enter.defaultPrevented);
-    await testProxy.handler.whenCalled('deleteAutocompleteMatch')
-        .then((args) => {
-          assertEquals(1, args.line);
-        });
-    assertEquals(1, testProxy.handler.getCallCount('deleteAutocompleteMatch'));
-    // Pressing 'Enter' on the button doesn't accidentally trigger navigation.
-    assertEquals(0, testProxy.handler.getCallCount('openAutocompleteMatch'));
-
-    testProxy.handler.reset();
-
-    // By clicking the button.
-    matchEls[1]!.$.remove.click();
-    await testProxy.handler.whenCalled('deleteAutocompleteMatch')
-        .then((args) => {
-          assertEquals(1, args.line);
-        });
-    assertEquals(1, testProxy.handler.getCallCount('deleteAutocompleteMatch'));
-    // Clicking the button doesn't accidentally trigger navigation.
-    assertEquals(0, testProxy.handler.getCallCount('openAutocompleteMatch'));
   });
 
   test('Can remove selected match using keyboard shortcut', async () => {
@@ -1477,50 +1348,6 @@ suite('NewTabPageRealboxTest', () => {
     });
     realbox.$.input.dispatchEvent(shiftDeleteEvent);
     assertTrue(shiftDeleteEvent.defaultPrevented);
-    await testProxy.handler.whenCalled('deleteAutocompleteMatch')
-        .then((args) => {
-          assertEquals(1, args.line);
-        });
-    assertEquals(1, testProxy.handler.getCallCount('deleteAutocompleteMatch'));
-  });
-
-  test('Can remove match using the remove button', async () => {
-    realbox.$.input.value = 'hello';
-    realbox.$.input.dispatchEvent(new InputEvent('input'));
-
-    const matches =
-        [createSearchMatch(), createUrlMatch({supportsDeletion: true})];
-    testProxy.callbackRouterRemote.autocompleteResultChanged({
-      input: mojoString16(realbox.$.input.value.trimStart()),
-      matches,
-      suggestionGroupsMap: {},
-    });
-    await testProxy.callbackRouterRemote.$.flushForTesting();
-    assertTrue(areMatchesShowing());
-
-    const matchEls =
-        realbox.$.matches.shadowRoot!.querySelectorAll('cr-realbox-match');
-    assertEquals(2, matchEls.length);
-
-    // By pressing 'Enter' on the button.
-    const enter = new KeyboardEvent('keydown', {
-      bubbles: true,
-      cancelable: true,
-      composed: true,  // So it propagates across shadow DOM boundary.
-      key: 'Enter',
-    });
-    matchEls[1]!.$.remove.dispatchEvent(enter);
-    assertTrue(enter.defaultPrevented);
-    await testProxy.handler.whenCalled('deleteAutocompleteMatch')
-        .then((args) => {
-          assertEquals(1, args.line);
-        });
-    assertEquals(1, testProxy.handler.getCallCount('deleteAutocompleteMatch'));
-
-    testProxy.handler.reset();
-
-    // By clicking the button.
-    matchEls[1]!.$.remove.click();
     await testProxy.handler.whenCalled('deleteAutocompleteMatch')
         .then((args) => {
           assertEquals(1, args.line);

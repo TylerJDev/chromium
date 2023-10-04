@@ -47,7 +47,7 @@ namespace flat_rule = url_pattern_index::flat;
 // url_pattern_index.fbs. Whenever an extension with an indexed ruleset format
 // version different from the one currently used by Chrome is loaded, the
 // extension ruleset will be reindexed.
-constexpr int kIndexedRulesetFormatVersion = 28;
+constexpr int kIndexedRulesetFormatVersion = 29;
 
 // This static assert is meant to catch cases where
 // url_pattern_index::kUrlPatternIndexFormatVersion is incremented without
@@ -126,7 +126,7 @@ int GetChecksum(base::span<const uint8_t> data) {
   if (g_override_checksum_for_test != kInvalidOverrideChecksumForTest)
     return g_override_checksum_for_test;
 
-  uint32_t hash = base::PersistentHash(data.data(), data.size());
+  uint32_t hash = base::PersistentHash(data);
 
   // Strip off the sign bit since this needs to be persisted in preferences
   // which don't support unsigned ints.

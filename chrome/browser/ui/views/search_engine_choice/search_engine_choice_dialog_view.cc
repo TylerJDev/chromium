@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/views/search_engine_choice/search_engine_choice_dialog_view.h"
+#include <algorithm>
 
+#include "base/check_is_test.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "chrome/browser/profiles/profile.h"
@@ -17,25 +19,36 @@
 #include "components/constrained_window/constrained_window_views.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/page/page_zoom.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 
 namespace {
-// Temporary until the mocks are ready.
-constexpr int kDialogWidth = 800;
-constexpr int kDialogHeight = 600;
-// TODO(b/280753754): Update based on finalized design to minimum value that
-// still allows buttons to be visible on a reasonably small zoom level.
-constexpr int kMinHeight = 25;
-}  // namespace
+// The minimum height and maximum dialog dimensions.
+// We don't have a minimum width because operating systems have a minimum width
+// for Chrome.
+constexpr int kMinHeight = 376;
+constexpr int kPreferredMaxDialogWidth = 1077;
+constexpr int kPreferredMaxDialogHeight = 768;
 
-void ShowSearchEngineChoiceDialog(Browser& browser) {
+}  // namespace
+void ShowSearchEngineChoiceDialog(
+    Browser& browser,
+    absl::optional<gfx::Size> boundary_dimensions_for_test,
+    absl::optional<double> zoom_factor_for_test) {
+  if (boundary_dimensions_for_test.has_value() ||
+      zoom_factor_for_test.has_value()) {
+    CHECK_IS_TEST();
+  }
+
   auto delegate = std::make_unique<views::DialogDelegate>();
   delegate->SetButtons(ui::DIALOG_BUTTON_NONE);
   delegate->SetModalType(ui::MODAL_TYPE_WINDOW);
-  delegate->SetShowCloseButton(true);
+  delegate->SetShowCloseButton(false);
   delegate->SetOwnedByWidget(true);
 
-  auto dialogView = std::make_unique<SearchEngineChoiceDialogView>(&browser);
+  auto dialogView = std::make_unique<SearchEngineChoiceDialogView>(
+      &browser, boundary_dimensions_for_test, zoom_factor_for_test);
   dialogView->Initialize();
   delegate->SetContentsView(std::move(dialogView));
 
@@ -43,10 +56,20 @@ void ShowSearchEngineChoiceDialog(Browser& browser) {
       std::move(delegate), browser.window()->GetNativeWindow());
 }
 
-SearchEngineChoiceDialogView::SearchEngineChoiceDialogView(Browser* browser)
-    : browser_(browser) {
+SearchEngineChoiceDialogView::SearchEngineChoiceDialogView(
+    Browser* browser,
+    absl::optional<gfx::Size> boundary_dimensions_for_test,
+    absl::optional<double> zoom_factor_for_test)
+    : browser_(browser),
+      boundary_dimensions_for_test_(boundary_dimensions_for_test),
+      zoom_factor_for_test_(zoom_factor_for_test) {
   CHECK(browser_);
   CHECK(base::FeatureList::IsEnabled(switches::kSearchEngineChoice));
+  if (boundary_dimensions_for_test.has_value() ||
+      zoom_factor_for_test_.has_value()) {
+    CHECK_IS_TEST();
+  }
+
   // Create the web view in the native dialog.
   web_view_ =
       AddChildView(std::make_unique<views::WebView>(browser->profile()));
@@ -64,14 +87,43 @@ void SearchEngineChoiceDialogView::Initialize() {
 
   web_view_->LoadInitialURL(GURL(chrome::kChromeUISearchEngineChoiceURL));
 
-  const int max_width = browser_->window()
-                            ->GetWebContentsModalDialogHost()
-                            ->GetMaximumDialogSize()
-                            .width();
-  const int width =
-      views::LayoutProvider::Get()->GetSnappedDialogWidth(kDialogWidth);
-  web_view_->SetPreferredSize(
-      gfx::Size(std::min(width, max_width), kDialogHeight));
+  double zoom_factor = zoom_factor_for_test_.value_or(1.);
+  content::WebContents* web_contents = web_view_->GetWebContents();
+  content::RenderFrameHost* render_frame_host =
+      web_contents->GetPrimaryMainFrame();
+  content::HostZoomMap* zoom_map =
+      content::HostZoomMap::GetForWebContents(web_contents);
+  zoom_map->SetTemporaryZoomLevel(
+      render_frame_host->GetGlobalId(),
+      blink::PageZoomFactorToZoomLevel(zoom_factor));
+
+  int preferred_dialog_width = kPreferredMaxDialogWidth;
+  int preferred_dialog_height = kPreferredMaxDialogHeight;
+
+  // Use boundary dimensions if initialized to set the preferred dialog width
+  // and height.
+  if (boundary_dimensions_for_test_.has_value()) {
+    preferred_dialog_width = boundary_dimensions_for_test_->width();
+    preferred_dialog_height = boundary_dimensions_for_test_->height();
+  }
+
+  int max_width = browser_->window()
+                      ->GetWebContentsModalDialogHost()
+                      ->GetMaximumDialogSize()
+                      .width();
+  int max_height = browser_->window()
+                       ->GetWebContentsModalDialogHost()
+                       ->GetMaximumDialogSize()
+                       .height();
+
+  const int width = views::LayoutProvider::Get()->GetSnappedDialogWidth(
+      preferred_dialog_width);
+
+  const int height =
+      std::clamp(preferred_dialog_height, std::min(kMinHeight, max_height),
+                 std::max(kMinHeight, max_height));
+
+  web_view_->SetPreferredSize(gfx::Size(std::min(width, max_width), height));
 
   auto* web_ui = web_view_->GetWebContents()
                      ->GetWebUI()
@@ -85,21 +137,12 @@ void SearchEngineChoiceDialogView::Initialize() {
   SetUseDefaultFillLayout(true);
 }
 
-void SearchEngineChoiceDialogView::ShowNativeView(int content_height) {
+void SearchEngineChoiceDialogView::ShowNativeView() {
   auto* widget = GetWidget();
   if (!widget) {
     return;
   }
 
-  const int max_height = browser_->window()
-                             ->GetWebContentsModalDialogHost()
-                             ->GetMaximumDialogSize()
-                             .height();
-  // For hardening against inappropriate data coming from the renderer, we also
-  // set a minimum height that still allows to interact with this dialog.
-  const int target_height = std::clamp(content_height, kMinHeight, max_height);
-  web_view_->SetPreferredSize(
-      gfx::Size(web_view_->GetPreferredSize().width(), target_height));
   constrained_window::UpdateWebContentsModalDialogPosition(
       widget, browser_->window()->GetWebContentsModalDialogHost());
   widget->Show();

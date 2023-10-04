@@ -31,12 +31,19 @@ import org.robolectric.annotation.Config;
 
 import org.chromium.base.supplier.ObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
-import org.chromium.base.test.util.Features;
 import org.chromium.base.test.util.JniMocker;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.readaloud.player.PlayerCoordinator;
 import org.chromium.chrome.browser.signin.services.UnifiedConsentServiceBridge;
 import org.chromium.chrome.browser.tab.MockTab;
-import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.translate.FakeTranslateBridgeJni;
+import org.chromium.chrome.browser.translate.TranslateBridgeJni;
+import org.chromium.chrome.modules.readaloud.Playback;
+import org.chromium.chrome.modules.readaloud.PlaybackListener;
+import org.chromium.chrome.modules.readaloud.ReadAloudPlaybackHooks;
+import org.chromium.chrome.test.util.browser.Features;
+import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.chrome.test.util.browser.tabmodel.MockTabModelSelector;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.url.GURL;
@@ -45,8 +52,9 @@ import org.chromium.url.JUnitTestGURLs;
 /** Unit tests for {@link ReadAloudController}. */
 @RunWith(BaseRobolectricTestRunner.class)
 @Config(manifest = Config.NONE)
+@EnableFeatures(ChromeFeatureList.READALOUD)
 public class ReadAloudControllerUnitTest {
-    private static final GURL sTestGURL = JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL);
+    private static final GURL sTestGURL = JUnitTestGURLs.EXAMPLE_URL;
 
     private MockTab mTab;
     private ReadAloudController mController;
@@ -55,6 +63,8 @@ public class ReadAloudControllerUnitTest {
     public JniMocker mJniMocker = new JniMocker();
     @Rule
     public TestRule mProcessor = new Features.JUnitProcessor();
+
+    private FakeTranslateBridgeJni mFakeTranslateBridge;
     @Mock
     private ObservableSupplier<Profile> mMockProfileSupplier;
     @Mock
@@ -64,7 +74,11 @@ public class ReadAloudControllerUnitTest {
     @Mock
     private ReadAloudReadabilityHooksImpl mHooksImpl;
     @Mock
+    private ReadAloudPlaybackHooks mPlaybackHooks;
+    @Mock
     private ViewStub mViewStub;
+    @Mock
+    private PlayerCoordinator mPlayerCoordinator;
     @Mock
     private BottomSheetController mBottomSheetController;
 
@@ -72,6 +86,10 @@ public class ReadAloudControllerUnitTest {
 
     @Captor
     ArgumentCaptor<ReadAloudReadabilityHooks.ReadabilityCallback> mCallbackCaptor;
+    @Captor
+    ArgumentCaptor<ReadAloudPlaybackHooks.CreatePlaybackCallback> mPlaybackCallbackCaptor;
+    @Mock
+    private Playback mPlayback;
 
     @Before
     public void setUp() {
@@ -81,17 +99,21 @@ public class ReadAloudControllerUnitTest {
         when(mMockProfile.isOffTheRecord()).thenReturn(false);
         UnifiedConsentServiceBridge.setUrlKeyedAnonymizedDataCollectionEnabled(true);
 
+        mFakeTranslateBridge = new FakeTranslateBridgeJni();
+        mJniMocker.mock(TranslateBridgeJni.TEST_HOOKS, mFakeTranslateBridge);
         mTabModelSelector = new MockTabModelSelector(
                 /* tabCount= */ 2, /* incognitoTabCount= */ 1, (id, incognito) -> {
-                    Tab tab = spy(MockTab.createAndInitialize(id, incognito));
+                    MockTab tab = spy(MockTab.createAndInitialize(id, incognito));
                     return tab;
                 });
         when(mHooksImpl.isEnabled()).thenReturn(true);
+        ReadAloudController.setPlayerCoordinator(mPlayerCoordinator);
         ReadAloudController.setReadabilityHooks(mHooksImpl);
+        ReadAloudController.setPlaybackHooks(mPlaybackHooks);
         mController = new ReadAloudController(mContext, mMockProfileSupplier,
                 mTabModelSelector.getModel(false), mViewStub, mBottomSheetController);
 
-        mTab = (MockTab) mTabModelSelector.getCurrentTab();
+        mTab = mTabModelSelector.getCurrentTab();
         mTab.setGurlOverrideForTesting(sTestGURL);
     }
 
@@ -209,10 +231,42 @@ public class ReadAloudControllerUnitTest {
         // Disable MSBB. Sending requests to Google servers no longer allowed but using
         // previous results is ok.
         UnifiedConsentServiceBridge.setUrlKeyedAnonymizedDataCollectionEnabled(false);
-        mController.maybeCheckReadability(JUnitTestGURLs.getGURL(JUnitTestGURLs.GOOGLE_URL_CAT));
+        mController.maybeCheckReadability(JUnitTestGURLs.GOOGLE_URL_CAT);
 
         verify(mHooksImpl, times(1))
                 .isPageReadable(Mockito.anyString(),
                         Mockito.any(ReadAloudReadabilityHooks.ReadabilityCallback.class));
+    }
+
+    @Test
+    public void testPlayTab() {
+        mFakeTranslateBridge.setCurrentLanguage("en");
+        mTab.setGurlOverrideForTesting(new GURL("https://en.wikipedia.org/wiki/Google"));
+        mController.playTab(mTab);
+
+        verify(mPlaybackHooks, times(1))
+                .createPlayback(Mockito.any(), mPlaybackCallbackCaptor.capture());
+
+        mPlaybackCallbackCaptor.getValue().onSuccess(mPlayback);
+        verify(mPlayerCoordinator, times(1)).playbackReady(eq(mPlayback), eq(PlaybackListener.State.PLAYING));
+
+        // test that previous playback is released when another playback is called
+        MockTab newTab = mTabModelSelector.addMockTab();
+        newTab.setGurlOverrideForTesting(new GURL("https://en.wikipedia.org/wiki/Alphabet_Inc."));
+        mController.playTab(newTab);
+        verify(mPlayback, times(1)).release();
+    }
+
+    @Test
+    public void testPlayTab_onFailure() {
+        mFakeTranslateBridge.setCurrentLanguage("en");
+        mTab.setGurlOverrideForTesting(new GURL("https://en.wikipedia.org/wiki/Google"));
+        mController.playTab(mTab);
+
+        verify(mPlaybackHooks, times(1))
+                .createPlayback(Mockito.any(), mPlaybackCallbackCaptor.capture());
+
+        mPlaybackCallbackCaptor.getValue().onFailure(new Throwable());
+        verify(mPlayerCoordinator, times(1)).playbackFailed();
     }
 }

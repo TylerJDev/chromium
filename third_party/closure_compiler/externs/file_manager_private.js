@@ -51,6 +51,14 @@ chrome.fileManagerPrivate.DeviceType = {
 /**
  * @enum {string}
  */
+chrome.fileManagerPrivate.DeviceConnectionState = {
+  OFFLINE: 'OFFLINE',
+  ONLINE: 'ONLINE',
+};
+
+/**
+ * @enum {string}
+ */
 chrome.fileManagerPrivate.DriveConnectionStateType = {
   OFFLINE: 'OFFLINE',
   METERED: 'METERED',
@@ -684,7 +692,7 @@ chrome.fileManagerPrivate.GetVolumeRootOptions;
 /**
  * @typedef {{
  *   driveEnabled: boolean,
- *   cellularDisabled: boolean,
+ *   driveSyncEnabledOnMeteredNetwork: boolean,
  *   searchSuggestEnabled: boolean,
  *   use24hourClock: boolean,
  *   timezone: string,
@@ -701,7 +709,7 @@ chrome.fileManagerPrivate.Preferences;
 
 /**
  * @typedef {{
- *   cellularDisabled: (boolean|undefined),
+ *   driveSyncEnabledOnMeteredNetwork: (boolean|undefined),
  *   arcEnabled: (boolean|undefined),
  *   arcRemovableMediaAccessEnabled: (boolean|undefined),
  *   folderShortcuts: (!Array<string>|undefined),
@@ -744,9 +752,7 @@ chrome.fileManagerPrivate.DriveMetadataSearchResult;
 /**
  * @typedef {{
  *   type: !chrome.fileManagerPrivate.DriveConnectionStateType,
- *   reason: (!chrome.fileManagerPrivate.DriveOfflineReason|undefined),
- *   hasCellularNetworkAccess: boolean,
- *   canPinHostedFiles: boolean
+ *   reason: (!chrome.fileManagerPrivate.DriveOfflineReason|undefined)
  * }}
  */
 chrome.fileManagerPrivate.DriveConnectionState;
@@ -1007,6 +1013,7 @@ chrome.fileManagerPrivate.ParsedTrashInfoFile;
  *   bytesToPin: number,
  *   pinnedBytes: number,
  *   filesToPin: number,
+ *   listedFiles: number,
  *   remainingSeconds: number,
  *   emptiedQueue: boolean
  * }}
@@ -1366,6 +1373,13 @@ chrome.fileManagerPrivate.searchFilesByHashes = function(volumeId, hashList, cal
 chrome.fileManagerPrivate.searchFiles = function(searchParams, callback) {};
 
 /**
+ * Retrieves the current device connection status. |callback|
+ * @param {function(!chrome.fileManagerPrivate.DeviceConnectionState): void}
+ *     callback
+ */
+chrome.fileManagerPrivate.getDeviceConnectionState = function(callback) {};
+
+/**
  * Retrieves the state of the current drive connection. |callback|
  * @param {function(!chrome.fileManagerPrivate.DriveConnectionState): void}
  *     callback
@@ -1670,18 +1684,28 @@ chrome.fileManagerPrivate.cancelIOTask = function(taskId) {};
 chrome.fileManagerPrivate.resumeIOTask = function(taskId, params) {};
 
 /**
+ * Notifies the browser that any info still stored about an already completed
+ * I/O task identified by |taskId| can be cleared.
+ * @param {number} taskId
+ * @param {function(): void} callback Callback that does not take arguments.
+ */
+chrome.fileManagerPrivate.dismissIOTask = function(taskId, callback) {};
+
+/**
  * Shows a policy dialog for a task. Task ids are communicated to the Files App
  * in each I/O task's progress status.
  * @param {number} taskId
  * @param {!chrome.fileManagerPrivate.PolicyDialogType} type
+ * @param {function(): void} callback Callback that does not take arguments.
  */
-chrome.fileManagerPrivate.showPolicyDialog = function(taskId, type) {};
+chrome.fileManagerPrivate.showPolicyDialog = function(taskId, type, callback) {};
 
 /**
  * Makes I/O tasks in state::PAUSED emit (broadcast) their current I/O task
  * progress status.
+ * @param {function(): void} callback Callback that does not take arguments.
  */
-chrome.fileManagerPrivate.progressPausedTasks = function() {};
+chrome.fileManagerPrivate.progressPausedTasks = function(callback) {};
 
 /**
  * Lists mountable Guest OSs.
@@ -1757,6 +1781,11 @@ chrome.fileManagerPrivate.onDirectoryChanged;
  * @type {!ChromeEvent}
  */
 chrome.fileManagerPrivate.onPreferencesChanged;
+
+/**
+ * @type {!ChromeEvent}
+ */
+chrome.fileManagerPrivate.onDeviceConnectionStatusChanged;
 
 /**
  * @type {!ChromeEvent}

@@ -43,6 +43,12 @@ class BookmarkClient {
   // Called during initialization of BookmarkModel.
   virtual void Init(BookmarkModel* model);
 
+  // Gets a bookmark folder that the provided URL can be saved to. If nullptr is
+  // returned, the bookmark is saved to the default location (usually this is
+  // the last modified folder). This affords features the option to override the
+  // default folder if relevant for the URL.
+  virtual const BookmarkNode* GetSuggestedSaveLocation(const GURL& url);
+
   // Requests a favicon from the history cache for the web page at |page_url|
   // for icon type favicon_base::IconType::kFavicon. |callback| is run when the
   // favicon has been fetched, which returns gfx::Image is a multi-resolution
@@ -76,14 +82,8 @@ class BookmarkClient {
   // Returns true if the |permanent_node| can have its title updated.
   virtual bool CanSetPermanentNodeTitle(const BookmarkNode* permanent_node) = 0;
 
-  // Returns true if |node| should sync.
-  virtual bool CanSyncNode(const BookmarkNode* node) = 0;
-
-  // Returns true if this node can be edited by the user.
-  // TODO(joaodasilva): the model should check this more aggressively, and
-  // should give the client a means to temporarily disable those checks.
-  // http://crbug.com/49598
-  virtual bool CanBeEditedByUser(const BookmarkNode* node) = 0;
+  // Returns true if |node| is considered a managed node.
+  virtual bool IsNodeManaged(const BookmarkNode* node) = 0;
 
   // Encodes the bookmark sync data into a string blob. It's used by the
   // bookmark model to persist the sync metadata together with the bookmark

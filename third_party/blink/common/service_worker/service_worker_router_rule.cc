@@ -4,8 +4,6 @@
 
 #include "third_party/blink/public/common/service_worker/service_worker_router_rule.h"
 
-#include "base/notreached.h"
-
 namespace blink {
 
 bool ServiceWorkerRouterRequestCondition::operator==(
@@ -14,19 +12,36 @@ bool ServiceWorkerRouterRequestCondition::operator==(
          destination == other.destination;
 }
 
+bool ServiceWorkerRouterConditionObject::operator==(
+    const ServiceWorkerRouterConditionObject& other) const {
+  return conditions == other.conditions;
+}
+
+bool ServiceWorkerRouterOrCondition::operator==(
+    const ServiceWorkerRouterOrCondition& other) const {
+  return objects == other.objects;
+}
+
 bool ServiceWorkerRouterCondition::operator==(
     const ServiceWorkerRouterCondition& other) const {
   if (type != other.type) {
     return false;
   }
   switch (type) {
-    case ConditionType::kUrlPattern:
+    case Type::kUrlPattern:
       return url_pattern == other.url_pattern;
-    case ConditionType::kRequest:
+    case Type::kRequest:
       return request == other.request;
-    case ConditionType::kRunningStatus:
+    case Type::kRunningStatus:
       return running_status == other.running_status;
+    case Type::kOr:
+      return or_condition == other.or_condition;
   }
+}
+
+bool ServiceWorkerRouterCacheSource::operator==(
+    const ServiceWorkerRouterCacheSource& other) const {
+  return cache_name == other.cache_name;
 }
 
 bool ServiceWorkerRouterSource::operator==(
@@ -35,12 +50,14 @@ bool ServiceWorkerRouterSource::operator==(
     return false;
   }
   switch (type) {
-    case SourceType::kNetwork:
+    case Type::kNetwork:
       return network_source == other.network_source;
-    case SourceType::kRace:
+    case Type::kRace:
       return race_source == other.race_source;
-    case SourceType::kFetchEvent:
+    case Type::kFetchEvent:
       return fetch_event_source == other.fetch_event_source;
+    case Type::kCache:
+      return cache_source == other.cache_source;
   }
 }
 

@@ -231,6 +231,12 @@ class TemplateURLService : public WebDataServiceConsumer,
   // by TemplateURLService and should not be deleted.
   TemplateURLVector GetTemplateURLs();
 
+  // Returns the list of prepopulated template URLs for the current country
+  // shuffled for display in a search engine choice screen.
+  // TODO (b/282656014): Update the returned list of search engines to comply
+  // with choice screen requirements.
+  OwnedTemplateURLVector GetTemplateURLsForChoiceScreen();
+
   // Increment the usage count of a keyword.
   // Called when a URL is loaded that was generated from a keyword.
   void IncrementUsageCount(TemplateURL* url);
@@ -450,6 +456,10 @@ class TemplateURLService : public WebDataServiceConsumer,
   const SearchTermsData& search_terms_data() const {
     return *search_terms_data_;
   }
+
+  // Calls `ApplyDefaultSearchChangeNoMetrics`. Used for testing.
+  bool ApplyDefaultSearchChangeForTesting(const TemplateURLData* data,
+                                          DefaultSearchManager::Source source);
 
   // Obtains a session token, regenerating if necessary.
   std::string GetSessionToken();
@@ -871,6 +881,11 @@ class TemplateURLService : public WebDataServiceConsumer,
   // Session token management.
   std::string current_token_;
   base::TimeTicks token_expiration_time_;
+
+  // Latest deletion of default search engine, contains sync GUID of the update
+  // with deletion. Used to postpone the deletion in case the default search
+  // engine changes later. See ProcessSyncChanges() for details.
+  std::string postponed_deleted_default_engine_guid_;
 
 #if BUILDFLAG(IS_ANDROID)
   // Manage and fetch the java object that wraps this TemplateURLService on

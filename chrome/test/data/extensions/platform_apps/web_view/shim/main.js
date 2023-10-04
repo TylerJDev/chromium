@@ -3647,6 +3647,10 @@ function testInsertIntoOtherWindow() {
     embedder.test.succeed();
   });
 
+  webview.addEventListener('loadabort', () => {
+    embedder.test.fail();
+  });
+
   chrome.app.window.create('new_window_main.html', {}, (app_new_window) => {
     if (chrome.runtime.lastError) {
       console.log('Error:' + chrome.runtime.lastError.message);
@@ -3678,6 +3682,9 @@ function testCreateAndInsertInOtherWindow() {
       webview.addEventListener('loadstop', () => {
         embedder.test.succeed();
       });
+      webview.addEventListener('loadabort', () => {
+        embedder.test.fail();
+      });
 
       new_window.document.body.appendChild(webview);
     });
@@ -3701,6 +3708,9 @@ function testInsertFromOtherWindow() {
       webview.src = embedder.emptyGuestURL;
       webview.addEventListener('loadstop', () => {
         embedder.test.succeed();
+      });
+      webview.addEventListener('loadabort', () => {
+        embedder.test.fail();
       });
 
       document.body.appendChild(webview);
@@ -3789,6 +3799,27 @@ function testCannotReuseUsbPairedInTab() {
       embedder.test.fail();
     }
 
+    embedder.test.succeed();
+  });
+
+  document.body.appendChild(webview);
+}
+
+function testCannotRequestFonts() {
+  let webview = document.createElement('webview');
+  webview.src = embedder.emptyGuestURL;
+  webview.addEventListener('loadstop', async () => {
+    let getFonts = async () => {
+      let fonts = await window.queryLocalFonts();
+      return fonts.map(font => font.fullName);
+    };
+
+    try {
+      let result = await evalInWebView(webview, getFonts, []);
+      embedder.test.assertEq(0, result.length);
+    } catch (ex) {
+      embedder.test.fail();
+    }
     embedder.test.succeed();
   });
 
@@ -3941,6 +3972,7 @@ embedder.test.testList = {
   'testInsertIntoDetachedIframe': testInsertIntoDetachedIframe,
   'testCannotRequestUsb': testCannotRequestUsb,
   'testCannotReuseUsbPairedInTab': testCannotReuseUsbPairedInTab,
+  'testCannotRequestFonts': testCannotRequestFonts,
 };
 
 onload = function() {

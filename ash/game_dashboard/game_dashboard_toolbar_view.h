@@ -6,6 +6,8 @@
 #define ASH_GAME_DASHBOARD_GAME_DASHBOARD_TOOLBAR_VIEW_H_
 
 #include "ash/ash_export.h"
+#include "ash/public/cpp/arc_game_controls_flag.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/aura/window_observer.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/layout/box_layout_view.h"
@@ -14,6 +16,7 @@ namespace ash {
 
 class GameDashboardContext;
 class IconButton;
+class ToolbarDragHandler;
 
 // GameDashboardToolbarView is the movable toolbar that's attached to the game
 // window. It contains various quick action tiles for users to access without
@@ -38,11 +41,13 @@ class ASH_EXPORT GameDashboardToolbarView : public views::BoxLayoutView,
   // `CaptureModeController` has ended a recording session or was aborted.
   void OnRecordingEnded();
 
+  // Handles repositioning the toolbar view within the game window.
+  void RepositionToolbar(const gfx::Vector2d& offset);
+
+  // Handles completion of the toolbar movement.
+  void EndDraggingToolbar(const gfx::Vector2d& offset);
+
   // views::View:
-  bool OnMousePressed(const ui::MouseEvent& event) override;
-  bool OnMouseDragged(const ui::MouseEvent& event) override;
-  void OnMouseReleased(const ui::MouseEvent& event) override;
-  void OnGestureEvent(ui::GestureEvent* event) override;
   bool OnKeyPressed(const ui::KeyEvent& event) override;
   bool OnKeyReleased(const ui::KeyEvent& event) override;
 
@@ -74,6 +79,10 @@ class ASH_EXPORT GameDashboardToolbarView : public views::BoxLayoutView,
   // Adds Game Controls button if needed.
   void MayAddGameControlsTile();
 
+  // Updates this view's widget visibility. If it is visible, updates
+  // game_controls_button_'s state, and the tooltip text according to flags.
+  void UpdateViewForGameControls(ArcGameControlsFlag flags);
+
   // Updates the `record_game_button_` UI. If `is_recording_game_window` is
   // true, then the button will change to a stop button, otherwise it will show
   // the default UI.
@@ -83,12 +92,6 @@ class ASH_EXPORT GameDashboardToolbarView : public views::BoxLayoutView,
   void OnWindowPropertyChanged(aura::Window* window,
                                const void* key,
                                intptr_t old) override;
-
-  // Handles repositioning the toolbar view within the game window.
-  void RepositionToolbar(const gfx::PointF& toolbar_location);
-
-  // Handles completion of the toolbar movement.
-  void EndDraggingToolbar(const gfx::PointF& toolbar_location);
 
   // The topmost `IconButton` in the toolbar's collection, which stays visible
   // in both the expanded and collapsed toolbar states.
@@ -106,8 +109,8 @@ class ASH_EXPORT GameDashboardToolbarView : public views::BoxLayoutView,
 
   const raw_ptr<GameDashboardContext, ExperimentalAsh> context_;
 
-  // If the toolbar view is in the dragging state.
-  bool is_dragging_ = false;
+  // Handles all dragging logic for the toolbar.
+  std::unique_ptr<ToolbarDragHandler> drag_handler_;
 };
 
 }  // namespace ash

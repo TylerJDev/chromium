@@ -8,6 +8,7 @@
 <translation id="1056898198331236512">Cảnh báo</translation>
 <translation id="1060368002126861100">Để mở tệp bằng <ph name="APP_NAME" />, trước tiên, hãy di chuyển các tệp đó đến thư mục tệp Windows.</translation>
 <translation id="1062407476771304334">Thay thế</translation>
+<translation id="1119383441774809183">Hiện tin nhắn văn bản</translation>
 <translation id="1119447706177454957">Lỗi nội bộ</translation>
 <translation id="1120073797882051782">Hangul Romaja</translation>
 <translation id="112387589102719461">Tiếng Anh (Mỹ) bằng bàn phím Dvorak cho lập trình viên</translation>
@@ -95,6 +96,7 @@
 <translation id="174937106936716857">Tổng số lượng tệp</translation>
 <translation id="1755345808328621801">Tệp này dành cho máy tính sử dụng phần mềm Windows. Tệp này không tương thích với thiết bị chạy ChromeOS của bạn. Vui lòng tìm kiếm ứng dụng thay thế phù hợp trong Cửa hàng Chrome trực tuyến.</translation>
 <translation id="1757915090001272240">Wide Latin</translation>
+<translation id="1761091787730831947">Chia sẻ với <ph name="VM_NAME" /></translation>
 <translation id="1773212559869067373">Chứng chỉ xác thực bị từ chối cục bộ</translation>
 <translation id="1775381402323441512">Thông tin về tệp video</translation>
 <translation id="180035236176489073">Bạn phải trực tuyến để truy cập các tệp này.</translation>
@@ -170,6 +172,7 @@
 <translation id="23721837607121582">Tải hồ sơ mạng di động xuống, Mạng <ph name="NETWORK_INDEX" />/<ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" /></translation>
 <translation id="2377319039870049694">Chuyển sang chế độ xem danh sách</translation>
 <translation id="2377590462528165447">Đã chia sẻ <ph name="NUMBER_OF_ITEMS" /> thư mục với Linux</translation>
+<translation id="2379576081295865700">Đang kiểm tra không gian lưu trữ… Đã tìm thấy 1 mục</translation>
 <translation id="2383454254762599978">Chuyển vào thùng rác</translation>
 <translation id="2387458720915042159">Loại kết nối proxy</translation>
 <translation id="2389832672041313158">Tiếng Miến Điện/Myanmar</translation>
@@ -211,6 +214,7 @@
 <translation id="2718540689505416944">Cài đặt ứng dụng Linux</translation>
 <translation id="2719020180254996569">Mạng <ph name="NETWORK_INDEX" />/<ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" />, <ph name="CONNECTION_STATUS" />, Thông tin chi tiết</translation>
 <translation id="2724954091494693138">Tiếng Thổ Nhĩ Kỳ bằng bàn phím F</translation>
+<translation id="2732288874651063549">Quản lý nội dung được chia sẻ với <ph name="VM_NAME" /></translation>
 <translation id="2732839045120506979">Tiếng Việt (VNI)</translation>
 <translation id="2735623501230989521">Cho phép ứng dụng Parallels Desktop truy cập vào các tệp trong thư mục <ph name="FOLDER_NAME" /></translation>
 <translation id="2764206540577097904">Bạn đã dùng hết bộ nhớ cá nhân trên Google Workspace.</translation>
@@ -275,6 +279,7 @@
 <translation id="3264582393905923483">Ngữ cảnh</translation>
 <translation id="3272909651715601089">Không thể mở "<ph name="PATH" />"</translation>
 <translation id="3280431534455935878">Đang chuẩn bị</translation>
+<translation id="3280719573299097127">Bạn đang sử dụng mạng có đo lượng dữ liệu. Tính năng đồng bộ hoá tệp đã bị tạm dừng.</translation>
 <translation id="3280987981688031357">Đĩa than</translation>
 <translation id="3290356915286466215">Không bảo mật</translation>
 <translation id="3291218047831493686">Kết nối với mạng này để thay đổi chế độ cài đặt khóa SIM</translation>
@@ -305,6 +310,7 @@
 <translation id="3509680540198371098">Mạng <ph name="NETWORK_INDEX" />/<ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" />, <ph name="SECURITY_STATUS" />, <ph name="CONNECTION_STATUS" />, Cường độ tín hiệu <ph name="SIGNAL_STRENGTH" />%, Thông tin chi tiết</translation>
 <translation id="3511705761158917664">Đang chuẩn bị đồng bộ hoá <ph name="NUMBER_OF_ITEMS" /> mục...</translation>
 <translation id="3522708245912499433">Tiếng Bồ Đào Nha</translation>
+<translation id="3523225005467146490">Đã chia sẻ 1 thư mục với <ph name="VM_NAME" /></translation>
 <translation id="3524311639100184459">Lưu ý: Các tệp này chỉ được lưu trữ tạm thời và có thể tự động bị xóa để giải phóng dung lượng ổ đĩa.  <ph name="BEGIN_LINK" />Tìm hiểu thêm<ph name="END_LINK" /></translation>
 <translation id="3527085408025491307">Thư mục</translation>
 <translation id="3548125359243647069">Bạn đã nhập sai mã PIN quá nhiều lần.</translation>
@@ -551,7 +557,6 @@
 <translation id="5283101102242354279">Bật một tiện ích ở chế độ Ẩn danh:</translation>
 <translation id="5286194356314741248">Đang quét</translation>
 <translation id="5288441970121584418">Bánh mì kẹp</translation>
-<translation id="5288481194217812690"><ph name="FILENAME" /></translation>
 <translation id="5293615890992542006">Chính sách của quản trị viên không cho phép di chuyển tệp này</translation>
 <translation id="5305688511332277257">Chưa cài đặt chứng chỉ nào</translation>
 <translation id="5317780077021120954">Lưu</translation>
@@ -628,6 +633,7 @@
 <translation id="5838451609423551646">Đã xóa tất cả các mục khỏi lựa chọn.</translation>
 <translation id="5838825566232597749">Bàn phím quốc tế Workman Hoa Kỳ</translation>
 <translation id="5845721951356578987">Y tá</translation>
+<translation id="5858478190805449225">Đã bật chế độ tiết kiệm pin. Hãy thử lại khi chế độ tiết kiệm pin tắt.</translation>
 <translation id="5860491529813859533">Bật</translation>
 <translation id="5861477046012235702">Người chơi trò chơi điện tử</translation>
 <translation id="5864471791310927901">Không thể tra cứu DHCP</translation>
@@ -662,6 +668,8 @@
 <translation id="6164412158936057769">Bướm</translation>
 <translation id="6165508094623778733">Tìm hiểu thêm</translation>
 <translation id="6170470584681422115">Sandwich</translation>
+<translation id="6177854567773392726">Đang kiểm tra không gian lưu trữ… Đã tìm thấy <ph name="ITEMS_FOUND" /> mục</translation>
+<translation id="6181912134988520389">Cho phép <ph name="VM_NAME" /> truy cập vào các tệp trên Google Drive của bạn. Các thay đổi sẽ đồng bộ hoá với những thiết bị khác mà bạn có.</translation>
 <translation id="6187719147498869044">Tiếng Hungary</translation>
 <translation id="6198252989419008588">Thay đổi mã PIN</translation>
 <translation id="6199801702437275229">Đang chờ thông tin dung lượng...</translation>
@@ -765,6 +773,7 @@
 <translation id="6989942356279143254">Tiếng Thụy Điển</translation>
 <translation id="6990081529015358884">Bạn đã hết dung lượng lưu trữ</translation>
 <translation id="6993826899923627728">Các mục này đang nằm trong thùng rác</translation>
+<translation id="6996593023542748157">Chia sẻ thư mục với <ph name="VM_NAME" /></translation>
 <translation id="7008426324576352165">Tổ chức của bạn cần có thêm bộ nhớ để hoàn tất quá trình tải lên.</translation>
 <translation id="7009985720488544166">Chính sách của quản trị viên không cho phép di chuyển <ph name="COUNT" /> tệp</translation>
 <translation id="7012943028104619157"><ph name="ROOT_TITLE" /> (<ph name="ROOT_SUMMARY" />)</translation>
@@ -891,7 +900,6 @@
 <translation id="7911118814695487383">Linux</translation>
 <translation id="7920501309908018401">Các tệp trong Drive của tôi sẽ tự động đồng bộ hoá với Chromebook để bạn có thể truy cập các tệp này mà không cần kết nối Internet.</translation>
 <translation id="7925247922861151263">Không thể kiểm tra AAA</translation>
-<translation id="7925686952655276919">Không sử dụng dữ liệu di động để đồng bộ hóa</translation>
 <translation id="7928710562641958568">Tháo thiết bị</translation>
 <translation id="7933875256234974853">Đang chuẩn bị đồng bộ hoá các tệp trên Drive...</translation>
 <translation id="7943385054491506837">Colemak Hoa Kỳ</translation>
@@ -914,6 +922,7 @@
 <translation id="8087576439476816834">Tải xuống, <ph name="PROFILE_NAME" /></translation>
 <translation id="8106045200081704138">Được chia sẻ với tôi</translation>
 <translation id="8116072619078571545">Nước đá</translation>
+<translation id="8120392982188717723">Cho phép đồng bộ hoá bằng các mạng có đo lượng dữ liệu</translation>
 <translation id="8124093710070495550">Vấn đề khi đồng bộ hoá</translation>
 <translation id="8128733386027980860">Tiếng Anh (Anh) bằng bàn phím Dvorak</translation>
 <translation id="8137331602592933310">"<ph name="FILENAME" />" đã được chia sẻ với bạn. Bạn không thể xóa tệp vì bạn không sở hữu tệp.</translation>
@@ -951,6 +960,7 @@
 <translation id="8335837413233998004">Tiếng Belarus</translation>
 <translation id="8336153091935557858">Hôm qua <ph name="YESTERDAY_DAYTIME" /></translation>
 <translation id="8342318071240498787">Tệp hoặc thư mục có cùng tên đã tồn tại.</translation>
+<translation id="83651606385705612">Cho phép <ph name="VM_NAME" /> truy cập vào các tệp trong thư mục <ph name="FOLDER_NAME" /></translation>
 <translation id="8372369524088641025">Khóa WEP sai</translation>
 <translation id="8372852072747894550">Tiếng Hy Lạp</translation>
 <translation id="8386903983509584791">Đã quét xong</translation>
@@ -960,6 +970,7 @@
 <translation id="8408068190360279472">Đang kết nối mạng <ph name="NETWORK_TYPE" /></translation>
 <translation id="8425213833346101688">Thay đổi</translation>
 <translation id="8428213095426709021">Cài đặt</translation>
+<translation id="8429998526804961548">Đã chia sẻ <ph name="NUMBER_OF_ITEMS" /> thư mục với <ph name="VM_NAME" /></translation>
 <translation id="8431909052837336408">Thay đổi mã PIN của SIM</translation>
 <translation id="8437209419043462667">Hoa Kỳ</translation>
 <translation id="8452135315243592079">Thiếu thẻ SIM</translation>
@@ -1003,6 +1014,7 @@
 <translation id="8698877009525468705">Tệp này được bảo mật và phải tuân thủ các hạn chế theo chính sách dành cho quản trị viên.</translation>
 <translation id="8712637175834984815">Tôi hiểu</translation>
 <translation id="8713112442029511308">Tiếng Malta</translation>
+<translation id="8714138378966541668">Bị khoá bởi nhà cung cấp</translation>
 <translation id="8714406895390098252">Xe đạp</translation>
 <translation id="8719721339511222681">Đã chọn <ph name="ENTRY_NAME" />.</translation>
 <translation id="872537912056138402">Tiếng Croatia</translation>
@@ -1040,6 +1052,7 @@
 <translation id="9038620279323455325">Tệp có tên "<ph name="FILE_NAME" />" đã tồn tại. Vui lòng chọn một tên khác.</translation>
 <translation id="9046895021617826162">Kết nối không thành công</translation>
 <translation id="9065512565307033593">Nếu không xác minh được, bạn sẽ không thể dùng mạng.</translation>
+<translation id="9083722265619106011">{0,plural, =1{1 cảnh báo.}other{<ph name="COUNT" /> cảnh báo.}}</translation>
 <translation id="908378762078012445">Tiếng Nga bằng bàn phím phiên âm AATSEEL</translation>
 <translation id="9086302186042011942">Đang đồng bộ hóa</translation>
 <translation id="9099674669267916096">Số lượng trang</translation>

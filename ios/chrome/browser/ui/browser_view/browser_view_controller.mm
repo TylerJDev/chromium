@@ -13,13 +13,14 @@
 #import "components/signin/public/identity_manager/identity_manager.h"
 #import "components/strings/grit/components_strings.h"
 #import "components/ukm/ios/ukm_url_recorder.h"
-#import "ios/chrome/browser/crash_report/crash_keys_helper.h"
+#import "ios/chrome/browser/crash_report/model/crash_keys_helper.h"
 #import "ios/chrome/browser/discover_feed/feed_constants.h"
 #import "ios/chrome/browser/find_in_page/util.h"
+#import "ios/chrome/browser/intents/intents_donation_helper.h"
 #import "ios/chrome/browser/metrics/tab_usage_recorder_browser_agent.h"
 #import "ios/chrome/browser/ntp/new_tab_page_tab_helper.h"
 #import "ios/chrome/browser/ntp/new_tab_page_util.h"
-#import "ios/chrome/browser/reading_list/reading_list_browser_agent.h"
+#import "ios/chrome/browser/reading_list/model/reading_list_browser_agent.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
@@ -35,7 +36,7 @@
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/shared/ui/util/url_with_title.h"
 #import "ios/chrome/browser/signin/identity_manager_factory.h"
-#import "ios/chrome/browser/snapshots/snapshot_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
 #import "ios/chrome/browser/ui/authentication/re_signin_infobar_delegate.h"
 #import "ios/chrome/browser/ui/bookmarks/bookmarks_coordinator.h"
 #import "ios/chrome/browser/ui/browser_container/browser_container_view_controller.h"
@@ -81,7 +82,7 @@
 #import "ios/chrome/browser/web/web_navigation_util.h"
 #import "ios/chrome/browser/web/web_state_update_browser_agent.h"
 #import "ios/chrome/browser/web_state_list/web_usage_enabler/web_usage_enabler_browser_agent.h"
-#import "ios/chrome/browser/webui/show_mail_composer_context.h"
+#import "ios/chrome/browser/webui/model/show_mail_composer_context.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
 #import "ios/chrome/common/ui/promo_style/promo_style_view_controller.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
@@ -620,10 +621,6 @@ enum HeaderBehaviour {
   [self.omniboxCommandsHandler cancelOmniboxEdit];
 }
 
-- (void)userEnteredTabSwitcher {
-  [_bubblePresenter userEnteredTabSwitcher];
-}
-
 - (void)openNewTabFromOriginPoint:(CGPoint)originPoint
                      focusOmnibox:(BOOL)focusOmnibox
                     inheritOpener:(BOOL)inheritOpener {
@@ -953,8 +950,6 @@ enum HeaderBehaviour {
   self.viewVisible = YES;
   [self updateBroadcastState];
   [self updateToolbarState];
-  [self.helpHandler showHelpBubbleIfEligible];
-  [self.helpHandler showLongPressHelpBubbleIfEligible];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -2250,6 +2245,7 @@ enum HeaderBehaviour {
   if (_startVoiceSearchAfterNewTabAnimation) {
     _startVoiceSearchAfterNewTabAnimation = NO;
     [self startVoiceSearch];
+    [IntentDonationHelper donateIntent:DonatedIntentType::kOpenVoiceSearch];
   }
 }
 
@@ -2506,17 +2502,23 @@ enum HeaderBehaviour {
   [self updateForFullscreenProgress:self.footerFullscreenProgress];
 }
 
+- (void)secondaryToolbarMovedAboveKeyboard {
+  CHECK(IsBottomOmniboxSteadyStateEnabled());
+  // Lower the height constraint priority, allowing UIKeyboardLayoutGuide to
+  // move the toolbar above the keyboard.
+  self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityDefaultHigh;
+}
+
+- (void)secondaryToolbarRemovedFromKeyboard {
+  CHECK(IsBottomOmniboxSteadyStateEnabled());
+  // Return to required priority, otherwise UIKeyboardLayoutGuide would set the
+  // toolbar minimum height to the bottom safe area.
+  self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired - 1;
+}
+
 #pragma mark - LogoAnimationControllerOwnerOwner (Public)
 
 - (id<LogoAnimationControllerOwner>)logoAnimationControllerOwner {
-  NewTabPageCoordinator* coordinator = self.ntpCoordinator;
-  if (coordinator.isNTPActiveForCurrentWebState) {
-    if ([coordinator logoAnimationControllerOwner]) {
-      // If NTP coordinator is showing a GLIF view (e.g. the NTP when there is
-      // no doodle), use that GLIFControllerOwner.
-      return [coordinator logoAnimationControllerOwner];
-    }
-  }
   return nil;
 }
 

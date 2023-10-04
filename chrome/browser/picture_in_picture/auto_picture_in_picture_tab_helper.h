@@ -15,6 +15,8 @@
 #include "services/media_session/public/mojom/audio_focus.mojom.h"
 #include "services/media_session/public/mojom/media_session.mojom.h"
 
+class HostContentSettingsMap;
+
 // The AutoPictureInPictureTabHelper is a TabHelper attached to each WebContents
 // that facilitates automatically opening and closing picture-in-picture windows
 // as the given WebContents becomes hidden or visible. WebContents are only
@@ -22,8 +24,7 @@
 //   - The website has registered a MediaSession action handler for the
 //     'enterpictureinpicture' action.
 //   - The 'Auto Picture-in-Picture' content setting is allowed for the website.
-//   - The website is playing unmuted media OR the website is capturing camera
-//     or microphone.
+//   - The website is capturing camera or microphone.
 class AutoPictureInPictureTabHelper
     : public content::WebContentsObserver,
       public content::WebContentsUserData<AutoPictureInPictureTabHelper>,
@@ -36,7 +37,13 @@ class AutoPictureInPictureTabHelper
   AutoPictureInPictureTabHelper& operator=(
       const AutoPictureInPictureTabHelper&) = delete;
 
+  // True if the current page has registered for auto picture-in-picture since
+  // last navigation. Remains true even if the page unregisters for auto
+  // picture-in-picture. It only resets on navigation.
+  bool HasAutoPictureInPictureBeenRegistered() const;
+
   // content::WebContentsObserver:
+  void PrimaryPageChanged(content::Page& page) override;
   void MediaPictureInPictureChanged(bool is_in_picture_in_picture) override;
 
   // TabStripModelObserver:
@@ -67,9 +74,13 @@ class AutoPictureInPictureTabHelper
   void MediaSessionPositionChanged(
       const absl::optional<media_session::MediaPosition>& position) override {}
 
+  bool IsInAutoPictureInPicture() const;
+
  private:
   explicit AutoPictureInPictureTabHelper(content::WebContents* web_contents);
   friend class content::WebContentsUserData<AutoPictureInPictureTabHelper>;
+  FRIEND_TEST_ALL_PREFIXES(AutoPictureInPictureTabHelperBrowserTest,
+                           CannotAutopipViaHttp);
 
   void MaybeEnterAutoPictureInPicture();
 
@@ -90,6 +101,10 @@ class AutoPictureInPictureTabHelper
   // Returns the current state of the 'Auto Picture-in-Picture' content
   // setting for the current website of the observed WebContents.
   ContentSetting GetCurrentContentSetting() const;
+
+  // HostContentSettingsMap is tied to the Profile which outlives the
+  // WebContents (which we're tied to), so this is safe.
+  const raw_ptr<HostContentSettingsMap> host_content_settings_map_;
 
   // Tracks when browser tab strips change so we can tell when the observed
   // WebContents changes between being the active tab and not being the active
@@ -129,6 +144,11 @@ class AutoPictureInPictureTabHelper
   // True if the 'EnterAutoPictureInPicture' action is available on the media
   // session.
   bool is_enter_auto_picture_in_picture_available_ = false;
+
+  // True if the current page has registered for auto picture-in-picture since
+  // last navigation. Remains true even if the page unregisters for auto
+  // picture-in-picture. It only resets on navigation.
+  bool has_ever_registered_for_auto_picture_in_picture_ = false;
 
   // Connections with the media session service to listen for audio focus
   // updates and control media sessions.

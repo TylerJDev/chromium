@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,6 +33,9 @@ class PreloadingDeciderObserverForTesting {
 class CONTENT_EXPORT PreloadingDecider
     : public DocumentUserData<PreloadingDecider> {
  public:
+  using SpeculationCandidateKey =
+      std::pair<GURL, blink::mojom::SpeculationAction>;
+
   ~PreloadingDecider() override;
 
   // Receives and processes on pointer down event for 'url' target link.
@@ -41,6 +44,9 @@ class CONTENT_EXPORT PreloadingDecider
   // Receives and processes on pointer hover event for 'url' target link.
   void OnPointerHover(const GURL& url,
                       blink::mojom::AnchorElementPointerDataPtr mouse_data);
+
+  //  Receives and processes ML model score for 'url' target link.
+  void OnPreloadingHeuristicsModelDone(const GURL& url, float score);
 
   // Sets the new preloading decider observer for testing and returns the old
   // one.
@@ -59,8 +65,9 @@ class CONTENT_EXPORT PreloadingDecider
   bool IsOnStandByForTesting(const GURL& url,
                              blink::mojom::SpeculationAction action);
 
-  // Called by PrefetchService when a prefetch is evicted.
-  virtual void OnPrefetchEvicted(const GURL& url);
+  // Called by PrefetchService/PrerendererImpl when a prefetch/prerender is
+  // evicted/canceled.
+  void OnPreloadDiscarded(const SpeculationCandidateKey key);
 
  private:
   explicit PreloadingDecider(RenderFrameHost* rfh);
@@ -93,9 +100,6 @@ class CONTENT_EXPORT PreloadingDecider
   bool IsSuitableCandidate(
       const blink::mojom::SpeculationCandidatePtr& candidate,
       const PreloadingPredictor& predictor) const;
-
-  using SpeculationCandidateKey =
-      std::pair<GURL, blink::mojom::SpeculationAction>;
 
   // Helper functions to add/remove a preloading candidate to
   // |on_standby_candidates_| and to reset |on_standby_candidates_|. Use these

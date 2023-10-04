@@ -28,6 +28,7 @@
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/MutableTextureState.h"
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
 
 namespace gpu {
@@ -50,9 +51,9 @@ SkiaVkOzoneImageRepresentation::SkiaVkOzoneImageRepresentation(
   DCHECK(context_state_->vk_context_provider());
   DCHECK(vulkan_image_);
 
-  promise_texture_ = GrPromiseImageTexture::Make(
-      GrBackendTexture(size().width(), size().height(),
-                       CreateGrVkImageInfo(vulkan_image_.get())));
+  promise_texture_ = GrPromiseImageTexture::Make(GrBackendTextures::MakeVk(
+      size().width(), size().height(),
+      CreateGrVkImageInfo(vulkan_image_.get(), color_space())));
   DCHECK(promise_texture_);
 }
 

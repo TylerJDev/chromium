@@ -4,8 +4,12 @@
 
 #include "components/autofill/core/browser/contact_info_sync_util.h"
 
+#include "base/hash/hash.h"
+#include "base/strings/to_string.h"
 #include "base/test/scoped_feature_list.h"
+#include "components/autofill/core/browser/autofill_test_utils.h"
 #include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/profile_token_quality_test_api.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -65,10 +69,11 @@ AutofillProfile ConstructCompleteProfile() {
                                            VerificationStatus::kObserved);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_COUNTRY, u"US",
                                            VerificationStatus::kObserved);
-  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_STREET_ADDRESS,
-                                           u"123 Fake St. Dep Premise\n"
-                                           u"Apt. 10 Floor 2",
-                                           VerificationStatus::kObserved);
+  profile.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_ADDRESS,
+      u"123 Fake St. Premise Marcos y Oliva\n"
+      u"Apt. 10 Floor 2 Red tree",
+      VerificationStatus::kObserved);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_SORTING_CODE, u"CEDEX",
                                            VerificationStatus::kObserved);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_DEPENDENT_LOCALITY,
@@ -78,14 +83,9 @@ AutofillProfile ConstructCompleteProfile() {
       ADDRESS_HOME_STREET_NAME, u"Fake St.", VerificationStatus::kFormatted);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_HOUSE_NUMBER, u"123",
                                            VerificationStatus::kFormatted);
-  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_DEPENDENT_STREET_NAME,
-                                           u"Dep",
+  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_STREET_LOCATION,
+                                           u"Fake St. 123",
                                            VerificationStatus::kFormatted);
-  profile.SetRawInfoWithVerificationStatus(
-      ADDRESS_HOME_STREET_AND_DEPENDENT_STREET_NAME, u"Fake St. Dep",
-      VerificationStatus::kFormatted);
-  profile.SetRawInfoWithVerificationStatus(
-      ADDRESS_HOME_PREMISE_NAME, u"Premise", VerificationStatus::kFormatted);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_SUBPREMISE,
                                            u"Apt. 10 Floor 2",
                                            VerificationStatus::kObserved);
@@ -94,10 +94,10 @@ AutofillProfile ConstructCompleteProfile() {
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_FLOOR, u"2",
                                            VerificationStatus::kParsed);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_LANDMARK, u"Red tree",
-                                           VerificationStatus::kObserved);
+                                           VerificationStatus::kParsed);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_BETWEEN_STREETS,
                                            u"Marcos y Oliva",
-                                           VerificationStatus::kObserved);
+                                           VerificationStatus::kParsed);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_ADMIN_LEVEL2, u"Oxaca",
                                            VerificationStatus::kObserved);
 
@@ -112,17 +112,29 @@ AutofillProfile ConstructCompleteProfile() {
   profile.SetRawInfoAsInt(BIRTHDATE_MONTH, 3);
   profile.SetRawInfoAsInt(BIRTHDATE_4_DIGIT_YEAR, 1997);
 
+  // Add some `ProfileTokenQuality` observations.
+  test_api(profile.token_quality())
+      .AddObservation(NAME_FIRST,
+                      ProfileTokenQuality::ObservationType::kAccepted,
+                      ProfileTokenQualityTestApi::FormSignatureHash(12));
+  test_api(profile.token_quality())
+      .AddObservation(ADDRESS_HOME_CITY,
+                      ProfileTokenQuality::ObservationType::kEditedFallback,
+                      ProfileTokenQualityTestApi::FormSignatureHash(21));
+
   return profile;
 }
 
 // Helper function to set ContactInfoSpecifics::String- and IntegerToken
-// together with their verification status.
+// together with their verification status and value_hash.
 template <typename TokenType, typename Value>
 void SetToken(TokenType* token,
               const Value& value,
               ContactInfoSpecifics::VerificationStatus status) {
   token->set_value(value);
-  token->mutable_metadata()->set_status(status);
+  ContactInfoSpecifics::TokenMetadata* metadata = token->mutable_metadata();
+  metadata->set_status(status);
+  metadata->set_value_hash(base::PersistentHash(base::ToString(value)));
 }
 
 // Returns ContactInfoSpecifics with all fields set. Contains identical data to
@@ -132,8 +144,8 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
 
   specifics.set_guid(kGuid);
   specifics.set_use_count(123);
-  specifics.set_use_date_windows_epoch_micros(kUseDate.ToTimeT());
-  specifics.set_date_modified_windows_epoch_micros(kModificationDate.ToTimeT());
+  specifics.set_use_date_unix_epoch_seconds(kUseDate.ToTimeT());
+  specifics.set_date_modified_unix_epoch_seconds(kModificationDate.ToTimeT());
   specifics.set_language_code("en");
   specifics.set_profile_label("profile_label");
   specifics.set_initial_creator_id(
@@ -170,8 +182,8 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
   SetToken(specifics.mutable_address_country(), "US",
            ContactInfoSpecifics::OBSERVED);
   SetToken(specifics.mutable_address_street_address(),
-           "123 Fake St. Dep Premise\n"
-           "Apt. 10 Floor 2",
+           "123 Fake St. Premise Marcos y Oliva\n"
+           "Apt. 10 Floor 2 Red tree",
            ContactInfoSpecifics::OBSERVED);
   SetToken(specifics.mutable_address_sorting_code(), "CEDEX",
            ContactInfoSpecifics::OBSERVED);
@@ -181,12 +193,7 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
            ContactInfoSpecifics::FORMATTED);
   SetToken(specifics.mutable_address_thoroughfare_number(), "123",
            ContactInfoSpecifics::FORMATTED);
-  SetToken(specifics.mutable_address_dependent_thoroughfare_name(), "Dep",
-           ContactInfoSpecifics::FORMATTED);
-  SetToken(
-      specifics.mutable_address_thoroughfare_and_dependent_thoroughfare_name(),
-      "Fake St. Dep", ContactInfoSpecifics::FORMATTED);
-  SetToken(specifics.mutable_address_premise_name(), "Premise",
+  SetToken(specifics.mutable_address_street_location(), "Fake St. 123",
            ContactInfoSpecifics::FORMATTED);
   SetToken(specifics.mutable_address_subpremise_name(), "Apt. 10 Floor 2",
            ContactInfoSpecifics::OBSERVED);
@@ -195,9 +202,9 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
   SetToken(specifics.mutable_address_floor(), "2",
            ContactInfoSpecifics::PARSED);
   SetToken(specifics.mutable_address_landmark(), "Red tree",
-           ContactInfoSpecifics::OBSERVED);
+           ContactInfoSpecifics::PARSED);
   SetToken(specifics.mutable_address_between_streets(), "Marcos y Oliva",
-           ContactInfoSpecifics::OBSERVED);
+           ContactInfoSpecifics::PARSED);
   SetToken(specifics.mutable_address_admin_level_2(), "Oxaca",
            ContactInfoSpecifics::OBSERVED);
   // All of the following types don't store verification statuses in
@@ -218,6 +225,18 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
   SetToken(specifics.mutable_birthdate_year(), 1997,
            ContactInfoSpecifics::VERIFICATION_STATUS_UNSPECIFIED);
 
+  // Add some `ProfileTokenQuality` observations.
+  ContactInfoSpecifics::Observation* observation =
+      specifics.mutable_name_first()->mutable_metadata()->add_observations();
+  observation->set_type(
+      static_cast<int>(ProfileTokenQuality::ObservationType::kAccepted));
+  observation->set_form_hash(12);
+  observation =
+      specifics.mutable_address_city()->mutable_metadata()->add_observations();
+  observation->set_type(
+      static_cast<int>(ProfileTokenQuality::ObservationType::kEditedFallback));
+  observation->set_form_hash(21);
+
   return specifics;
 }
 
@@ -229,7 +248,8 @@ class ContactInfoSyncUtilTest : public testing::Test {
     features_.InitWithFeatures(
         {features::kAutofillEnableSupportForLandmark,
          features::kAutofillEnableSupportForBetweenStreets,
-         features::kAutofillEnableSupportForAdminLevel2},
+         features::kAutofillEnableSupportForAdminLevel2,
+         features::kAutofillTrackProfileTokenQuality},
         {});
   }
 
@@ -367,6 +387,38 @@ TEST_F(ContactInfoSyncUtilTest,
   ContactInfoSpecifics specifics;
   specifics.set_guid(kInvalidGuid);
   EXPECT_EQ(CreateAutofillProfileFromContactInfoSpecifics(specifics), nullptr);
+}
+
+// Tests that if a token's `value` changes by external means, its observations
+// are reset.
+TEST_F(ContactInfoSyncUtilTest, ObservationResetting) {
+  // Create a profile and collect an observation for NAME_FIRST.
+  AutofillProfile profile = test::GetFullProfile();
+  profile.set_source_for_testing(AutofillProfile::Source::kAccount);
+  test_api(profile.token_quality())
+      .AddObservation(NAME_FIRST,
+                      ProfileTokenQuality::ObservationType::kAccepted);
+
+  // Simulate sending the `profile` to Sync and modifying its NAME_FIRST by an
+  // external integrator. Since metadata is opaque to external integrators, the
+  // metadata's `value_hash` is not updated.
+  std::unique_ptr<syncer::EntityData> entity_data =
+      CreateContactInfoEntityDataFromAutofillProfile(
+          profile, /*base_contact_info_specifics=*/{});
+  ASSERT_NE(entity_data, nullptr);
+  ContactInfoSpecifics* specifics =
+      entity_data->specifics.mutable_contact_info();
+  specifics->mutable_name_first()->set_value("different " +
+                                             specifics->name_first().value());
+
+  // Simulate syncing the `specifics` back to Autofill. Expect that the
+  // NAME_FIRST observations are cleared.
+  std::unique_ptr<AutofillProfile> updated_profile =
+      CreateAutofillProfileFromContactInfoSpecifics(*specifics);
+  ASSERT_NE(updated_profile, nullptr);
+  EXPECT_TRUE(updated_profile->token_quality()
+                  .GetObservationTypesForFieldType(NAME_FIRST)
+                  .empty());
 }
 
 }  // namespace autofill

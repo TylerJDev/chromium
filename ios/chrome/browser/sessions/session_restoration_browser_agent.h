@@ -12,20 +12,18 @@
 #import <vector>
 
 #import "base/observer_list.h"
+#import "ios/chrome/browser/sessions/web_state_list_serialization.h"
 #import "ios/chrome/browser/shared/model/browser/browser_observer.h"
 #import "ios/chrome/browser/shared/model/browser/browser_user_data.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list_observer.h"
-#import "ios/chrome/browser/web_state_list/web_state_list_serialization.h"
 #import "ios/web/public/web_state_observer.h"
 
 class AllWebStateObservationForwarder;
-class ChromeBrowserState;
 @class SessionWindowIOS;
-@class SessionIOSFactory;
+@class SessionWindowIOSFactory;
 class SessionRestorationObserver;
 @class SessionServiceIOS;
 class WebStateList;
-class WebUsageEnablerBrowserAgent;
 
 // This class is responsible for handling requests of session restoration. It
 // can be observed via SeassonRestorationObserver which it uses to notify
@@ -118,18 +116,14 @@ class SessionRestorationBrowserAgent
   // The service object which handles the actual saving of sessions.
   SessionServiceIOS* session_service_ = nullptr;
 
-  // The list of web states to be saved.
-  WebStateList* web_state_list_ = nullptr;
+  // The Browser containing the WebStates to be saved.
+  Browser* browser_ = nullptr;
 
-  // The web usage enabler for the web state list being restored.
-  WebUsageEnablerBrowserAgent* web_enabler_ = nullptr;
-
+  // List of registered observers.
   base::ObserverList<SessionRestorationObserver, true> observers_;
 
-  ChromeBrowserState* browser_state_ = nullptr;
-
-  // Session Factory used to create session data for saving.
-  SessionIOSFactory* session_ios_factory_ = nullptr;
+  // SessionWindowIOSFactory used to create session data for saving.
+  SessionWindowIOSFactory* session_window_ios_factory_ = nullptr;
 
   // Session identifier for this agent.
   __strong NSString* session_identifier_ = nil;

@@ -927,14 +927,6 @@ chromium-metrics-reviews@google.com.
   <affected-histogram name="MobileStartup.ToolbarInflationTime"/>
 </histogram_suffixes>
 
-<histogram_suffixes name="ChromeCleanerFetchCompletedReason" separator="_">
-  <suffix name="DownloadFailure"
-      label="Download failed without an OK HTTP response code."/>
-  <suffix name="DownloadSuccess" label="Download succeeded."/>
-  <suffix name="NetworkError" label="Download failed due to a network error."/>
-  <affected-histogram name="SoftwareReporter.Cleaner.TimeToCompleteDownload"/>
-</histogram_suffixes>
-
 <histogram_suffixes name="ChromeOS_Camera_JpegProcessMethod" separator=".">
   <suffix name="Hardware" label=""/>
   <suffix name="Software" label=""/>
@@ -1159,6 +1151,7 @@ chromium-metrics-reviews@google.com.
 <histogram_suffixes name="Cras_ClientType" separator=".">
   <suffix name="ARC" label="A client created by ARC++."/>
   <suffix name="ARCVM" label="A client created by ARCVM."/>
+  <suffix name="BOREALIS" label="A client created by BOREALIS."/>
   <suffix name="Chrome" label="A client created by Chrome."/>
   <suffix name="CrOSVM" label="A client created by ChromeOS VM."/>
   <suffix name="InvalidType" label="Invalid client."/>
@@ -1243,16 +1236,19 @@ chromium-metrics-reviews@google.com.
   <suffix name="VoiceCommunication" label="WebRTC"/>
   <affected-histogram name="Cras.FetchDelayMilliSeconds.ARC"/>
   <affected-histogram name="Cras.FetchDelayMilliSeconds.ARCVM"/>
+  <affected-histogram name="Cras.FetchDelayMilliSeconds.BOREALIS"/>
   <affected-histogram name="Cras.FetchDelayMilliSeconds.Chrome"/>
   <affected-histogram name="Cras.FetchDelayMilliSeconds.CrOSVM"/>
   <affected-histogram name="Cras.FetchDelayMilliSeconds.LaCrOS"/>
   <affected-histogram name="Cras.StreamRuntime.Input.ARC"/>
   <affected-histogram name="Cras.StreamRuntime.Input.ARCVM"/>
+  <affected-histogram name="Cras.StreamRuntime.Input.BOREALIS"/>
   <affected-histogram name="Cras.StreamRuntime.Input.Chrome"/>
   <affected-histogram name="Cras.StreamRuntime.Input.CrOSVM"/>
   <affected-histogram name="Cras.StreamRuntime.Input.LaCrOS"/>
   <affected-histogram name="Cras.StreamRuntime.Output.ARC"/>
   <affected-histogram name="Cras.StreamRuntime.Output.ARCVM"/>
+  <affected-histogram name="Cras.StreamRuntime.Output.BOREALIS"/>
   <affected-histogram name="Cras.StreamRuntime.Output.Chrome"/>
   <affected-histogram name="Cras.StreamRuntime.Output.CrOSVM"/>
   <affected-histogram name="Cras.StreamRuntime.Output.LaCrOS"/>
@@ -1497,7 +1493,6 @@ chromium-metrics-reviews@google.com.
   <suffix base="true" name="WebP"
       label="This metric is for only WebP image types."/>
   <affected-histogram name="Renderer4.ImageDecodeTaskDurationUs"/>
-  <affected-histogram name="Renderer4.ImageUploadTaskDurationUs"/>
 </histogram_suffixes>
 
 <histogram_suffixes name="DetachedResourceRequestSource" separator=".">
@@ -1519,13 +1514,6 @@ chromium-metrics-reviews@google.com.
   <suffix name="Network" label="DevTools launched to the Network panel"/>
   <suffix name="Sources" label="DevTools launched to the Sources panel"/>
   <affected-histogram name="DevTools.Launch"/>
-</histogram_suffixes>
-
-<histogram_suffixes name="DnsDropdownSelectionEvent" separator=".">
-  <suffix name="Ignored" label=""/>
-  <suffix name="Selected" label=""/>
-  <suffix name="Unselected" label=""/>
-  <affected-histogram name="Net.DNS.UI.DropdownSelectionEvent"/>
 </histogram_suffixes>
 
 <histogram_suffixes name="DnsImpact2" separator="_">
@@ -1582,6 +1570,7 @@ chromium-metrics-reviews@google.com.
       name="Net.DNS.DnsTransaction.SecureValidated.FailureTime"/>
   <affected-histogram
       name="Net.DNS.DnsTransaction.SecureValidated.SuccessTime"/>
+  <affected-histogram name="Net.DNS.ResolveContext.DohAutoupgrade.Status"/>
 </histogram_suffixes>
 
 <histogram_suffixes name="DOMStorageCachePurgeReason" separator=".">
@@ -1743,13 +1732,6 @@ chromium-metrics-reviews@google.com.
   <affected-histogram name="DriveCommon.RemoteSearch.TextSearchTime"/>
 </histogram_suffixes>
 
-<histogram_suffixes name="DualCertVerifierTrial" separator="_">
-  <suffix name="TrialPrimary" label=""/>
-  <suffix name="TrialSecondary" label=""/>
-  <affected-histogram name="Net.CertVerifier_First_Job_Latency"/>
-  <affected-histogram name="Net.CertVerifier_Job_Latency"/>
-</histogram_suffixes>
-
 <histogram_suffixes name="EncryptionLevel" separator=".">
   <suffix name="0RTT" label="Packets sent at 0-RTT encryption only."/>
   <suffix name="ForwardSecure"
@@ -1867,7 +1849,9 @@ chromium-metrics-reviews@google.com.
 <histogram_suffixes name="GridTabSwitcherAnimationType" separator=".">
   <suffix name="Expand" label="Grid to Tab"/>
   <suffix name="Shrink" label="Tab to Grid"/>
-  <affected-histogram name="GridTabSwitcher.DirtySpan"/>
+  <affected-histogram
+      name="Android.GridTabSwitcher.Animation.FirstFrameLatency"/>
+  <affected-histogram name="Android.GridTabSwitcher.Animation.TotalDuration"/>
   <affected-histogram name="GridTabSwitcher.FramePerSecond"/>
   <affected-histogram name="GridTabSwitcher.MaxFrameInterval"/>
 </histogram_suffixes>
@@ -4210,6 +4194,18 @@ chromium-metrics-reviews@google.com.
   <suffix name="ParkableImage.UnparkedSize"
       label="Size of encoded image data of ParkableImages that are not
              written to disk."/>
+  <suffix name="PartitionAlloc.BRPQuarantined"
+      label="Memory used by objects quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
+  <suffix name="PartitionAlloc.BRPQuarantined.ArrayBuffer"
+      label="Memory used by objects quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
+  <suffix name="PartitionAlloc.BRPQuarantined.Buffer"
+      label="Memory used by objects quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
+  <suffix name="PartitionAlloc.BRPQuarantined.FastMalloc"
+      label="Memory used by objects quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
   <suffix name="PartitionAlloc.Partitions.FastMalloc.ThreadCache"
       label="Memory used by all thread caches for the FastMalloc partition.
              Recorded in blink processes, unless PartitionAlloc is used as
@@ -4304,6 +4300,18 @@ chromium-metrics-reviews@google.com.
   <suffix name="PartitionAlloc.AddressSpace.BlocklistSize.After24H"
       label="Monotonically increasing count of blocked addresses. Only
              recorded for 32-bit with process uptime 24H+."/>
+  <suffix name="PartitionAlloc.BRPQuarantinedCount"
+      label="Number of slots quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
+  <suffix name="PartitionAlloc.BRPQuarantinedCount.ArrayBuffer"
+      label="Number of slots quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
+  <suffix name="PartitionAlloc.BRPQuarantinedCount.Buffer"
+      label="Number of slots quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
+  <suffix name="PartitionAlloc.BRPQuarantinedCount.FastMalloc"
+      label="Number of slots quarantined by BRP, recorded when
+             USE_BACKUP_REF_PTR build flag is enabled."/>
   <affected-histogram name="Memory.Experimental.Browser2.Tiny"/>
   <affected-histogram name="Memory.Experimental.Extension2.Tiny"/>
   <affected-histogram name="Memory.Experimental.Gpu2.Tiny"/>
@@ -5154,7 +5162,6 @@ chromium-metrics-reviews@google.com.
   <suffix name="Video" label="Video playback"/>
   <suffix name="WheelScroll" label="Mousewheel driven interaction"/>
   <affected-histogram name="CompositorLatency.Type"/>
-  <affected-histogram name="Graphics.Smoothness.Checkerboarding"/>
   <affected-histogram name="Graphics.Smoothness.Jank.Compositor"/>
   <affected-histogram name="Graphics.Smoothness.Jank.Main"/>
   <affected-histogram name="Graphics.Smoothness.MaxStale"/>
@@ -5302,7 +5309,6 @@ chromium-metrics-reviews@google.com.
   <affected-histogram name="Ash.Overview.WindowDrag.PresentationTime"/>
   <affected-histogram name="Ash.TabDrag.PresentationTime"/>
   <affected-histogram name="Ash.TabDrag.PresentationTime.MaxLatency"/>
-  <affected-histogram name="Ash.UnlockAnimation.Jank"/>
   <affected-histogram name="Ash.UnlockAnimation.Smoothness"/>
 </histogram_suffixes>
 

@@ -30,7 +30,7 @@ namespace {
 
 shopping_list::mojom::ProductInfoPtr ProductInfoToMojoProduct(
     const GURL& url,
-    const absl::optional<ProductInfo>& info,
+    const absl::optional<const ProductInfo>& info,
     const std::string& locale) {
   auto product_info = shopping_list::mojom::ProductInfo::New();
 
@@ -216,7 +216,8 @@ ShoppingListHandler::ShoppingListHandler(
       tracker_(tracker),
       locale_(locale),
       delegate_(std::move(delegate)) {
-  scoped_observation_.Observe(shopping_service_);
+  scoped_subscriptions_observation_.Observe(shopping_service_);
+  scoped_bookmark_model_observation_.Observe(bookmark_model_);
   // It is safe to schedule updates and observe bookmarks. If the feature is
   // disabled, no new information will be fetched or provided to the frontend.
   shopping_service_->ScheduleSavedProductUpdate();
@@ -315,6 +316,28 @@ void ShoppingListHandler::OnUnsubscribe(
   }
 }
 
+void ShoppingListHandler::BookmarkModelChanged() {}
+
+void ShoppingListHandler::BookmarkNodeMoved(
+    bookmarks::BookmarkModel* model,
+    const bookmarks::BookmarkNode* old_parent,
+    size_t old_index,
+    const bookmarks::BookmarkNode* new_parent,
+    size_t new_index) {
+  const bookmarks::BookmarkNode* node = new_parent->children()[new_index].get();
+  if (!node) {
+    return;
+  }
+  std::unique_ptr<power_bookmarks::PowerBookmarkMeta> meta =
+      power_bookmarks::GetNodePowerBookmarkMeta(bookmark_model_, node);
+  if (!meta || !meta->has_shopping_specifics() ||
+      !meta->shopping_specifics().has_product_cluster_id()) {
+    return;
+  }
+  remote_page_->OnProductBookmarkMoved(
+      BookmarkNodeToMojoProduct(*bookmark_model_, node, locale_));
+}
+
 void ShoppingListHandler::HandleSubscriptionChange(
     const CommerceSubscription& sub,
     bool is_tracking) {
@@ -408,6 +431,13 @@ void ShoppingListHandler::IsShoppingListEligible(
   std::move(callback).Run(shopping_service_->IsShoppingListEligible());
 }
 
+void ShoppingListHandler::GetShoppingCollectionBookmarkFolderId(
+    GetShoppingCollectionBookmarkFolderIdCallback callback) {
+  const bookmarks::BookmarkNode* collection =
+      commerce::GetShoppingCollectionBookmarkFolder(bookmark_model_);
+  std::move(callback).Run(collection ? collection->id() : -1);
+}
+
 void ShoppingListHandler::GetPriceTrackingStatusForCurrentUrl(
     GetPriceTrackingStatusForCurrentUrlCallback callback) {
   const GURL current_url = delegate_->GetCurrentTabUrl().value();
@@ -448,7 +478,7 @@ void ShoppingListHandler::ShowBookmarkEditorForCurrentUrl() {
 void ShoppingListHandler::OnFetchProductInfoForCurrentUrl(
     GetProductInfoForCurrentUrlCallback callback,
     const GURL& url,
-    const absl::optional<ProductInfo>& info) {
+    const absl::optional<const ProductInfo>& info) {
   std::move(callback).Run(ProductInfoToMojoProduct(url, info, locale_));
 }
 

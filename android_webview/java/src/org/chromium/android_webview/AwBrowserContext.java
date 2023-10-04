@@ -7,10 +7,10 @@ package org.chromium.android_webview;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 
 import org.chromium.android_webview.common.Lifetime;
-import org.chromium.android_webview.common.PlatformServiceBridge;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.StrictModeContext;
 import org.chromium.base.annotations.CalledByNative;
@@ -35,10 +35,8 @@ import java.util.Set;
 @JNINamespace("android_webview")
 @Lifetime.Profile
 public class AwBrowserContext implements BrowserContextHandle {
-    private static final String CHROMIUM_PREFS_NAME = "WebViewProfilePrefsDefault";
-
     private static final String TAG = "AwBrowserContext";
-    private final SharedPreferences mSharedPreferences;
+    private static final String BASE_PREFERENCES = "WebViewProfilePrefs";
 
     private AwGeolocationPermissions mGeolocationPermissions;
     private AwServiceWorkerController mServiceWorkerController;
@@ -46,38 +44,89 @@ public class AwBrowserContext implements BrowserContextHandle {
 
     /** Pointer to the Native-side AwBrowserContext. */
     private long mNativeAwBrowserContext;
+    @NonNull
+    private final String mName;
+    @NonNull
+    private final String mRelativePath;
+    @NonNull
+    private final AwCookieManager mCookieManager;
     private final boolean mIsDefault;
+    @NonNull
+    private final SharedPreferences mSharedPreferences;
 
-    public AwBrowserContext(
-            SharedPreferences sharedPreferences, long nativeAwBrowserContext, boolean isDefault) {
+    public AwBrowserContext(long nativeAwBrowserContext) {
+        this(nativeAwBrowserContext, AwBrowserContextJni.get().getDefaultContextName(),
+                AwBrowserContextJni.get().getDefaultContextRelativePath(),
+                AwCookieManager.getDefaultCookieManager(), true);
+    }
+
+    public AwBrowserContext(long nativeAwBrowserContext, @NonNull String name,
+            @NonNull String relativePath, @NonNull AwCookieManager cookieManager,
+            boolean isDefault) {
         mNativeAwBrowserContext = nativeAwBrowserContext;
-        mSharedPreferences = sharedPreferences;
-
+        mName = name;
+        mRelativePath = relativePath;
+        mCookieManager = cookieManager;
         mIsDefault = isDefault;
-        if (isDefaultAwBrowserContext()) {
-            migrateGeolocationPreferences();
-        }
 
-        PlatformServiceBridge.getInstance().setSafeBrowsingHandler();
+        try (StrictModeContext ignored = StrictModeContext.allowDiskWrites()) {
+            // Prefs dir will be created if it doesn't exist, so must allow writes.
+            mSharedPreferences = createSharedPrefs(relativePath);
+
+            if (isDefaultAwBrowserContext()) {
+                // Migration requires disk writes.
+                migrateGeolocationPreferences();
+            }
+        }
 
         // Register MemoryPressureMonitor callbacks and make sure it polls only if there is at
         // least one WebView around.
         MemoryPressureMonitor.INSTANCE.registerComponentCallbacks();
-        AwContentsLifecycleNotifier.addObserver(new AwContentsLifecycleNotifier.Observer() {
-            @Override
-            public void onFirstWebViewCreated() {
-                MemoryPressureMonitor.INSTANCE.enablePolling();
-            }
-            @Override
-            public void onLastWebViewDestroyed() {
-                MemoryPressureMonitor.INSTANCE.disablePolling();
-            }
-        });
+        AwContentsLifecycleNotifier.getInstance().addObserver(
+                new AwContentsLifecycleNotifier.Observer() {
+                    @Override
+                    public void onFirstWebViewCreated() {
+                        MemoryPressureMonitor.INSTANCE.enablePolling();
+                    }
+                    @Override
+                    public void onLastWebViewDestroyed() {
+                        MemoryPressureMonitor.INSTANCE.disablePolling();
+                    }
+                });
     }
 
     @VisibleForTesting
     public void setNativePointer(long nativeAwBrowserContext) {
         mNativeAwBrowserContext = nativeAwBrowserContext;
+    }
+
+    @NonNull
+    public String getName() {
+        return mName;
+    }
+
+    @NonNull
+    public String getRelativePathForTesting() {
+        return mRelativePath;
+    }
+
+    @NonNull
+    public String getSharedPrefsNameForTesting() {
+        return getSharedPrefsFilename(mRelativePath);
+    }
+
+    @NonNull
+    private static String getSharedPrefsFilename(@NonNull final String relativePath) {
+        final String dataDirSuffix = AwBrowserProcess.getProcessDataDirSuffix();
+        if (dataDirSuffix == null || dataDirSuffix.isEmpty()) {
+            return BASE_PREFERENCES + relativePath;
+        } else {
+            return BASE_PREFERENCES + relativePath + "_" + dataDirSuffix;
+        }
+    }
+
+    public AwCookieManager getCookieManager() {
+        return mCookieManager;
     }
 
     public AwGeolocationPermissions getGeolocationPermissions() {
@@ -104,17 +153,14 @@ public class AwBrowserContext implements BrowserContextHandle {
     }
 
     private void migrateGeolocationPreferences() {
-        try (StrictModeContext ignored = StrictModeContext.allowDiskWrites()) {
-            // Prefs dir will be created if it doesn't exist, so must allow writes
-            // for this and so that the actual prefs can be written to the new
-            // location if needed.
-            final String oldGlobalPrefsName = "WebViewChromiumPrefs";
-            SharedPreferences oldGlobalPrefs =
-                    ContextUtils.getApplicationContext().getSharedPreferences(
-                            oldGlobalPrefsName, Context.MODE_PRIVATE);
-            AwGeolocationPermissions.migrateGeolocationPreferences(
-                    oldGlobalPrefs, mSharedPreferences);
-        }
+        // Prefs dir will be created if it doesn't exist, so must allow writes
+        // for this and so that the actual prefs can be written to the new
+        // location if needed.
+        final String oldGlobalPrefsName = "WebViewChromiumPrefs";
+        SharedPreferences oldGlobalPrefs =
+                ContextUtils.getApplicationContext().getSharedPreferences(
+                        oldGlobalPrefsName, Context.MODE_PRIVATE);
+        AwGeolocationPermissions.migrateGeolocationPreferences(oldGlobalPrefs, mSharedPreferences);
     }
 
     /**
@@ -186,10 +232,15 @@ public class AwBrowserContext implements BrowserContextHandle {
      * <p>
      * Name must be non-null and valid Unicode.
      *
-     * @throws IllegalStateException if trying to delete the default profile or a profile which is
-     *                               in use.
+     * @throws IllegalArgumentException if trying to delete the default profile.
+     * @throws IllegalStateException if trying to delete a profile which is in use.
      */
-    public static boolean deleteNamedContext(String name) {
+    public static boolean deleteNamedContext(String name)
+            throws IllegalArgumentException, IllegalStateException {
+        final String defaultContextName = AwBrowserContextJni.get().getDefaultContextName();
+        if (name.equals(defaultContextName)) {
+            throw new IllegalArgumentException("Cannot delete the default profile");
+        }
         return AwBrowserContextJni.get().deleteNamedContext(name);
     }
 
@@ -227,22 +278,38 @@ public class AwBrowserContext implements BrowserContextHandle {
         AwBrowserContextJni.get().clearFormData(mNativeAwBrowserContext);
     }
 
-    @CalledByNative
-    public static AwBrowserContext create(long nativeAwBrowserContext, boolean isDefault) {
-        SharedPreferences sharedPreferences;
-        try (StrictModeContext ignored = StrictModeContext.allowDiskWrites()) {
-            // Prefs dir will be created if it doesn't exist, so must allow writes.
-            sharedPreferences = ContextUtils.getApplicationContext().getSharedPreferences(
-                    CHROMIUM_PREFS_NAME, Context.MODE_PRIVATE);
-        }
+    public void setServiceWorkerIoThreadClient(AwContentsIoThreadClient ioThreadClient) {
+        AwBrowserContextJni.get().setServiceWorkerIoThreadClient(
+                mNativeAwBrowserContext, ioThreadClient);
+    }
 
-        return new AwBrowserContext(sharedPreferences, nativeAwBrowserContext, isDefault);
+    private static SharedPreferences createSharedPrefs(String relativePath) {
+        return ContextUtils.getApplicationContext().getSharedPreferences(
+                getSharedPrefsFilename(relativePath), Context.MODE_PRIVATE);
+    }
+
+    @CalledByNative
+    public static AwBrowserContext create(long nativeAwBrowserContext, String name,
+            String relativePath, AwCookieManager cookieManager, boolean isDefault) {
+        return new AwBrowserContext(
+                nativeAwBrowserContext, name, relativePath, cookieManager, isDefault);
+    }
+
+    @CalledByNative
+    public static void deleteSharedPreferences(String relativePath) {
+        try (StrictModeContext ignored = StrictModeContext.allowDiskWrites()) {
+            final String sharedPrefsFilename = getSharedPrefsFilename(relativePath);
+            SharedPreferences.Editor prefsEditor = createSharedPrefs(sharedPrefsFilename).edit();
+            prefsEditor.clear().apply();
+        }
     }
 
     @NativeMethods
     interface Natives {
         AwBrowserContext getDefaultJava();
         AwBrowserContext getNamedContextJava(String name, boolean createIfNeeded);
+        String getDefaultContextName();
+        String getDefaultContextRelativePath();
         String getNamedContextPathForTesting(String name); // IN-TEST
         boolean deleteNamedContext(String name);
         String[] listAllContexts();
@@ -254,5 +321,7 @@ public class AwBrowserContext implements BrowserContextHandle {
         void clearPersistentOriginTrialStorageForTesting(long nativeAwBrowserContext);
         boolean hasFormData(long nativeAwBrowserContext);
         void clearFormData(long nativeAwBrowserContext);
+        void setServiceWorkerIoThreadClient(
+                long nativeAwBrowserContext, AwContentsIoThreadClient ioThreadClient);
     }
 }

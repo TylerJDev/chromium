@@ -11,6 +11,7 @@
 #include "base/functional/callback.h"
 #include "chrome/browser/ash/file_manager/io_task.h"
 #include "chrome/browser/ash/file_system_provider/provided_file_system_interface.h"
+#include "chrome/browser/ash/file_system_provider/provider_interface.h"
 #include "chrome/browser/platform_util.h"
 #include "storage/browser/file_system/file_system_context.h"
 #include "storage/browser/file_system/file_system_url.h"
@@ -25,9 +26,20 @@ struct ODFSMetadata {
   std::string user_email;
 };
 
+struct ODFSEntryMetadata {
+  ODFSEntryMetadata();
+  ODFSEntryMetadata(const ODFSEntryMetadata&);
+  ~ODFSEntryMetadata();
+  absl::optional<std::string> url;
+};
+
 typedef base::OnceCallback<void(
     base::expected<ODFSMetadata, base::File::Error> metadata_or_error)>
     GetODFSMetadataCallback;
+
+typedef base::OnceCallback<void(
+    base::expected<ODFSEntryMetadata, base::File::Error> metadata)>
+    GetODFSEntryMetadataCallback;
 
 // Type of the source location from which a given file is being uploaded.
 enum class SourceType {
@@ -62,6 +74,66 @@ constexpr char kOneDriveMoveErrorMetricName[] =
 constexpr char kOneDriveCopyErrorMetricName[] =
     "FileBrowser.OfficeFiles.Open.IOTaskError.OneDrive.Copy";
 
+constexpr char kDriveOpenSourceVolumeMetric[] =
+    "FileBrowser.OfficeFiles.Open.SourceVolume.GoogleDrive";
+constexpr char kOneDriveOpenSourceVolumeMetric[] =
+    "FileBrowser.OfficeFiles.Open.SourceVolume.MicrosoftOneDrive";
+
+constexpr char kDriveTransferRequiredMetric[] =
+    "FileBrowser.OfficeFiles.Open.TransferRequired.GoogleDrive";
+constexpr char kOneDriveTransferRequiredMetric[] =
+    "FileBrowser.OfficeFiles.Open.TransferRequired.OneDrive";
+
+constexpr char kDriveErrorMetricName[] = "FileBrowser.OfficeFiles.Errors.Drive";
+constexpr char kOneDriveErrorMetricName[] =
+    "FileBrowser.OfficeFiles.Errors.OneDrive";
+
+// List of UMA enum values for Office File Handler task results for Drive. The
+// enum values must be kept in sync with OfficeDriveOpenErrors in
+// tools/metrics/histograms/enums.xml.
+enum class OfficeDriveOpenErrors {
+  kOffline = 0,
+  kDriveFsInterface = 1,
+  kTimeout = 2,
+  kNoMetadata = 3,
+  kInvalidAlternateUrl = 4,
+  kDriveAlternateUrl = 5,
+  kUnexpectedAlternateUrl = 6,
+  kSuccess = 7,
+  kMaxValue = kSuccess,
+};
+
+// List of UMA enum values for opening Office files from OneDrive, with the
+// MS365 PWA. The enum values must be kept in sync with OfficeOneDriveOpenErrors
+// in tools/metrics/histograms/enums.xml.
+enum class OfficeOneDriveOpenErrors {
+  kSuccess = 0,
+  kOffline = 1,
+  kNoProfile = 2,
+  kNoFileSystemURL = 3,
+  kInvalidFileSystemURL = 4,
+  kGetActionsGenericError = 5,
+  kGetActionsReauthRequired = 6,
+  kGetActionsInvalidUrl = 7,
+  kGetActionsNoUrl = 8,
+  kGetActionsAccessDenied = 9,
+  kGetActionsNoEmail = 10,
+  kConversionToODFSUrlError = 11,
+  kEmailsDoNotMatch = 12,
+  kMaxValue = kEmailsDoNotMatch,
+};
+
+// Records the source volume that an office file is opened from. These values
+// represent the source volume types that are only relevant to office file
+// handling code - the rest are obtained from file_manager::VolumeType.
+//
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class OfficeFilesSourceVolume {
+  kUnknown = 100,
+  kMicrosoftOneDrive = 101,
+};
+
 // List of UMA enum value for Web Drive Office task results. The enum values
 // must be kept in sync with OfficeTaskResult in
 // tools/metrics/histograms/enums.xml.
@@ -70,11 +142,12 @@ enum class OfficeTaskResult {
   kFallbackOther = 1,
   kOpened = 2,
   kMoved = 3,
-  kCancelled = 4,
+  kCancelledAtConfirmation = 4,
   kFailedToUpload = 5,
   kFailedToOpen = 6,
   kCopied = 7,
-  kMaxValue = kCopied,
+  kCancelledAtFallback = 8,
+  kMaxValue = kCancelledAtFallback,
 };
 
 // The result of the "Upload to cloud" workflow for Office files.
@@ -144,6 +217,11 @@ SourceType GetSourceType(Profile* profile,
 UploadType GetUploadType(Profile* profile,
                          const storage::FileSystemURL& source_path);
 
+// Request ODFS be mounted. If there is an existing mount, ODFS will unmount
+// that one after authentication of the new mount.
+void RequestODFSMount(Profile* profile,
+                      file_system_provider::RequestMountCallback callback);
+
 // Get information of the currently provided ODFS. Expect there to be exactly
 // one ODFS.
 absl::optional<file_system_provider::ProvidedFileSystemInfo> GetODFSInfo(
@@ -152,12 +230,23 @@ absl::optional<file_system_provider::ProvidedFileSystemInfo> GetODFSInfo(
 // Get currently provided ODFS, or null if not mounted.
 file_system_provider::ProvidedFileSystemInterface* GetODFS(Profile* profile);
 
+bool IsODFSMounted(Profile* profile);
+bool IsODFSInstalled(Profile* profile);
+bool IsOfficeWebAppInstalled(Profile* profile);
+
 // Get ODFS metadata as actions by doing a special GetActions request (for the
 // root directory) and return the actions to |OnODFSMetadataActions| which will
 // be converted to |ODFSMetadata| and passed to |callback|.
 void GetODFSMetadata(
     file_system_provider::ProvidedFileSystemInterface* file_system,
     GetODFSMetadataCallback callback);
+
+// Get ODFS-specific file metadata as actions by doing a GetActions request for
+// this path and post-processing the list of actions into a struct.
+void GetODFSEntryMetadata(
+    file_system_provider::ProvidedFileSystemInterface* file_system,
+    const base::FilePath& path,
+    GetODFSEntryMetadataCallback callback);
 
 // Get the first task error that is not `base::File::Error::FILE_OK`.
 absl::optional<base::File::Error> GetFirstTaskError(

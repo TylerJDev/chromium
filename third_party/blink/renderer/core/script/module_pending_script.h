@@ -47,7 +47,8 @@ class CORE_EXPORT ModulePendingScript : public PendingScript {
  public:
   ModulePendingScript(ScriptElementBase*,
                       ModulePendingScriptTreeClient*,
-                      bool is_external);
+                      bool is_external,
+                      scheduler::TaskAttributionInfo* parent_task);
   ~ModulePendingScript() override;
 
   void NotifyModuleTreeLoadFinished();

@@ -310,7 +310,7 @@ void AppendStyleInfo(Element* element,
     if (value->IsColorValue()) {
       Color color = static_cast<const cssvalue::CSSColor*>(value)->Value();
       computed_style->setArray(name + "-unclamped-rgba", ToRGBAList(color));
-      if (!color.IsLegacyColor()) {
+      if (!Color::IsLegacyColorSpace(color.GetColorSpace())) {
         computed_style->setString(name + "-css-text", value->CssText());
       }
       computed_style->setString(name, ToHEXA(color));
@@ -407,7 +407,7 @@ std::unique_ptr<protocol::DictionaryValue> BuildTextNodeInfo(Text* text_node) {
   if (!layout_object || !layout_object->IsText())
     return text_info;
   PhysicalRect bounding_box =
-      To<LayoutText>(layout_object)->PhysicalVisualOverflowRect();
+      To<LayoutText>(layout_object)->VisualOverflowRect();
   text_info->setString("nodeWidth", bounding_box.Width().ToString());
   text_info->setString("nodeHeight", bounding_box.Height().ToString());
   text_info->setString("tagName", "#text");
@@ -865,11 +865,14 @@ std::unique_ptr<protocol::DictionaryValue> BuildAreaNamePaths(
   std::unique_ptr<protocol::DictionaryValue> area_paths =
       protocol::DictionaryValue::create();
 
+  if (!grid->StyleRef().GridTemplateAreas()) {
+    return area_paths;
+  }
+
   LayoutUnit row_gap = grid->GridGap(kForRows);
   LayoutUnit column_gap = grid->GridGap(kForColumns);
 
-  NamedGridAreaMap grid_area_map = grid->StyleRef().NamedGridArea();
-  for (const auto& item : grid_area_map) {
+  for (const auto& item : grid->StyleRef().GridTemplateAreas()->named_areas) {
     const GridArea& area = item.value;
     const String& name = item.key;
 
@@ -957,14 +960,16 @@ std::unique_ptr<protocol::ListValue> BuildGridLineNames(
       (direction == kForColumns)
           ? grid_container_style.GridTemplateColumns().named_grid_lines
           : grid_container_style.GridTemplateRows().named_grid_lines;
-
-  const NamedGridLinesMap& implicit_lines_map =
-      (direction == kForColumns)
-          ? grid_container_style.ImplicitNamedGridColumnLines()
-          : grid_container_style.ImplicitNamedGridRowLines();
-
   process_grid_lines_map(explicit_lines_map);
-  process_grid_lines_map(implicit_lines_map);
+
+  if (const auto& grid_template_areas =
+          grid_container_style.GridTemplateAreas()) {
+    const NamedGridLinesMap& implicit_lines_map =
+        (direction == kForColumns)
+            ? grid_template_areas->implicit_named_grid_column_lines
+            : grid_template_areas->implicit_named_grid_row_lines;
+    process_grid_lines_map(implicit_lines_map);
+  }
 
   return lines;
 }
@@ -1016,8 +1021,7 @@ Vector<String> GetAuthoredGridTrackSizes(const CSSValue* value,
     return result;
 
   for (auto list_value : *value_list) {
-    if (auto* grid_auto_repeat_value =
-            DynamicTo<cssvalue::CSSGridAutoRepeatValue>(list_value.Get())) {
+    if (IsA<cssvalue::CSSGridAutoRepeatValue>(list_value.Get())) {
       Vector<String> repeated_track_sizes;
       for (auto auto_repeat_value : To<CSSValueList>(*list_value)) {
         if (!auto_repeat_value->IsGridLineNamesValue())
@@ -1588,7 +1592,7 @@ bool InspectorHighlightBase::BuildNodeQuads(Node* node,
 
   if (layout_object->IsText()) {
     auto* layout_text = To<LayoutText>(layout_object);
-    PhysicalRect text_rect = layout_text->PhysicalVisualOverflowRect();
+    PhysicalRect text_rect = layout_text->VisualOverflowRect();
     content_box = text_rect;
     padding_box = text_rect;
     border_box = text_rect;

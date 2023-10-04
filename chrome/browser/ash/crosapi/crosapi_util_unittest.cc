@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ash/crosapi/crosapi_util.h"
 
+#include <memory>
 #include <string>
 
 #include "base/memory/raw_ptr.h"
@@ -31,9 +32,7 @@ class CrosapiUtilTest : public testing::Test {
   ~CrosapiUtilTest() override = default;
 
   void SetUp() override {
-    fake_user_manager_ = new ash::FakeChromeUserManager;
-    scoped_user_manager_ = std::make_unique<user_manager::ScopedUserManager>(
-        base::WrapUnique(fake_user_manager_.get()));
+    fake_user_manager_.Reset(std::make_unique<ash::FakeChromeUserManager>());
     browser_util::RegisterLocalStatePrefs(pref_service_.registry());
 
     profile_manager_ = std::make_unique<TestingProfileManager>(
@@ -54,11 +53,10 @@ class CrosapiUtilTest : public testing::Test {
   // The order of these members is relevant for both construction and
   // destruction timing.
   content::BrowserTaskEnvironment task_environment_;
+  user_manager::TypedScopedUserManager<ash::FakeChromeUserManager>
+      fake_user_manager_;
   std::unique_ptr<TestingProfileManager> profile_manager_;
   raw_ptr<TestingProfile> testing_profile_;
-  raw_ptr<ash::FakeChromeUserManager, DanglingUntriaged | ExperimentalAsh>
-      fake_user_manager_ = nullptr;
-  std::unique_ptr<user_manager::ScopedUserManager> scoped_user_manager_;
   TestingPrefServiceSimple pref_service_;
 };
 
@@ -187,8 +185,6 @@ TEST_F(CrosapiUtilTest, DeviceSettingsWithData) {
 
   EXPECT_EQ(settings->attestation_for_content_protection_enabled,
             crosapi::mojom::DeviceSettings::OptionalBool::kTrue);
-  EXPECT_EQ(settings->deprecated_device_ephemeral_users_enabled,
-            crosapi::mojom::DeviceSettings::OptionalBool::kFalse);
   EXPECT_EQ(settings->device_restricted_managed_guest_session_enabled,
             crosapi::mojom::DeviceSettings::OptionalBool::kTrue);
   ASSERT_EQ(settings->usb_detachable_allow_list->usb_device_ids.size(), 1u);

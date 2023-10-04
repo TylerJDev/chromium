@@ -938,7 +938,7 @@ HttpHandler::HttpHandler(
                         base::BindRepeating(&ExecuteSetSPCTransactionMode))),
 
       // Extensions for the Federated Credential Management API:
-      // https://github.com/fedidcg/FedCM/blob/main/proposals/webdriver.md
+      // https://fedidcg.github.io/FedCM/#automation
       CommandMapping(kPost, "session/:sessionId/fedcm/canceldialog",
                      WrapToCommand("CancelDialog",
                                    base::BindRepeating(&ExecuteCancelDialog))),
@@ -946,6 +946,13 @@ HttpHandler::HttpHandler(
       CommandMapping(kPost, "session/:sessionId/fedcm/selectaccount",
                      WrapToCommand("SelectAccount",
                                    base::BindRepeating(&ExecuteSelectAccount))),
+
+      // This command is prefixed because standardization is still pending:
+      // https://github.com/fedidcg/FedCM/pull/436/files
+      VendorPrefixedCommandMapping(
+          kPost, "session/:sessionId/%s/fedcm/confirmidplogin",
+          WrapToCommand("ConfirmIdpLogin",
+                        base::BindRepeating(&ExecuteConfirmIdpLogin))),
 
       CommandMapping(kGet, "session/:sessionId/fedcm/accountlist",
                      WrapToCommand("GetAccounts",
@@ -1698,10 +1705,8 @@ bool MatchesCommand(const std::string& method,
       CHECK(name.length());
       url::RawCanonOutputT<char16_t> output;
       url::DecodeURLEscapeSequences(
-          path_parts[i].data(), path_parts[i].length(),
-          url::DecodeURLMode::kUTF8OrIsomorphic, &output);
-      std::string decoded =
-          base::UTF16ToASCII(std::u16string(output.data(), output.length()));
+          path_parts[i], url::DecodeURLMode::kUTF8OrIsomorphic, &output);
+      std::string decoded = base::UTF16ToASCII(output.view());
       // Due to crbug.com/533361, the url decoding libraries decodes all of the
       // % escape sequences except for %%. We need to handle this case manually.
       // So, replacing all the instances of "%%" with "%".

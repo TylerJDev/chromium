@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">मिररिंगवर स्विच केले</translation>
 <translation id="2031987842108996681">लाल चॅनल</translation>
 <translation id="2060505056492490888">'<ph name="DOT" />' '<ph name="INVALIDDOMAIN" />' मध्ये चुकीच्या स्थितीवर वापरले आहे.</translation>
+<translation id="2068711044993563745">किमान मूल्य (<ph name="MINIMUM" />) हे कमाल मूल्यापेक्षा (<ph name="MAXIMUM" />) कमी असणे आवश्यक आहे.</translation>
 <translation id="2148716181193084225">आज</translation>
 <translation id="2226276347425096477">कृपया हा मजकूर <ph name="MAX_CHARACTERS" /> वर्ण लहान किंवा कमी करा (तुम्ही सध्या <ph name="CURRENT_LENGTH" /> वर्ण वापरत आहात).</translation>
 <translation id="2247351761944213033">आठवडा <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">कृपया तुम्ही पुढे सुरू ठेवू इच्छित असल्यास हा बॉक्स पहा.</translation>
 <translation id="2908441821576996758">कृपया ईमेल पत्त्यांची स्वल्पविरामाद्वारे विभक्त सूची एंटर करा.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">ऑडिओ वर्णन मेनू दाखवा</translation>
 <translation id="3075154866155599887">कृपया एक वैध मूल्य एंटर करा. फील्ड अपूर्ण आहे किंवा चुकीची तारीख आहे.</translation>
 <translation id="310520048233152454">कृपया एखादी URL एंटर करा.</translation>
 <translation id="3220661731597678625">सध्याची पायरी</translation>

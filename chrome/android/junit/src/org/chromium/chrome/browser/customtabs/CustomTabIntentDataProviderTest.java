@@ -33,7 +33,6 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.TextUtils;
 import android.view.ContextThemeWrapper;
 
 import androidx.browser.customtabs.CustomTabColorSchemeParams;
@@ -54,10 +53,12 @@ import org.robolectric.annotation.Config;
 
 import org.chromium.base.IntentUtils;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.IntentHandler;
 import org.chromium.chrome.browser.browserservices.intents.ColorProvider;
+import org.chromium.chrome.browser.customtabs.CustomTabIntentDataProvider.BackgroundInteractBehavior;
 import org.chromium.chrome.browser.document.ChromeLauncherActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.test.util.browser.Features;
@@ -70,6 +71,7 @@ import java.util.Collections;
 
 /** Tests for {@link CustomTabIntentDataProvider}. */
 @RunWith(BaseRobolectricTestRunner.class)
+@Batch(Batch.UNIT_TESTS)
 @Config(manifest = Config.NONE)
 public class CustomTabIntentDataProviderTest {
     @Rule
@@ -456,18 +458,18 @@ public class CustomTabIntentDataProviderTest {
     }
 
     @Test
-    public void testGetReferrerPackageName() {
+    public void testGetAppIdFromReferrer() {
         assertEquals("extra.activity.referrer",
-                CustomTabIntentDataProvider.getReferrerPackageName(
+                CustomTabIntentDataProvider.getAppIdFromReferrer(
                         buildMockActivity("android-app://extra.activity.referrer")));
         assertEquals("co.abc.xyz",
-                CustomTabIntentDataProvider.getReferrerPackageName(
+                CustomTabIntentDataProvider.getAppIdFromReferrer(
                         buildMockActivity("android-app://co.abc.xyz")));
 
-        assertReferrerInvalid("");
-        assertReferrerInvalid("invalid");
-        assertReferrerInvalid("android-app://");
-        assertReferrerInvalid(Uri.parse("https://www.one.com").toString());
+        assertNonPackageUriReferrer("");
+        assertNonPackageUriReferrer("invalid");
+        assertNonPackageUriReferrer("android-app://"); // empty host name is invalid.
+        assertNonPackageUriReferrer(Uri.parse("https://www.one.com").toString());
     }
 
     @Test
@@ -670,6 +672,22 @@ public class CustomTabIntentDataProviderTest {
     }
 
     @Test
+    public void testCanInteractWithBackground() {
+        Intent intent = new Intent();
+        CustomTabIntentDataProvider provider =
+                new CustomTabIntentDataProvider(intent, mContext, COLOR_SCHEME_LIGHT);
+
+        assertTrue("Background interaction should be enabled by default",
+                provider.canInteractWithBackground());
+
+        intent.putExtra(CustomTabIntentDataProvider.EXTRA_ENABLE_BACKGROUND_INTERACTION,
+                BackgroundInteractBehavior.OFF);
+        provider = new CustomTabIntentDataProvider(intent, mContext, COLOR_SCHEME_LIGHT);
+        assertFalse("Background interaction should be overridden by the legacy extra",
+                provider.canInteractWithBackground());
+    }
+
+    @Test
     public void testActivityDecorationType_Default() {
         // Decoration not set
         Intent intent = new CustomTabsIntent.Builder().build().intent;
@@ -783,10 +801,9 @@ public class CustomTabIntentDataProviderTest {
         return Uri.parse("https://www.example.com/");
     }
 
-    private void assertReferrerInvalid(String referrerStr) {
-        assertTrue("Referrer should be invalid for the input: " + referrerStr,
-                TextUtils.isEmpty(CustomTabIntentDataProvider.getReferrerPackageName(
-                        buildMockActivity(referrerStr))));
+    private void assertNonPackageUriReferrer(String referrerStr) {
+        assertEquals(referrerStr,
+                CustomTabIntentDataProvider.getAppIdFromReferrer(buildMockActivity(referrerStr)));
     }
 
     private Activity buildMockActivity(String referrer) {

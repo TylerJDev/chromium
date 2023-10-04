@@ -72,7 +72,7 @@
 #include "chrome/browser/ui/views/sharing_hub/sharing_hub_icon_view.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/chrome_features.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
@@ -142,6 +142,7 @@
 #include "ui/views/controls/highlight_path_generator.h"
 #include "ui/views/controls/label.h"
 #include "ui/views/style/typography.h"
+#include "ui/views/style/typography_provider.h"
 #include "ui/views/view.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
@@ -222,18 +223,19 @@ void LocationBarView::Init() {
 
   CreateChip();
 
-  const gfx::FontList& font_list = views::style::GetFont(
+  const auto& typography_provider = views::TypographyProvider::Get();
+  const gfx::FontList& font_list = typography_provider.GetFont(
       CONTEXT_OMNIBOX_PRIMARY, views::style::STYLE_PRIMARY);
 
   const gfx::FontList& omnibox_chip_font_list =
       OmniboxFieldTrial::IsChromeRefreshIconsEnabled()
-          ? views::style::GetFont(CONTEXT_OMNIBOX_PRIMARY,
-                                  views::style::STYLE_BODY_4_EMPHASIS)
+          ? typography_provider.GetFont(CONTEXT_OMNIBOX_PRIMARY,
+                                        views::style::STYLE_BODY_4_EMPHASIS)
           : font_list;
   const gfx::FontList& page_action_font_list =
       OmniboxFieldTrial::IsChromeRefreshIconsEnabled()
-          ? views::style::GetFont(CONTEXT_OMNIBOX_PRIMARY,
-                                  views::style::STYLE_BODY_3_EMPHASIS)
+          ? typography_provider.GetFont(CONTEXT_OMNIBOX_PRIMARY,
+                                        views::style::STYLE_BODY_3_EMPHASIS)
           : font_list;
 
   auto location_icon_view =
@@ -293,8 +295,7 @@ void LocationBarView::Init() {
   }
 
   selected_keyword_view_ = AddChildView(std::make_unique<SelectedKeywordView>(
-      this, TemplateURLServiceFactory::GetForProfile(profile_),
-      omnibox_chip_font_list));
+      this, TemplateURLServiceFactory::GetForProfile(profile_), font_list));
 
   if (browser_ && apps::features::LinkCapturingUiUpdateEnabled()) {
     intent_chip_ =
@@ -323,9 +324,8 @@ void LocationBarView::Init() {
     // icons and determine a way to handle simultaneous icon animations.
     if (base::FeatureList::IsEnabled(commerce::kPriceInsights)) {
       params.types_enabled.push_back(PageActionIconType::kPriceInsights);
-    } else {
-      params.types_enabled.push_back(PageActionIconType::kPriceTracking);
     }
+    params.types_enabled.push_back(PageActionIconType::kPriceTracking);
 
     if (side_search::IsEnabledForBrowser(browser_)) {
       params.types_enabled.push_back(PageActionIconType::kSideSearch);
@@ -421,14 +421,16 @@ std::unique_ptr<views::Background> LocationBarView::CreateRoundRectBackground(
     SkColor background_color,
     SkColor stroke_color,
     SkBlendMode blend_mode,
-    bool antialias) const {
+    bool antialias,
+    bool should_border_scale) const {
   const int radius = GetBorderRadius();
   auto painter =
       stroke_color == SK_ColorTRANSPARENT
           ? views::Painter::CreateSolidRoundRectPainter(
                 background_color, radius, gfx::Insets(), blend_mode, antialias)
           : views::Painter::CreateRoundRectWith1PxBorderPainter(
-                background_color, stroke_color, radius, blend_mode, antialias);
+                background_color, stroke_color, radius, blend_mode, antialias,
+                should_border_scale);
   std::unique_ptr<views::Background> background =
       CreateBackgroundFromPainter(std::move(painter));
   background->SetNativeControlColor(background_color);
@@ -644,7 +646,7 @@ void LocationBarView::Layout() {
     text_left = 8;
     icon_indent = 7;
     text_indent = 6;
-    icon_keyword_indent = 3;
+    icon_keyword_indent = 9;
     text_keyword_indent = -9;
   } else if (OmniboxFieldTrial::IsChromeRefreshIconsEnabled()) {
     icon_left = 5;
@@ -989,55 +991,8 @@ SkColor LocationBarView::GetIconLabelBubbleBackgroundColor() const {
   return GetColorProvider()->GetColor(kColorLocationBarBackground);
 }
 
-bool LocationBarView::ShouldHideContentSettingImage(ImageType type) {
-  // Content setting icons are hidden at the same time as page action icons.
-  if (ShouldHidePageActionIcons()) {
-    return true;
-  }
-
-  auto* web_contents = GetWebContents();
-  if (web_contents) {
-    auto* hcsm = HostContentSettingsMapFactory::GetForProfile(profile_);
-    switch (type) {
-      case ImageType::COOKIES:
-      case ImageType::IMAGES:
-      case ImageType::JAVASCRIPT:
-      case ImageType::POPUPS:
-        break;
-      case ImageType::GEOLOCATION: {
-        ContentSetting value =
-            hcsm->GetContentSetting(web_contents->GetLastCommittedURL(), GURL(),
-                                    ContentSettingsType::GEOLOCATION);
-        return value == CONTENT_SETTING_ASK;
-      }
-      case ImageType::MIXEDSCRIPT:
-      case ImageType::PROTOCOL_HANDLERS:
-        break;
-      case ImageType::MEDIASTREAM: {
-        ContentSetting mic_value =
-            hcsm->GetContentSetting(web_contents->GetLastCommittedURL(), GURL(),
-                                    ContentSettingsType::MEDIASTREAM_MIC);
-
-        ContentSetting camera_value =
-            hcsm->GetContentSetting(web_contents->GetLastCommittedURL(), GURL(),
-                                    ContentSettingsType::MEDIASTREAM_CAMERA);
-        return mic_value == CONTENT_SETTING_ASK &&
-               camera_value == CONTENT_SETTING_ASK;
-      }
-      case ImageType::ADS:
-      case ImageType::AUTOMATIC_DOWNLOADS:
-      case ImageType::MIDI_SYSEX:
-      case ImageType::SOUND:
-      case ImageType::FRAMEBUST:
-      case ImageType::SENSORS:
-      case ImageType::NOTIFICATIONS_QUIET_PROMPT:
-      case ImageType::CLIPBOARD_READ_WRITE:
-      case ImageType::STORAGE_ACCESS:
-      case ImageType::NUM_IMAGE_TYPES:
-        break;
-    }
-  }
-  return false;
+bool LocationBarView::ShouldHideContentSettingImage() {
+  return ShouldHidePageActionIcons();
 }
 
 content::WebContents* LocationBarView::GetContentSettingWebContents() {
@@ -1174,7 +1129,9 @@ void LocationBarView::RefreshBackground() {
   if (is_popup_mode_) {
     SetBackground(views::CreateSolidBackground(background_color));
   } else {
-    SetBackground(CreateRoundRectBackground(background_color, border_color));
+    SetBackground(CreateRoundRectBackground(
+        background_color, border_color, /*blend_mode=*/SkBlendMode::kSrcOver,
+        /*antialias=*/true, /*should_border_scale=*/true));
   }
 
   // Keep the views::Textfield in sync. It needs an opaque background to
@@ -1507,7 +1464,7 @@ void LocationBarView::FocusAndSelectAll() {
 }
 
 void LocationBarView::OnTouchUiChanged() {
-  const gfx::FontList& font_list = views::style::GetFont(
+  const gfx::FontList& font_list = views::TypographyProvider::Get().GetFont(
       CONTEXT_OMNIBOX_PRIMARY, views::style::STYLE_PRIMARY);
   location_icon_view_->SetFontList(font_list);
   omnibox_view_->SetFontList(font_list);
@@ -1647,6 +1604,8 @@ ui::ImageModel LocationBarView::GetLocationIcon(
                    View::GetColorProvider()->GetColor(kColorOmniboxResultsIcon),
                    View::GetColorProvider()->GetColor(
                        kColorOmniboxResultsStarterPackIcon),
+                   View::GetColorProvider()->GetColor(
+                       kColorOmniboxAnswerIconGM3Foreground),
                    std::move(on_icon_fetched), dark_mode)
              : ui::ImageModel();
 }

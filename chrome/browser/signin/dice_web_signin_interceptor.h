@@ -18,6 +18,7 @@
 #include "chrome/browser/ui/webui/signin/enterprise_profile_welcome_ui.h"
 #include "chrome/browser/ui/webui/signin/signin_utils.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/policy/core/browser/signin/profile_separation_policies.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -121,9 +122,9 @@ class DiceWebSigninInterceptor : public KeyedService,
     return is_interception_in_progress_;
   }
 
-  void SetAccountLevelSigninRestrictionFetchResultForTesting(
-      absl::optional<std::string> value) {
-    intercepted_account_level_policy_value_fetch_result_for_testing_ =
+  void SetInterceptedAccountProfileSeparationPoliciesForTesting(
+      absl::optional<policy::ProfileSeparationPolicies> value) {
+    intercepted_account_profile_separation_policies_for_testing_ =
         std::move(value);
   }
 
@@ -180,13 +181,20 @@ class DiceWebSigninInterceptor : public KeyedService,
       const WebSigninInterceptor::Delegate::BubbleParameters& bubble_parameters,
       base::OnceCallback<void(SigninInterceptionResult)> callback);
 
+  // Ensure that we are observing changes in extended account info. Idempotent.
+  void EnsureObservingExtendedAccountInfo();
+
+  // Can be called at any time, and will either process the interception or
+  // register the required observers and wait for async operations to complete.
+  void ProcessInterceptionOrWait(const AccountInfo& info, bool timed_out);
+
   void OnInterceptionReadyToBeProcessed(const AccountInfo& info);
 
   // signin::IdentityManager::Observer:
   void OnExtendedAccountInfoUpdated(const AccountInfo& info) override;
 
-  // Called when the extended account info was not updated after a timeout.
-  void OnExtendedAccountInfoFetchTimeout();
+  // Called when one or more of the async info fetches times out.
+  void OnInterceptionInfoFetchTimeout();
 
   // Called after the user chose whether a new profile would be created.
   void OnProfileCreationChoice(const AccountInfo& account_info,
@@ -233,29 +241,46 @@ class DiceWebSigninInterceptor : public KeyedService,
   // ManagedAccountsSigninRestriction policy for 'account_info' and runs
   // `callback` with the result. This is a network call that has a 5 seconds
   // timeout.
-  void FetchAccountLevelSigninRestrictionForInterceptedAccount(
+  void EnsureAccountLevelSigninRestrictionFetchInProgress(
       const AccountInfo& account_info,
-      base::OnceCallback<void(const std::string&)> callback);
+      base::OnceCallback<void(const policy::ProfileSeparationPolicies&)>
+          callback);
 
   // Called when the the value of the cloud user level value of the
   // ManagedAccountsSigninRestriction is received.
   void OnAccountLevelManagedAccountsSigninRestrictionReceived(
-      bool timed_out,
       const AccountInfo& account_info,
-      const std::string& signin_restriction);
+      const policy::ProfileSeparationPolicies& profile_separation_policies);
 
   // Returns true if enterprise separation is required.
   // Returns false is enterprise separation is not required.
   // Returns no value if info is required to determine if enterprise separation
-  // is required. If `managed_account_profile_level_signin_restriction` is
-  // `absl::nullopt` then the user cloud policy value of
-  // ManagedAccountsSigninRestriction has not yet been fetched. If it is an
-  // empty string, then the value has been fetched but no policy was set.
+  // is required. If `profile_separation_policies` is `absl::nullopt` then the
+  // user cloud profile separation policies have not yet been fetched.
   absl::optional<bool> EnterpriseSeparationMaybeRequired(
       const std::string& email,
       bool is_new_account_interception,
-      absl::optional<std::string>
-          managed_account_profile_level_signin_restriction) const;
+      const absl::optional<policy::ProfileSeparationPolicies>&
+          profile_separation_policies) const;
+
+  // Records the heuristic outcome and latency metrics.
+  void RecordSigninInterceptionHeuristicOutcome(
+      SigninInterceptionHeuristicOutcome outcome) const;
+
+  // Returns true if we have the minimum extended account information needed to
+  // make a best-effort intercept heuristic decision. If we fail to retrieve
+  // this information we will cancel the interception completely.
+  // Returns false otherwise.
+  bool IsRequiredExtendedAccountInfoAvailable(
+      const AccountInfo& account_info) const;
+
+  // Returns true if we have all the extended account information which might
+  // factor in to the intercept heuristic. If we don't have 'Full' information,
+  // but do have the 'Required' information above, we will make a best-effort
+  // decision based on sensible defaults.
+  // Returns false otherwise.
+  bool IsFullExtendedAccountInfoAvailable(
+      const AccountInfo& account_info) const;
 
   const raw_ptr<Profile, DanglingUntriaged> profile_;
   const raw_ptr<signin::IdentityManager, DanglingUntriaged> identity_manager_;
@@ -275,21 +300,19 @@ class DiceWebSigninInterceptor : public KeyedService,
   base::ScopedObservation<signin::IdentityManager,
                           signin::IdentityManager::Observer>
       account_info_update_observation_{this};
-  // Timeout for the fetch of the extended account info. The signin interception
-  // is cancelled if the account info cannot be fetched quickly.
-  base::CancelableOnceCallback<void()> on_account_info_update_timeout_;
+
+  // Timeout for waiting for full information to be available (see
+  // `ProcessInterceptionOrWait()`).
+  base::CancelableOnceCallback<void()> interception_info_available_timeout_;
+
   std::unique_ptr<DiceSignedInProfileCreator> dice_signed_in_profile_creator_;
   // Used to retain the interception UI bubble until profile creation completes.
   std::unique_ptr<ScopedWebSigninInterceptionBubbleHandle>
       interception_bubble_handle_;
-  // Used for metrics:
-  bool was_interception_ui_displayed_ = false;
 
-  // Timeout for the fetch of cloud user level policy value of
-  // ManagedAccountsSigninRestriction. The signin interception continue with an
-  // empty value for the policy if we cannot get the value.
-  base::CancelableOnceCallback<void()>
-      on_intercepted_account_level_policy_value_timeout_;
+  // Used for metrics.
+  base::TimeTicks interception_start_time_;
+  bool was_interception_ui_displayed_ = false;
 
   // Used to fetch the cloud user level policy value of
   // ManagedAccountsSigninRestriction. This can only fetch one policy value for
@@ -298,9 +321,10 @@ class DiceWebSigninInterceptor : public KeyedService,
       account_level_signin_restriction_policy_fetcher_;
   // Value of the ManagedAccountsSigninRestriction for the intercepted account.
   // If no value is set, then we have not yet received the policy value.
-  absl::optional<std::string> intercepted_account_level_policy_value_;
-  absl::optional<std::string>
-      intercepted_account_level_policy_value_fetch_result_for_testing_;
+  absl::optional<policy::ProfileSeparationPolicies>
+      intercepted_account_profile_separation_policies_;
+  absl::optional<policy::ProfileSeparationPolicies>
+      intercepted_account_profile_separation_policies_for_testing_;
 };
 
 #endif  // CHROME_BROWSER_SIGNIN_DICE_WEB_SIGNIN_INTERCEPTOR_H_

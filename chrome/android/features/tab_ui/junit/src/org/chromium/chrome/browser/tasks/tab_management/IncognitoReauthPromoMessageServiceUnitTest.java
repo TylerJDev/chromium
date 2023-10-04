@@ -40,6 +40,7 @@ import org.robolectric.annotation.LooperMode;
 import org.robolectric.annotation.LooperMode.Mode;
 
 import org.chromium.base.Callback;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.JniMocker;
@@ -49,8 +50,8 @@ import org.chromium.chrome.browser.incognito.reauth.IncognitoReauthSettingUtils;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.lifecycle.LifecycleObserver;
 import org.chromium.chrome.browser.lifecycle.PauseResumeWithNativeObserver;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.preferences.Pref;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tasks.tab_management.MessageService.MessageType;
 import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
@@ -107,7 +108,7 @@ public class IncognitoReauthPromoMessageServiceUnitTest {
         when(mUserPrefsJniMock.get(mProfileMock)).thenReturn(mPrefServiceMock);
 
         IncognitoReauthManager.setIsIncognitoReauthFeatureAvailableForTesting(false);
-        mSharedPreferenceManager = SharedPreferencesManager.getInstance();
+        mSharedPreferenceManager = ChromeSharedPreferences.getInstance();
     }
 
     private void createIncognitoReauthPromoMessageService() {
@@ -374,7 +375,7 @@ public class IncognitoReauthPromoMessageServiceUnitTest {
             return true;
         })
                 .when(mReauthenticatorBridgeMock)
-                .reauthenticate(notNull(), /*useLastValidReauth=*/eq(false));
+                .reauthenticate(notNull());
 
         // Setup snackbar interaction.
         final String snackBarTestString = "This is written inside the snackbar.";
@@ -391,8 +392,7 @@ public class IncognitoReauthPromoMessageServiceUnitTest {
 
         verify(mReauthenticatorBridgeMock, times(1))
                 .canUseAuthenticationWithBiometricOrScreenLock();
-        verify(mReauthenticatorBridgeMock, times(1))
-                .reauthenticate(notNull(), /*useLastValidReauth=*/eq(false));
+        verify(mReauthenticatorBridgeMock, times(1)).reauthenticate(notNull());
         verify(mPrefServiceMock, times(1))
                 .setBoolean(Pref.INCOGNITO_REAUTHENTICATION_FOR_ANDROID, true);
         verify(mMessageObserverMock, times(1)).messageInvalidate(MessageType.FOR_TESTING);

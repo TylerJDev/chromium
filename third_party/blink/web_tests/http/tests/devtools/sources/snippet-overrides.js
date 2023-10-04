@@ -6,10 +6,12 @@ import {TestRunner} from 'test_runner';
 import {SourcesTestRunner} from 'sources_test_runner';
 import {BindingsTestRunner} from 'bindings_test_runner';
 
+import * as Common from 'devtools/core/common/common.js';
+import * as SourcesModule from 'devtools/panels/sources/sources.js';
+
 (async function() {
   TestRunner.addResult(
       'Verifies that snippets still map when local overrides is on.\n');
-  await TestRunner.loadLegacyModule('sources');
   await TestRunner.showPanel('sources');
 
   await BindingsTestRunner.createOverrideProject('file:///tmp');
@@ -28,7 +30,7 @@ import {BindingsTestRunner} from 'bindings_test_runner';
   await Common.Revealer.reveal(uiSourceCode);
   await uiSourceCode.rename('my_snippet_name');
   const bindingPromise = Persistence.persistence.once(Persistence.Persistence.Events.BindingCreated);
-  Sources.SourcesPanel.instance().runSnippet();
+  SourcesModule.SourcesPanel.SourcesPanel.instance().runSnippet();
   const binding = await bindingPromise;
   TestRunner.addResult(binding.network.url() + ' <=> ' + binding.fileSystem.url());
 

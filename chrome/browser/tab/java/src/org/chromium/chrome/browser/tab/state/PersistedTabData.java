@@ -250,7 +250,7 @@ public abstract class PersistedTabData implements UserData {
      * Save {@link PersistedTabData} to storage
      */
     @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
-    protected void save() {
+    public void save() {
         if (mIsTabSaveEnabledSupplier != null && mIsTabSaveEnabledSupplier.get()) {
             mPersistedTabDataStorage.save(
                     mTab.getId(), mPersistedTabDataId, getOomAndMetricsWrapper());
@@ -406,7 +406,6 @@ public abstract class PersistedTabData implements UserData {
      * Delete all {@link PersistedTabData} when a {@link Tab} is closed.
      */
     public static void onTabClose(Tab tab) {
-        tab.setIsTabSaveEnabled(false);
         // TODO(crbug.com/1223965) ensure we cleanup ShoppingPersistedTabData on startup
         ShoppingPersistedTabData shoppingPersistedTabData =
                 tab.getUserDataHost().getUserData(ShoppingPersistedTabData.class);
@@ -452,21 +451,19 @@ public abstract class PersistedTabData implements UserData {
      * Signal to {@link PersistedTabData} that deferred startup is complete.
      */
     public static void onDeferredStartup() {
-        PersistedTabDataConfiguration.getFilePersistedTabDataStorage().onDeferredStartup();
+        PersistedTabDataJni.get().onDeferredStartup();
     }
 
-    /**
-     * Signal to {@link PersistedTabData} that the system is shutting down and to finish
-     * any pending saves.
-     */
-    public static void onShutdown() {
-        PersistedTabDataConfiguration.getFilePersistedTabDataStorage().onShutdown();
-        PersistedTabDataConfiguration.getEncryptedFilePersistedTabDataStorage().onShutdown();
+    @VisibleForTesting
+    public void existsInStorage(Callback<Boolean> callback) {
+        mPersistedTabDataStorage.restore(mTab.getId(), mPersistedTabDataId,
+                (res) -> { callback.onResult(res != null && res.limit() > 0); });
     }
 
     @VisibleForTesting
     @NativeMethods
     public interface Natives {
         void onTabClose(Tab tab);
+        void onDeferredStartup();
     }
 }

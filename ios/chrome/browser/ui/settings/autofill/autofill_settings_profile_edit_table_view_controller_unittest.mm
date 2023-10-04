@@ -83,8 +83,15 @@ class AutofillSettingsProfileEditTableViewControllerTest
         setHomeAddressLine2:base::SysUTF16ToNSString(profile.GetRawInfo(
                                 autofill::ADDRESS_HOME_LINE2))];
     [autofill_profile_edit_table_view_controller_
+        setHomeAddressDependentLocality:
+            base::SysUTF16ToNSString(
+                profile.GetRawInfo(autofill::ADDRESS_HOME_DEPENDENT_LOCALITY))];
+    [autofill_profile_edit_table_view_controller_
         setHomeAddressCity:base::SysUTF16ToNSString(profile.GetRawInfo(
                                autofill::ADDRESS_HOME_CITY))];
+    [autofill_profile_edit_table_view_controller_
+        setHomeAddressAdminLevel2:base::SysUTF16ToNSString(profile.GetRawInfo(
+                                      autofill::ADDRESS_HOME_ADMIN_LEVEL2))];
     [autofill_profile_edit_table_view_controller_
         setHomeAddressState:base::SysUTF16ToNSString(profile.GetRawInfo(
                                 autofill::ADDRESS_HOME_STATE))];
@@ -155,10 +162,17 @@ class AutofillSettingsProfileEditTableViewControllerTestWithUnionViewEnabled
     TableViewModel* model = [controller() tableViewModel];
 
     autofill::AutofillProfile profile = autofill::test::GetFullProfile2();
+    NSString* countryCode = base::SysUTF16ToNSString(
+        profile.GetRawInfo(autofill::ServerFieldType::ADDRESS_HOME_COUNTRY));
+
     std::vector<std::pair<autofill::ServerFieldType, std::u16string>>
         expected_values;
     for (size_t i = 0; i < std::size(kProfileFieldsToDisplay); ++i) {
       const AutofillProfileFieldDisplayInfo& field = kProfileFieldsToDisplay[i];
+      if (!FieldIsUsedInAddress(field.autofillType, countryCode)) {
+        continue;
+      }
+
       if (field.autofillType == autofill::NAME_HONORIFIC_PREFIX &&
           !base::FeatureList::IsEnabled(
               autofill::features::kAutofillEnableSupportForHonorificPrefixes)) {
@@ -243,21 +257,20 @@ TEST_F(AutofillSettingsProfileEditTableViewControllerWithMigrationButtonTest,
   int rowCnt =
       base::FeatureList::IsEnabled(
           autofill::features::kAutofillEnableSupportForHonorificPrefixes)
-          ? 11
-          : 10;
+          ? 13
+          : 12;
 
-  EXPECT_EQ(2, [model numberOfSections]);
+  EXPECT_EQ(1, [model numberOfSections]);
   EXPECT_EQ(rowCnt, [model numberOfItemsInSection:0]);
-  EXPECT_EQ(2, [model numberOfItemsInSection:1]);
   NSString* migrateButtonDescription = l10n_util::GetNSStringF(
       IDS_IOS_SETTINGS_AUTOFILL_MIGRATE_ADDRESS_TO_ACCOUNT_BUTTON_DESCRIPTION,
       kTestSyncingEmail);
-  TableViewItem* descriptionItem = GetTableViewItem(1, 0);
+  TableViewItem* descriptionItem = GetTableViewItem(0, rowCnt - 2);
   EXPECT_NSEQ(
       static_cast<SettingsImageDetailTextItem*>(descriptionItem).detailText,
       migrateButtonDescription);
   EXPECT_NSEQ(
-      static_cast<TableViewTextItem*>(GetTableViewItem(1, 1)).text,
+      static_cast<TableViewTextItem*>(GetTableViewItem(0, rowCnt - 1)).text,
       l10n_util::GetNSString(
           IDS_IOS_SETTINGS_AUTOFILL_MIGRATE_ADDRESS_TO_ACCOUNT_BUTTON_TITLE));
 }

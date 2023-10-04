@@ -100,7 +100,7 @@ void AddGrayscaleSysColorOverrides(ColorMixer& mixer,
   // Chrome surfaces.
   mixer[kColorSysOnBaseDivider] = {dark_mode ? kColorRefNeutral40
                                              : kColorRefNeutral90};
-  mixer[kColorSysHeader] = {dark_mode ? kColorRefNeutral15
+  mixer[kColorSysHeader] = {dark_mode ? kColorRefNeutral12
                                       : kColorRefNeutral90};
   mixer[kColorSysHeaderInactive] = {
       dark_mode ? GetResultingPaintColor(SetAlpha({kColorSysHeader}, 0x99),
@@ -143,6 +143,9 @@ void AddSysColorMixer(ColorProvider* provider, const ColorProviderKey& key) {
                                                 : kColorRefPrimary90};
   mixer[kColorSysOnPrimaryContainer] = {dark_mode ? kColorRefPrimary90
                                                   : kColorRefPrimary10};
+  mixer[kColorSysGradientPrimary] = {dark_mode ? kColorRefPrimary20
+                                               : kColorRefPrimary90};
+
   // Secondary.
   mixer[kColorSysSecondary] = {dark_mode ? kColorRefSecondary80
                                          : kColorRefSecondary40};
@@ -161,6 +164,9 @@ void AddSysColorMixer(ColorProvider* provider, const ColorProviderKey& key) {
                                                  : kColorRefTertiary90};
   mixer[kColorSysOnTertiaryContainer] = {dark_mode ? kColorRefTertiary90
                                                    : kColorRefTertiary10};
+  mixer[kColorSysGradientTertiary] = {dark_mode ? kColorRefTertiary20
+                                                : kColorRefTertiary95};
+
   // Error.
   mixer[kColorSysError] = {dark_mode ? kColorRefError80 : kColorRefError40};
   mixer[kColorSysOnError] = {dark_mode ? kColorRefError20 : kColorRefError100};
@@ -353,12 +359,11 @@ void AddSysColorMixer(ColorProvider* provider, const ColorProviderKey& key) {
 
   // If grayscale is specified the design intention is to apply the grayscale
   // overrides over the baseline palette.
-  if (key.is_grayscale) {
+  if (key.user_color_source == ColorProviderKey::UserColorSource::kGrayscale) {
     AddGrayscaleSysColorOverrides(mixer, key);
-    return;
-  }
-
-  if (key.user_color.has_value()) {
+  } else if (key.user_color_source ==
+                 ColorProviderKey::UserColorSource::kAccent &&
+             key.user_color.has_value()) {
     AddThemedSysColorOverrides(mixer, key);
   }
 }

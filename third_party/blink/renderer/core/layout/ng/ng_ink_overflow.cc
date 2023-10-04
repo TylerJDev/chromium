@@ -548,6 +548,17 @@ LogicalRect NGInkOverflow::ComputeDecorationOverflow(
         style, scaled_font, container_offset, ink_overflow, inline_context);
   }
 
+  // Text decorations due to selection
+  if (UNLIKELY(cursor.Current().GetLayoutObject()->IsSelected())) {
+    const ComputedStyle* selection_style = style.HighlightData().Selection();
+    if (selection_style && selection_style->HasAppliedTextDecorations()) {
+      LogicalRect selection_bound = ComputeAppliedDecorationOverflow(
+          *selection_style, scaled_font, container_offset, ink_overflow,
+          inline_context);
+      accumulated_bound.Unite(selection_bound);
+    }
+  }
+
   bool do_highlights =
       RuntimeEnabledFeatures::HighlightOverlayPaintingEnabled();
   bool do_spelling_grammar =
@@ -627,8 +638,7 @@ LogicalRect NGInkOverflow::ComputeAppliedDecorationOverflow(
       offset_in_container, ink_overflow.size.inline_size, style, inline_context,
       /* selection_text_decoration */ absl::nullopt, decoration_override,
       &scaled_font, kMinimumThicknessIsOne);
-  NGTextDecorationOffset decoration_offset(decoration_info.TargetStyle(),
-                                           style);
+  NGTextDecorationOffset decoration_offset(style);
   gfx::RectF accumulated_bound;
   for (wtf_size_t i = 0; i < decoration_info.AppliedDecorationCount(); i++) {
     decoration_info.SetDecorationIndex(i);
@@ -666,7 +676,7 @@ LogicalRect NGInkOverflow::ComputeMarkerOverflow(
     const LogicalRect& ink_overflow,
     const NGInlinePaintContext* inline_context) {
   LogicalRect accumulated_bound;
-  auto pseudo_style =
+  auto* pseudo_style =
       fragment_item->Type() == NGFragmentItem::kSvgText
           ? nullptr
           : HighlightStyleUtils::HighlightPseudoStyle(
@@ -726,11 +736,11 @@ LogicalRect NGInkOverflow::ComputeCustomHighlightOverflow(
 
     const CustomHighlightMarker& highlight_marker =
         To<CustomHighlightMarker>(*marker);
-    auto pseudo_style = fragment_item->Type() == NGFragmentItem::kSvgText
-                            ? nullptr
-                            : HighlightStyleUtils::HighlightPseudoStyle(
-                                  text_node, style, kPseudoIdHighlight,
-                                  highlight_marker.GetHighlightName());
+    const auto* pseudo_style = fragment_item->Type() == NGFragmentItem::kSvgText
+                                   ? nullptr
+                                   : HighlightStyleUtils::HighlightPseudoStyle(
+                                         text_node, style, kPseudoIdHighlight,
+                                         highlight_marker.GetHighlightName());
 
     LogicalRect decoration_bound;
     if (pseudo_style && pseudo_style->HasAppliedTextDecorations()) {

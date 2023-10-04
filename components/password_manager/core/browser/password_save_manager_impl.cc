@@ -254,6 +254,27 @@ PasswordForm UpdateFormPreservingDifferentFieldsAcrossStores(
   return result;
 }
 
+bool AlternativeElementsContainValue(const AlternativeElementVector& elements,
+                                     const std::u16string& value) {
+  return base::ranges::any_of(elements,
+                              [&value](const AlternativeElement& element) {
+                                return element.value == value;
+                              });
+}
+
+void PopulateAlternativeUsernames(
+    const std::vector<const PasswordForm*>& best_matches,
+    PasswordForm& form) {
+  for (const PasswordForm* match : best_matches) {
+    if ((match->username_value != form.username_value) &&
+        !AlternativeElementsContainValue(form.all_alternative_usernames,
+                                         match->username_value)) {
+      form.all_alternative_usernames.emplace_back(
+          AlternativeElement::Value(match->username_value));
+    }
+  }
+}
+
 }  // namespace
 
 PasswordSaveManagerImpl::PasswordSaveManagerImpl(
@@ -637,6 +658,10 @@ PasswordForm PasswordSaveManagerImpl::BuildPendingCredentials(
     pending_credentials.signon_realm = parsed_submitted_form.signon_realm;
   }
 
+  // Add previously saved usernames as alternatives.
+  PopulateAlternativeUsernames(form_fetcher_->GetBestMatches(),
+                               pending_credentials);
+
   if (HasGeneratedPassword()) {
     pending_credentials.type = PasswordForm::Type::kGenerated;
   }
@@ -818,13 +843,10 @@ void PasswordSaveManagerImpl::UploadVotesAndMetrics(
       parsed_submitted_form.submission_event);
   metrics_recorder_->SetSubmissionIndicatorEvent(
       parsed_submitted_form.submission_event);
-// It's not possible to edit username in a save/update prompt on Android.
-// TODO(crbug.com/959776): Get rid of this method, by passing
-// |pending_credentials_| directly to MaybeSendSingleUsernameVote.
-#if !BUILDFLAG(IS_ANDROID)
+  // TODO(crbug.com/959776): Get rid of this method, by passing
+  // |pending_credentials_| directly to MaybeSendSingleUsernameVotes.
   votes_uploader_->CalculateUsernamePromptEditState(
       /*saved_username=*/pending_credentials_.username_value);
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   if (IsNewLogin()) {
     metrics_util::LogNewlySavedPasswordMetrics(
@@ -860,7 +882,7 @@ void PasswordSaveManagerImpl::UploadVotesAndMetrics(
         *observed_form, parsed_submitted_form, &pending_credentials_);
   }
   if (IsPasswordUpdate()) {
-    votes_uploader_->MaybeSendSingleUsernameVote();
+    votes_uploader_->MaybeSendSingleUsernameVotes();
     votes_uploader_->UploadPasswordVote(
         parsed_submitted_form, parsed_submitted_form, autofill::NEW_PASSWORD,
         base::NumberToString(
@@ -913,7 +935,7 @@ bool PasswordSaveManagerImpl::ShouldStoreGeneratedPasswordsInAccountStore()
   if (account_store_form_saver_ &&
       client_->GetPasswordFeatureManager()
               ->ComputePasswordAccountStorageUsageLevel() ==
-          metrics_util::PasswordAccountStorageUsageLevel::
+          features_util::PasswordAccountStorageUsageLevel::
               kUsingAccountStorage) {
     return true;
   }

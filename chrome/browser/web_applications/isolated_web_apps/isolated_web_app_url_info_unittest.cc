@@ -26,6 +26,7 @@ namespace web_app {
 
 namespace {
 using base::test::ErrorIs;
+using base::test::HasValue;
 using base::test::ValueIs;
 using ::testing::Eq;
 using ::testing::HasSubstr;
@@ -44,8 +45,8 @@ constexpr char kValidIsolatedWebAppUrl[] =
 using IsolatedWebAppUrlInfoTest = ::testing::Test;
 
 TEST_F(IsolatedWebAppUrlInfoTest, CreateSucceedsWithValidUrl) {
-  EXPECT_TRUE(
-      IsolatedWebAppUrlInfo::Create(GURL(kValidIsolatedWebAppUrl)).has_value());
+  EXPECT_THAT(IsolatedWebAppUrlInfo::Create(GURL(kValidIsolatedWebAppUrl)),
+              HasValue());
 }
 
 TEST_F(IsolatedWebAppUrlInfoTest, CreateFailsWithInvalidScheme) {
@@ -147,13 +148,21 @@ class IsolatedWebAppUrlInfoFromIsolatedWebAppLocationTest
 
 TEST_F(IsolatedWebAppUrlInfoFromIsolatedWebAppLocationTest,
        GetIsolatedWebAppUrlInfoWhenInstalledBundleSucceeds) {
-  IsolatedWebAppLocation location = InstalledBundle{};
+  base::ScopedTempDir temp_dir;
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+  base::FilePath path =
+      temp_dir.GetPath().Append(base::FilePath::FromASCII("test-0.swbn"));
+  TestSignedWebBundle bundle = TestSignedWebBundleBuilder::BuildDefault();
+  ASSERT_TRUE(base::WriteFile(path, bundle.data));
+
+  IsolatedWebAppLocation location = InstalledBundle{.path = path};
   base::test::TestFuture<base::expected<IsolatedWebAppUrlInfo, std::string>>
       test_future;
-
   IsolatedWebAppUrlInfo::CreateFromIsolatedWebAppLocation(
       location, test_future.GetCallback());
-  EXPECT_THAT(test_future.Get(), ErrorIs(HasSubstr("is not implemented")));
+  EXPECT_THAT(
+      test_future.Get(),
+      ValueIs(Property(&IsolatedWebAppUrlInfo::web_bundle_id, bundle.id)));
 }
 
 TEST_F(IsolatedWebAppUrlInfoFromIsolatedWebAppLocationTest,

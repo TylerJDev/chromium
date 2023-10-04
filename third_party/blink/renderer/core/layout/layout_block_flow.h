@@ -67,8 +67,7 @@ class CORE_EXPORT LayoutBlockFlow : public LayoutBlock {
   ~LayoutBlockFlow() override;
   void Trace(Visitor*) const override;
 
-  static LayoutBlockFlow* CreateAnonymous(Document*,
-                                          scoped_refptr<const ComputedStyle>);
+  static LayoutBlockFlow* CreateAnonymous(Document*, const ComputedStyle*);
 
   bool IsLayoutBlockFlow() const final {
     NOT_DESTROYED();
@@ -197,9 +196,9 @@ class CORE_EXPORT LayoutBlockFlow : public LayoutBlock {
   Member<LayoutMultiColumnFlowThread> multi_column_flow_thread_;
 
  protected:
-  // LayoutNGRubyBase objects need to be able to split and merge, moving their
+  // LayoutRubyBase objects need to be able to split and merge, moving their
   // children around (calling MakeChildrenNonInline).
-  friend class LayoutNGRubyBase;
+  friend class LayoutRubyBase;
 };
 
 template <>

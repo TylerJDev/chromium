@@ -377,6 +377,7 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoPart:
     case kPseudoPastCue:
     case kPseudoPaused:
+    case kPseudoPermissionGranted:
     case kPseudoPictureInPicture:
     case kPseudoPlaceholder:
     case kPseudoPlaceholderShown:
@@ -402,6 +403,8 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoTrue:
     case kPseudoUnknown:
     case kPseudoUnparsed:
+    case kPseudoUserInvalid:
+    case kPseudoUserValid:
     case kPseudoValid:
     case kPseudoVertical:
     case kPseudoVideoPersistent:
@@ -506,6 +509,7 @@ const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"fullscreen", CSSSelector::kPseudoFullscreen},
     {"future", CSSSelector::kPseudoFutureCue},
     {"grammar-error", CSSSelector::kPseudoGrammarError},
+    {"granted", CSSSelector::kPseudoPermissionGranted},
     {"horizontal", CSSSelector::kPseudoHorizontal},
     {"host", CSSSelector::kPseudoHost},
     {"hover", CSSSelector::kPseudoHover},
@@ -544,6 +548,8 @@ const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"start", CSSSelector::kPseudoStart},
     {"target", CSSSelector::kPseudoTarget},
     {"target-text", CSSSelector::kPseudoTargetText},
+    {"user-invalid", CSSSelector::kPseudoUserInvalid},
+    {"user-valid", CSSSelector::kPseudoUserValid},
     {"valid", CSSSelector::kPseudoValid},
     {"vertical", CSSSelector::kPseudoVertical},
     {"view-transition", CSSSelector::kPseudoViewTransition},
@@ -658,9 +664,14 @@ CSSSelector::PseudoType CSSSelector::NameToPseudoType(
     return CSSSelector::kPseudoUnknown;
   }
 
-  if (IsTransitionPseudoElement(
-          GetPseudoId(static_cast<CSSSelector::PseudoType>(match->type))) &&
-      !RuntimeEnabledFeatures::ViewTransitionEnabled()) {
+  if (match->type == CSSSelector::kPseudoPermissionGranted &&
+      !RuntimeEnabledFeatures::PermissionElementEnabled()) {
+    return CSSSelector::kPseudoUnknown;
+  }
+
+  if ((match->type == CSSSelector::kPseudoUserInvalid ||
+       match->type == CSSSelector::kPseudoUserValid) &&
+      !RuntimeEnabledFeatures::UserValidUserInvalidEnabled()) {
     return CSSSelector::kPseudoUnknown;
   }
 
@@ -848,6 +859,7 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoParent:
     case kPseudoPastCue:
     case kPseudoPaused:
+    case kPseudoPermissionGranted:
     case kPseudoPictureInPicture:
     case kPseudoPlaceholderShown:
     case kPseudoPlaying:
@@ -868,6 +880,8 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoTrue:
     case kPseudoUnknown:
     case kPseudoUnparsed:
+    case kPseudoUserInvalid:
+    case kPseudoUserValid:
     case kPseudoValid:
     case kPseudoVertical:
     case kPseudoVisited:

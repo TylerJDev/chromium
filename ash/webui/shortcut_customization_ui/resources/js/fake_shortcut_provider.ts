@@ -6,7 +6,7 @@ import {FakeMethodResolver} from 'chrome://resources/ash/common/fake_method_reso
 import {FakeObservables} from 'chrome://resources/ash/common/fake_observables.js';
 import {assert} from 'chrome://resources/js/assert_ts.js';
 
-import {AcceleratorResultData, AcceleratorsUpdatedObserverRemote} from '../mojom-webui/ash/webui/shortcut_customization_ui/mojom/shortcut_customization.mojom-webui.js';
+import {AcceleratorResultData, AcceleratorsUpdatedObserverRemote, PolicyUpdatedObserverRemote, UserAction} from '../mojom-webui/ash/webui/shortcut_customization_ui/mojom/shortcut_customization.mojom-webui.js';
 
 import {Accelerator, AcceleratorConfigResult, AcceleratorSource, MojoAcceleratorConfig, MojoLayoutInfo, ShortcutProviderInterface} from './shortcut_types.js';
 
@@ -19,16 +19,21 @@ import {Accelerator, AcceleratorConfigResult, AcceleratorSource, MojoAccelerator
 // Method names.
 const ON_ACCELERATORS_UPDATED_METHOD_NAME =
     'AcceleratorsUpdatedObserver_OnAcceleratorsUpdated';
-
+const ON_POLICY_UPDATED_METHOD_NAME =
+    'PolicyUpdatedObserver_OnCustomizationPolicyUpdated';
 export class FakeShortcutProvider implements ShortcutProviderInterface {
   private methods: FakeMethodResolver;
   private observables: FakeObservables = new FakeObservables();
   private acceleratorsUpdatedRemote: AcceleratorsUpdatedObserverRemote|null =
       null;
   private acceleratorsUpdatedPromise: Promise<void>|null = null;
+  private policyUpdateRemote: PolicyUpdatedObserverRemote|null = null;
+  private policyUpdatedPromise: Promise<void>|null = null;
   private restoreDefaultCallCount: number = 0;
   private preventProcessingAcceleratorsCallCount: number = 0;
   private addAcceleratorCallCount: number = 0;
+  private removeAcceleratorCallCount: number = 0;
+  private lastRecordedUserAction: UserAction;
 
   constructor() {
     this.methods = new FakeMethodResolver();
@@ -37,6 +42,7 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
     this.methods.register('getAccelerators');
     this.methods.register('getAcceleratorLayoutInfos');
     this.methods.register('isMutable');
+    this.methods.register('isCustomizationAllowedByPolicy');
     this.methods.register('hasLauncherButton');
     this.methods.register('addAccelerator');
     this.methods.register('replaceAccelerator');
@@ -44,14 +50,17 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
     this.methods.register('restoreDefault');
     this.methods.register('restoreAllDefaults');
     this.methods.register('addObserver');
+    this.methods.register('addPolicyObserver');
     this.methods.register('preventProcessingAccelerators');
     this.methods.register('getConflictAccelerator');
     this.methods.register('getDefaultAcceleratorsForId');
+    this.methods.register('recordUserAction');
     this.registerObservables();
   }
 
   registerObservables(): void {
     this.observables.register(ON_ACCELERATORS_UPDATED_METHOD_NAME);
+    this.observables.register(ON_POLICY_UPDATED_METHOD_NAME);
   }
 
   // Disable all observers and reset provider to initial state.
@@ -59,6 +68,7 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
     this.restoreDefaultCallCount = 0;
     this.preventProcessingAcceleratorsCallCount = 0;
     this.addAcceleratorCallCount = 0;
+    this.removeAcceleratorCallCount = 0;
     this.observables = new FakeObservables();
     this.registerObservables();
   }
@@ -81,6 +91,11 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
     return this.methods.resolveMethod('isMutable');
   }
 
+  isCustomizationAllowedByPolicy():
+      Promise<{isCustomizationAllowedByPolicy: boolean}> {
+    return this.methods.resolveMethod('isCustomizationAllowedByPolicy');
+  }
+
   hasLauncherButton(): Promise<{hasLauncherButton: boolean}> {
     return this.methods.resolveMethod('hasLauncherButton');
   }
@@ -93,9 +108,21 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
         });
   }
 
+  addPolicyObserver(observer: PolicyUpdatedObserverRemote): void {
+    this.policyUpdatedPromise =
+        this.observe(ON_POLICY_UPDATED_METHOD_NAME, () => {
+          observer.onCustomizationPolicyUpdated();
+        });
+  }
+
   getAcceleratorsUpdatedPromiseForTesting(): Promise<void> {
     assert(this.acceleratorsUpdatedPromise);
     return this.acceleratorsUpdatedPromise;
+  }
+
+  getPolicyUpdatedPromiseForTesting(): Promise<void> {
+    assert(this.policyUpdatedPromise);
+    return this.policyUpdatedPromise;
   }
 
   // Set the value that will be retuned when `onAcceleratorsUpdated()` is
@@ -103,6 +130,10 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
   setFakeAcceleratorsUpdated(config: MojoAcceleratorConfig[]): void {
     this.observables.setObservableData(
         ON_ACCELERATORS_UPDATED_METHOD_NAME, config);
+  }
+
+  setFakePolicyUpdated(): void {
+    this.observables.setObservableData(ON_POLICY_UPDATED_METHOD_NAME, [true]);
   }
 
   addAccelerator(
@@ -122,9 +153,7 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
 
   removeAccelerator(): Promise<{result: AcceleratorResultData}> {
     // Always return kSuccess in this fake.
-    const result:
-        AcceleratorResultData = {result: AcceleratorConfigResult.kSuccess};
-    this.methods.setResult('removeAccelerator', {result});
+    ++this.removeAcceleratorCallCount;
     return this.methods.resolveMethod('removeAccelerator');
   }
 
@@ -134,16 +163,20 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
     return this.methods.resolveMethod('restoreDefault');
   }
 
-  setRestoreDefault(result: AcceleratorResultData): void {
-    this.methods.setResult('restoreDefault', {result});
-  }
-
   restoreAllDefaults(): Promise<{result: AcceleratorResultData}> {
     // Always return kSuccess in this fake.
     const result:
         AcceleratorResultData = {result: AcceleratorConfigResult.kSuccess};
     this.methods.setResult('restoreAllDefaults', {result});
     return this.methods.resolveMethod('restoreAllDefaults');
+  }
+
+  recordUserAction(userAction: UserAction): void {
+    this.lastRecordedUserAction = userAction;
+  }
+
+  getLatestRecordedAction(): UserAction {
+    return this.lastRecordedUserAction;
   }
 
   preventProcessingAccelerators(_preventProcessingAccelerators: boolean):
@@ -208,6 +241,10 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
     return this.addAcceleratorCallCount;
   }
 
+  getRemoveAcceleratorCallCount(): number {
+    return this.removeAcceleratorCallCount;
+  }
+
   setFakeHasLauncherButton(hasLauncherButton: boolean): void {
     this.methods.setResult('hasLauncherButton', {hasLauncherButton});
   }
@@ -218,6 +255,20 @@ export class FakeShortcutProvider implements ShortcutProviderInterface {
 
   setFakeReplaceAcceleratorResult(result: AcceleratorResultData): void {
     this.methods.setResult('replaceAccelerator', {result});
+  }
+
+  setFakeRestoreDefaultResult(result: AcceleratorResultData): void {
+    this.methods.setResult('restoreDefault', {result});
+  }
+
+  setFakeRemoveAcceleratorResult(result: AcceleratorResultData): void {
+    this.methods.setResult('removeAccelerator', {result});
+  }
+
+  setFakeIsCustomizationAllowedByPolicy(isCustomizationAllowedByPolicy:
+                                            boolean): void {
+    this.methods.setResult(
+        'isCustomizationAllowedByPolicy', {isCustomizationAllowedByPolicy});
   }
 
   // Sets up an observer for methodName.

@@ -32,25 +32,26 @@ using data_util::bit_field_type_groups::kEmail;
 using data_util::bit_field_type_groups::kName;
 using data_util::bit_field_type_groups::kPhone;
 
-LabelFormatter::LabelFormatter(const std::vector<AutofillProfile*>& profiles,
-                               const std::string& app_locale,
-                               ServerFieldType focused_field_type,
-                               uint32_t groups,
-                               const ServerFieldTypeSet& field_types)
+LabelFormatter::LabelFormatter(
+    const std::vector<const AutofillProfile*>& profiles,
+    const std::string& app_locale,
+    ServerFieldType focused_field_type,
+    uint32_t groups,
+    const ServerFieldTypeSet& field_types)
     : profiles_(profiles),
       app_locale_(app_locale),
       focused_field_type_(focused_field_type),
       groups_(groups) {
   const FieldTypeGroup focused_group = AutofillType(focused_field_type).group();
   DenseSet<FieldTypeGroup> groups_for_labels{
-      FieldTypeGroup::kName, FieldTypeGroup::kAddressHome,
-      FieldTypeGroup::kEmail, FieldTypeGroup::kPhoneHome};
+      FieldTypeGroup::kName, FieldTypeGroup::kAddress, FieldTypeGroup::kEmail,
+      FieldTypeGroup::kPhone};
 
   // If a user is focused on an address field, then parts of the address may be
   // shown in the label. For example, if the user is focusing on a street
   // address field, then it may be helpful to show the city in the label.
   // Otherwise, the focused field should not appear in the label.
-  if (focused_group != FieldTypeGroup::kAddressHome) {
+  if (focused_group != FieldTypeGroup::kAddress) {
     groups_for_labels.erase(focused_group);
   }
 
@@ -82,7 +83,7 @@ std::vector<std::u16string> LabelFormatter::GetLabels() const {
 
 // static
 std::unique_ptr<LabelFormatter> LabelFormatter::Create(
-    const std::vector<AutofillProfile*>& profiles,
+    const std::vector<const AutofillProfile*>& profiles,
     const std::string& app_locale,
     ServerFieldType focused_field_type,
     const ServerFieldTypeSet& field_types) {

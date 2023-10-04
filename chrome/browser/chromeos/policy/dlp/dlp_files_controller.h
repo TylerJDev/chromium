@@ -9,9 +9,9 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ref.h"
 #include "chrome/browser/chromeos/policy/dlp/dlp_rules_manager.h"
-#include "chrome/browser/enterprise/data_controls/component.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chromeos/dbus/dlp/dlp_service.pb.h"
+#include "components/enterprise/data_controls/component.h"
 #include "components/file_access/scoped_file_access.h"
 #include "storage/browser/file_system/file_system_url.h"
 
@@ -69,7 +69,7 @@ class DlpFilesController {
  protected:
   explicit DlpFilesController(const DlpRulesManager& rules_manager);
 
-  virtual absl::optional<data_controls::Component> MapFilePathtoPolicyComponent(
+  virtual absl::optional<data_controls::Component> MapFilePathToPolicyComponent(
       Profile* profile,
       const base::FilePath& file_path) = 0;
 

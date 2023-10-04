@@ -8,6 +8,7 @@
 <translation id="1056898198331236512">გაფრთხილება</translation>
 <translation id="1060368002126861100">ფაილების <ph name="APP_NAME" />-ით გასახსნელად, პირველ რიგში, გადაიტანეთ ისინი Windows-ის ფაილების საქაღალდეში.</translation>
 <translation id="1062407476771304334">შეცვლა</translation>
+<translation id="1119383441774809183">ტექსტური შეტყობინებების ჩვენება</translation>
 <translation id="1119447706177454957">შიდა შეცდომა</translation>
 <translation id="1120073797882051782">ჰანგული რომაული</translation>
 <translation id="112387589102719461">ინგლისური (აშშ) საერთაშორისო პროგრამისტთა Dvorak კლავიატურით</translation>
@@ -171,6 +172,7 @@
 <translation id="23721837607121582">მობილური პროფილის ჩამოტვირთვა, ქსელი <ph name="NETWORK_INDEX" /> / <ph name="NETWORK_COUNT" />-დან, <ph name="NETWORK_NAME" /></translation>
 <translation id="2377319039870049694">სიის ხედზე გადართვა</translation>
 <translation id="2377590462528165447"><ph name="NUMBER_OF_ITEMS" /> საქაღალდე გაზიარებულია Linux-თან</translation>
+<translation id="2379576081295865700">მიმდინარეობს საცავში მეხსიერების შემოწმება… ნაპოვნია 1 ერთეული</translation>
 <translation id="2383454254762599978">წაშლილებში გადატანა</translation>
 <translation id="2387458720915042159">პროქსი-სერვერის კავშირის ტიპი</translation>
 <translation id="2389832672041313158">ბირმული/მიანმარული</translation>
@@ -277,6 +279,7 @@
 <translation id="3264582393905923483">კონტექსტი</translation>
 <translation id="3272909651715601089">„<ph name="PATH" />“ ვერ გაიხსნა</translation>
 <translation id="3280431534455935878">მომზადება</translation>
+<translation id="3280719573299097127">თქვენ იყენებთ ლიმიტირებულ ქსელს. ფაილების სინქრონიზაცია დაპაუზდა.</translation>
 <translation id="3280987981688031357">გრამფირფიტა</translation>
 <translation id="3290356915286466215">დაუცველი</translation>
 <translation id="3291218047831493686">SIM ბარათის ჩაკეტვის პარამეტრის შესაცვლელად დაუკავშირდით ამ ქსელს</translation>
@@ -630,6 +633,7 @@
 <translation id="5838451609423551646">არჩეულიდან ამოიშალა ყველა ჩანაწერი.</translation>
 <translation id="5838825566232597749">US Workman, საერთაშორისო</translation>
 <translation id="5845721951356578987">ექთანი</translation>
+<translation id="5858478190805449225">ბატარეის დაზოგვის რეჟიმის ჩართულია. ცადეთ ხელახლა, როცა ბატარეის დაზოგვის რეჟიმის გამორთულია.</translation>
 <translation id="5860491529813859533">ჩართვა</translation>
 <translation id="5861477046012235702">მოთამაშე</translation>
 <translation id="5864471791310927901">DHCP ძებნა ვერ განხორციელდა</translation>
@@ -664,6 +668,7 @@
 <translation id="6164412158936057769">პეპლები</translation>
 <translation id="6165508094623778733">შეიტყვეთ მეტი</translation>
 <translation id="6170470584681422115">სენდვიჩი</translation>
+<translation id="6177854567773392726">მიმდინარეობს საცავში მეხსიერების შემოწმება… ნაპოვნია <ph name="ITEMS_FOUND" /> ერთეული</translation>
 <translation id="6181912134988520389">მიეცით <ph name="VM_NAME" />-ს თქვენს Google Drive-ში არსებულ ფაილებზე წვდომის ნებართვა. ცვლილებები სინქრონიზებული იქნება თქვენს სხვა მოწყობილობებთან.</translation>
 <translation id="6187719147498869044">უნგრული</translation>
 <translation id="6198252989419008588">შეცვალეთ PIN-ი</translation>
@@ -895,7 +900,6 @@
 <translation id="7911118814695487383">Linux</translation>
 <translation id="7920501309908018401">„ჩემს Drive“-ში არსებული თქვენი ფაილების თქვენს Chromebook-თან სინქრონიზაცია ავტომატურად შესრულდება, რომ მათზე წვდომა ინტერნეტთან კავშირის გარეშე შეძლოთ.</translation>
 <translation id="7925247922861151263">AAA შემოწმება ვერ მოხერხდა</translation>
-<translation id="7925686952655276919">არ გამოიყენოთ მობილური მონაცემები სინქრონიზაციისთვის</translation>
 <translation id="7928710562641958568">ამოიღეთ მოწყობილობა</translation>
 <translation id="7933875256234974853">მიმდინარეობს Drive ფაილების სინქრონიზაციისთვის მომზადება...</translation>
 <translation id="7943385054491506837">US Colemak</translation>
@@ -918,6 +922,7 @@
 <translation id="8087576439476816834">ჩამოტვირთვა, <ph name="PROFILE_NAME" /></translation>
 <translation id="8106045200081704138">ჩემთვის გაზიარებული</translation>
 <translation id="8116072619078571545">გაყინული წყალი</translation>
+<translation id="8120392982188717723">ლიმიტირებული ტრაფიკის მქონე ქსელებით სინქრონიზაციის დაშვება</translation>
 <translation id="8124093710070495550">პრობლემა სინქრონიზაციისას</translation>
 <translation id="8128733386027980860">ინგლისური (გაერთიანებული სამეფო) Dvorak კლავიატურით</translation>
 <translation id="8137331602592933310">„<ph name="FILENAME" />“ გაზიარებულია თქვენთვის. მისი წაშლა შეუძლებელია, რადგან ის თქვენ არ გეკუთვნით.</translation>
@@ -1009,6 +1014,7 @@
 <translation id="8698877009525468705">ეს ფაილი კონფიდენციალურია და ექვემდებარე ადმინისტრატორის მიერ დადგენილი წესებით განსაზღვრულ შეზღუდვებს.</translation>
 <translation id="8712637175834984815">კარგი</translation>
 <translation id="8713112442029511308">მალტური</translation>
+<translation id="8714138378966541668">დაბლოკილი პროვაიდერის მიერ</translation>
 <translation id="8714406895390098252">ველოსიპედი</translation>
 <translation id="8719721339511222681">არჩეულია <ph name="ENTRY_NAME" />.</translation>
 <translation id="872537912056138402">ხორვატიული</translation>
@@ -1046,6 +1052,7 @@
 <translation id="9038620279323455325">ფაილი სახელად „<ph name="FILE_NAME" />“ უკვე არსებობს. გთხოვთ, აირჩიოთ სხვა სახელი.</translation>
 <translation id="9046895021617826162">დაკავშირება ვერ მოხერხდა</translation>
 <translation id="9065512565307033593">თუ დადასტურებას ვერ მოახერხებთ, ქსელზე წვდომა გაითიშება.</translation>
+<translation id="9083722265619106011">{0,plural, =1{1 გაფრთხილება.}other{<ph name="COUNT" /> გაფრთხილება.}}</translation>
 <translation id="908378762078012445">რუსული ფონეტიკური AATSEEL კლავიატურით</translation>
 <translation id="9086302186042011942">სინქრონიზაცია</translation>
 <translation id="9099674669267916096">გვერდების რაოდენობა</translation>

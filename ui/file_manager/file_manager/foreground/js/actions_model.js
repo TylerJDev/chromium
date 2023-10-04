@@ -6,10 +6,9 @@ import {assert} from 'chrome://resources/ash/common/assert.js';
 import {dispatchSimpleEvent} from 'chrome://resources/ash/common/cr_deprecated.js';
 import {NativeEventTarget as EventTarget} from 'chrome://resources/ash/common/event_target.js';
 
-import {metrics} from '../../common/js/metrics.js';
+import {recordBoolean} from '../../common/js/metrics.js';
 import {str, strf, util} from '../../common/js/util.js';
 import {VolumeManagerCommon} from '../../common/js/volume_manager_types.js';
-import {DriveSyncHandler} from '../../externs/background/drive_sync_handler.js';
 import {VolumeManager} from '../../externs/volume_manager.js';
 
 import {constants} from './constants.js';
@@ -150,15 +149,12 @@ class DriveToggleOfflineAction {
   /**
    * @param {!Array<!Entry>} entries
    * @param {!MetadataModel} metadataModel
-   * @param {!DriveSyncHandler} driveSyncHandler
    * @param {!ActionModelUI} ui
    * @param {!VolumeManager} volumeManager
    * @param {boolean} value
    * @param {function()} onExecute
    */
-  constructor(
-      entries, metadataModel, driveSyncHandler, ui, volumeManager, value,
-      onExecute) {
+  constructor(entries, metadataModel, ui, volumeManager, value, onExecute) {
     /**
      * @private {!Array<!Entry>}
      * @const
@@ -170,12 +166,6 @@ class DriveToggleOfflineAction {
      * @const
      */
     this.metadataModel_ = metadataModel;
-
-    /**
-     * @private {!DriveSyncHandler}
-     * @const
-     */
-    this.driveSyncHandler_ = driveSyncHandler;
 
     /**
      * @private {!VolumeManager}
@@ -205,16 +195,13 @@ class DriveToggleOfflineAction {
   /**
    * @param {!Array<!Entry>} entries
    * @param {!MetadataModel} metadataModel
-   * @param {!DriveSyncHandler} driveSyncHandler
    * @param {!ActionModelUI} ui
    * @param {!VolumeManager} volumeManager
    * @param {boolean} value
    * @param {function()} onExecute
    * @return {DriveToggleOfflineAction}
    */
-  static create(
-      entries, metadataModel, driveSyncHandler, ui, volumeManager, value,
-      onExecute) {
+  static create(entries, metadataModel, ui, volumeManager, value, onExecute) {
     const actionableEntries = entries.filter(
         entry =>
             metadataModel.getCache([entry], ['pinned'])[0].pinned !== value);
@@ -224,8 +211,7 @@ class DriveToggleOfflineAction {
     }
 
     return new DriveToggleOfflineAction(
-        actionableEntries, metadataModel, driveSyncHandler, ui, volumeManager,
-        value, onExecute);
+        actionableEntries, metadataModel, ui, volumeManager, value, onExecute);
   }
 
   /**
@@ -261,10 +247,10 @@ class DriveToggleOfflineAction {
       // Check the result of pinning.
       entryPinned: () => {
         error = !!chrome.runtime.lastError;
-        metrics.recordBoolean('DrivePinSuccess', !error);
+        recordBoolean('DrivePinSuccess', !error);
         if (this.metadataModel_.getCache([currentEntry], ['hosted'])[0]
                 .hosted) {
-          metrics.recordBoolean('DriveHostedFilePinSuccess', !error);
+          recordBoolean('DriveHostedFilePinSuccess', !error);
         }
         if (error && this.value_) {
           this.metadataModel_.get([currentEntry], ['size']).then(results => {
@@ -300,10 +286,6 @@ class DriveToggleOfflineAction {
       },
     };
     steps.start();
-
-    if (this.value_ && this.driveSyncHandler_.isSyncSuppressed()) {
-      this.driveSyncHandler_.showDisabledMobileSyncNotification();
-    }
   }
 
   /**
@@ -653,13 +635,10 @@ export class ActionsModel extends EventTarget {
    * @param {!VolumeManager} volumeManager
    * @param {!MetadataModel} metadataModel
    * @param {!FolderShortcutsDataModel} shortcutsModel
-   * @param {!DriveSyncHandler} driveSyncHandler
    * @param {!ActionModelUI} ui
    * @param {!Array<!Entry>} entries
    */
-  constructor(
-      volumeManager, metadataModel, shortcutsModel, driveSyncHandler, ui,
-      entries) {
+  constructor(volumeManager, metadataModel, shortcutsModel, ui, entries) {
     super();
 
     /**
@@ -679,12 +658,6 @@ export class ActionsModel extends EventTarget {
      * @const
      */
     this.shortcutsModel_ = shortcutsModel;
-
-    /**
-     * @private {!DriveSyncHandler}
-     * @const
-     */
-    this.driveSyncHandler_ = driveSyncHandler;
 
     /**
      * @private {!ActionModelUI}
@@ -760,18 +733,16 @@ export class ActionsModel extends EventTarget {
               }
 
               const saveForOfflineAction = DriveToggleOfflineAction.create(
-                  this.entries_, this.metadataModel_, this.driveSyncHandler_,
-                  this.ui_, this.volumeManager_, true,
-                  this.invalidate_.bind(this));
+                  this.entries_, this.metadataModel_, this.ui_,
+                  this.volumeManager_, true, this.invalidate_.bind(this));
               if (saveForOfflineAction) {
                 actions[ActionsModel.CommonActionId.SAVE_FOR_OFFLINE] =
                     saveForOfflineAction;
               }
 
               const offlineNotNecessaryAction = DriveToggleOfflineAction.create(
-                  this.entries_, this.metadataModel_, this.driveSyncHandler_,
-                  this.ui_, this.volumeManager_, false,
-                  this.invalidate_.bind(this));
+                  this.entries_, this.metadataModel_, this.ui_,
+                  this.volumeManager_, false, this.invalidate_.bind(this));
               if (offlineNotNecessaryAction) {
                 actions[ActionsModel.CommonActionId.OFFLINE_NOT_NECESSARY] =
                     offlineNotNecessaryAction;

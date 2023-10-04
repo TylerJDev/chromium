@@ -103,14 +103,6 @@ export class SettingsInputMethodOptionsPageElement extends
     return {
       languageHelper: Object,
 
-      // TODO(b/265554350): Remove this property from properties() as it is
-      // already specified in PrefsMixin.
-      /** Preferences state. */
-      prefs: {
-        type: Object,
-        notify: true,
-      },
-
       /**
        * Input method ID.
        */
@@ -210,7 +202,7 @@ export class SettingsInputMethodOptionsPageElement extends
     const submenuButtonType =
         (e.target as Element).getAttribute('submenu-button-type');
     if (submenuButtonType ===
-        SubmenuButton.JAPANESE_CLEAR_PERSONALIZATION_DATA) {
+        SubmenuButton.JAPANESE_DELETE_PERSONALIZATION_DATA) {
       this.showClearPersonalizedData_ = true;
       return;
     }

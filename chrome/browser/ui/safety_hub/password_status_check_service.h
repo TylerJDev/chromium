@@ -10,12 +10,14 @@
 #include "chrome/browser/password_manager/bulk_leak_check_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/password_manager/core/browser/password_store_interface.h"
 #include "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
 
 class PasswordStatusCheckService
     : public KeyedService,
       public password_manager::SavedPasswordsPresenter::Observer,
-      public password_manager::BulkLeakCheckServiceInterface::Observer {
+      public password_manager::BulkLeakCheckServiceInterface::Observer,
+      public password_manager::PasswordStoreInterface::Observer {
  public:
   explicit PasswordStatusCheckService(Profile* profile);
 
@@ -41,18 +43,23 @@ class PasswordStatusCheckService
 
   bool is_password_check_running() const { return is_password_check_running_; }
 
+  bool no_passwords_saved() const { return no_passwords_saved_; }
+
+  // Returns the time at which the password check is currently scheduled to run.
+  base::Time GetScheduledPasswordCheckTime() const;
+
+  // Returns the interval that was used to schedule the current password check
+  // time.
+  base::TimeDelta GetScheduledPasswordCheckInterval() const;
+
   // Register a delayed task running the password check.
   void StartRepeatedUpdates();
 
   // Bring cached credential issues up to date with data from Password Manager.
   void UpdateInsecureCredentialCountAsync();
 
-  // Triggers Password Manager's password check to discover new credential
-  // issues.
-  //
-  // TODO(crbug.com/1443466) Make private once there is a way for the password
-  // check to be publicly triggered.
-  void RunPasswordCheckAsync();
+  // Helper function for displaying the current status in the UI.
+  base::Value::Dict GetPasswordCardData(bool signed_in);
 
   // Testing functions.
   bool IsObservingSavedPasswordsPresenterForTesting() const {
@@ -74,9 +81,17 @@ class PasswordStatusCheckService
   }
 
  private:
+  FRIEND_TEST_ALL_PREFIXES(PasswordStatusCheckServiceBaseTest,
+                           CheckTimeUpdatedAfterRunScheduledInThePast);
+  FRIEND_TEST_ALL_PREFIXES(PasswordStatusCheckServiceBaseTest,
+                           CheckTimeUpdatedAfterRunScheduledLongTimeInThePast);
+
+  // Triggers Password Manager's password check to discover new credential
+  // issues.
+  void RunPasswordCheckAsync();
+
   // SavedPasswordsPresenter::Observer implementation.
-  // Getting notified about this indicates that the presenter is initialized
-  // and ready to be queried for credential issues.
+  // Getting notified about this indicates that the presenter is initialized.
   void OnSavedPasswordsChanged(
       const password_manager::PasswordStoreChangeList& changes) override;
 
@@ -86,6 +101,20 @@ class PasswordStatusCheckService
       password_manager::BulkLeakCheckService::State state) override;
   void OnCredentialDone(const password_manager::LeakCheckCredential& credential,
                         password_manager::IsLeaked is_leaked) override;
+
+  // PasswordStoreInterface::Observer implementation.
+  // Used to trigger an update of the password issue counts when passwords
+  // change.
+  void OnLoginsChanged(
+      password_manager::PasswordStoreInterface* store,
+      const password_manager::PasswordStoreChangeList& changes) override;
+  void OnLoginsRetained(password_manager::PasswordStoreInterface* store,
+                        const std::vector<password_manager::PasswordForm>&
+                            retained_passwords) override;
+
+  // This is called when weak and reuse checks are complete and
+  // `InsecureCredentialsManager` is ready to be queried for credential issues.
+  void OnWeakAndReuseChecksDone();
 
   // Initializes |saved_passwords_presenter_| and |password_check_delegate_|.
   void InitializePasswordCheckInfrastructure();
@@ -102,6 +131,9 @@ class PasswordStatusCheckService
   // Verifies that both `password_check_delegate_` and
   // `saved_passwords_presenter_` are initialized.
   bool IsInfrastructureReady() const;
+
+  // Updates pref dict for scheduled password check.
+  void SetPasswordCheckSchedulePrefsWithInterval(base::Time check_time);
 
   raw_ptr<Profile> profile_;
 
@@ -134,15 +166,33 @@ class PasswordStatusCheckService
       password_manager::BulkLeakCheckServiceInterface::Observer>
       bulk_leak_check_observation_{this};
 
+  // Scoped observer for profile and account `PasswordStore`s. This is used
+  // to trigger an update of the password issue counts when passwords have
+  // changed. We're notified of this with `OnLoginsChanged`.
+  base::ScopedObservation<password_manager::PasswordStoreInterface,
+                          password_manager::PasswordStoreInterface::Observer>
+      profile_password_store_observation_{this};
+  base::ScopedObservation<password_manager::PasswordStoreInterface,
+                          password_manager::PasswordStoreInterface::Observer>
+      account_password_store_observation_{this};
+
   // Cached results of the password check.
   size_t compromised_credential_count_ = 0;
   size_t weak_credential_count_ = 0;
   size_t reused_credential_count_ = 0;
 
+  // True when password stores are empty and there are no saved passwords.
+  bool no_passwords_saved_ = true;
+
   // Flags to indicate which async operations are currently ongoing. Memory
   // intensive objects will be reset after all have finished.
   bool is_update_credential_count_pending_ = false;
   bool is_password_check_running_ = false;
+
+  // Timer to schedule the run of the password check after some time has passed.
+  base::OneShotTimer password_check_timer_;
+
+  base::WeakPtrFactory<PasswordStatusCheckService> weak_ptr_factory_{this};
 };
 
 #endif  // CHROME_BROWSER_UI_SAFETY_HUB_PASSWORD_STATUS_CHECK_SERVICE_H_

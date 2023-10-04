@@ -29,7 +29,6 @@
 #include "components/password_manager/core/browser/password_store_backend.h"
 #include "components/password_manager/core/browser/password_store_change.h"
 #include "components/password_manager/core/browser/password_store_interface.h"
-#include "components/password_manager/core/browser/password_store_sync.h"
 #include "components/password_manager/core/browser/smart_bubble_stats_store.h"
 
 class PrefService;
@@ -214,7 +213,7 @@ class PasswordStore : public PasswordStoreInterface {
 
   std::unique_ptr<AffiliatedMatchHelper> affiliated_match_helper_;
 
-  raw_ptr<PrefService, AcrossTasksDanglingUntriaged> prefs_ = nullptr;
+  raw_ptr<PrefService> prefs_ = nullptr;
 
   InitStatus init_status_ = InitStatus::kUnknown;
 };

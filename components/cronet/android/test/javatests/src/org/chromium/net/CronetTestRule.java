@@ -6,6 +6,7 @@ package org.chromium.net;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 
 import static org.chromium.net.truth.UrlResponseInfoSubject.assertThat;
@@ -15,6 +16,7 @@ import android.content.MutableContextWrapper;
 import android.os.Build;
 import android.os.StrictMode;
 
+import androidx.annotation.Nullable;
 import androidx.test.core.app.ApplicationProvider;
 
 import org.junit.rules.TestRule;
@@ -24,6 +26,10 @@ import org.junit.runners.model.Statement;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.Log;
 import org.chromium.base.PathUtils;
+import org.chromium.net.httpflags.Flags;
+import org.chromium.net.httpflags.HttpFlagsInterceptor;
+import org.chromium.net.impl.CronetUrlRequestContext;
+import org.chromium.net.impl.JavaCronetEngine;
 import org.chromium.net.impl.JavaCronetProvider;
 import org.chromium.net.impl.NativeCronetProvider;
 import org.chromium.net.impl.UserAgent;
@@ -34,6 +40,9 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Custom TestRule for Cronet instrumentation tests.
@@ -114,16 +123,20 @@ public class CronetTestRule implements TestRule {
         setImplementationUnderTest(CronetImplementation.STATICALLY_LINKED);
         String packageName = desc.getTestClass().getPackage().getName();
 
-        boolean onlyRunTestForNative = desc.getAnnotation(OnlyRunNativeCronet.class) != null
-                || desc.getTestClass().getAnnotation(OnlyRunNativeCronet.class) != null;
-        boolean onlyRunTestForJava = desc.getAnnotation(OnlyRunJavaCronet.class) != null;
-        if (onlyRunTestForNative && onlyRunTestForJava) {
-            throw new IllegalArgumentException(desc.getMethodName()
-                    + " skipped because it specified both "
-                    + "OnlyRunNativeCronet and OnlyRunJavaCronet annotations");
+        EnumSet<CronetImplementation> excludedImplementations =
+                EnumSet.noneOf(CronetImplementation.class);
+        IgnoreFor ignoreAnnotation = getTestAnnotation(desc, IgnoreFor.class);
+        if (ignoreAnnotation != null) {
+            excludedImplementations =
+                    EnumSet.copyOf(Arrays.asList(ignoreAnnotation.implementations()));
         }
-        boolean doRunTestForNative = onlyRunTestForNative || !onlyRunTestForJava;
-        boolean doRunTestForJava = onlyRunTestForJava || !onlyRunTestForNative;
+        Log.i(TAG, "Excluded implementations: %s", excludedImplementations);
+
+        Set<CronetImplementation> implementationsUnderTest =
+                EnumSet.complementOf(excludedImplementations);
+        assumeFalse("Test skipped because all implementations were excluded. Provided reason: "
+                        + safeGetIgnoreReason(ignoreAnnotation),
+                implementationsUnderTest.isEmpty());
 
         // Find the API version required by the test.
         int requiredApiVersion = getMaximumAvailableApiLevel();
@@ -146,6 +159,7 @@ public class CronetTestRule implements TestRule {
                 requiredAndroidApiVersion = ((RequiresMinAndroidApi) a).value();
             }
         }
+
         assumeTrue(desc.getMethodName() + " skipped because it requires API " + requiredApiVersion
                         + " but only API " + getMaximumAvailableApiLevel() + " is present.",
                 getMaximumAvailableApiLevel() >= requiredApiVersion);
@@ -155,19 +169,15 @@ public class CronetTestRule implements TestRule {
                 Build.VERSION.SDK_INT >= requiredAndroidApiVersion);
 
         if (packageName.startsWith("org.chromium.net")) {
-            try {
-                if (doRunTestForNative) {
-                    Log.i(TAG, "Running test against Native implementation.");
-                    evaluateWithFramework(base);
+            for (CronetImplementation implementation : implementationsUnderTest) {
+                if (implementation.equals(CronetImplementation.AOSP_PLATFORM)) {
+                    // TODO(crbug/1451394): Remove this and fix tests.
+                    Log.i(TAG, "Skipping the Platform implementation");
+                    continue;
                 }
-                if (doRunTestForJava) {
-                    Log.i(TAG, "Running test against Java implementation.");
-                    setImplementationUnderTest(CronetImplementation.FALLBACK);
-                    evaluateWithFramework(base);
-                }
-            } catch (Throwable e) {
-                Log.e(TAG, "CronetTestBase#runTest failed for %s implementation.", mImplementation);
-                throw e;
+                Log.i(TAG, "Running test against " + implementation + " implementation.");
+                setImplementationUnderTest(implementation);
+                evaluateWithFramework(base);
             }
         } else {
             evaluateWithFramework(base);
@@ -200,22 +210,16 @@ public class CronetTestRule implements TestRule {
     }
 
     /**
-     * Annotation for test classes or methods in org.chromium.net package that disables rerunning
-     * the test against the Java-only implementation. When this annotation is present the test is
-     * only run against the native implementation.
+     * Annotation for test methods in org.chromium.net package that disables running the test
+     * against some of the implementations. When this annotation is present the test is only run
+     * against the {@link CronetImplementation} cases not specified in the annotation.
      */
     @Target({ElementType.TYPE, ElementType.METHOD})
     @Retention(RetentionPolicy.RUNTIME)
-    public @interface OnlyRunNativeCronet {}
-
-    /**
-     * Annotation for test methods in org.chromium.net package that disables rerunning the test
-     * against the Native/Chromium implementation. When this annotation is present the test is only
-     * run against the Java implementation.
-     */
-    @Target(ElementType.METHOD)
-    @Retention(RetentionPolicy.RUNTIME)
-    public @interface OnlyRunJavaCronet {}
+    public @interface IgnoreFor {
+        CronetImplementation[] implementations();
+        String reason();
+    }
 
     /**
      * Annotation allowing classes or individual tests to be skipped based on the version of the
@@ -241,6 +245,15 @@ public class CronetTestRule implements TestRule {
     @Retention(RetentionPolicy.RUNTIME)
     public @interface RequiresMinAndroidApi {
         int value();
+    }
+
+    /**
+     * Annotation allowing classes or individual tests to disable automatic NetLog collection.
+     */
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface DisableAutomaticNetLog {
+        String reason();
     }
 
     /**
@@ -300,24 +313,54 @@ public class CronetTestRule implements TestRule {
      * Creates and holds pointer to CronetEngine.
      */
     public static class CronetTestFramework implements AutoCloseable {
+        // This is the Context that Cronet will use. The specific Context instance can never change
+        // because that would break ContextUtils.initApplicationContext(). We work around this by
+        // using a static MutableContextWrapper whose identity is constant, but the wrapped
+        // Context isn't.
+        //
+        // TODO: in theory, no code under test should be running in between tests, and we should be
+        // able to enforce that by rejecting all Context calls in between tests (e.g. by resetting
+        // the base context to null while not running a test). Unfortunately, it's not that simple
+        // because the code under test doesn't currently wait for all asynchronous operations to
+        // complete before the test finishes (e.g. ProxyChangeListener can call back into the
+        // CronetInit thread even while a test isn't running), so we have to keep that context
+        // working even in between tests to prevent crashes. This is problematic as that makes tests
+        // non-hermetic/racy/brittle. Ideally, we should ensure that no code under test can run in
+        // between tests.
+        @SuppressWarnings("StaticFieldLeak")
+        private static final MutableContextWrapper sContextWrapper =
+                new MutableContextWrapper(ApplicationProvider.getApplicationContext()) {
+                    @Override
+                    public Context getApplicationContext() {
+                        // Ensure the code under test (in particular, the CronetEngineBuilderImpl
+                        // constructor) cannot use this method to "escape" context interception.
+                        return this;
+                    }
+                };
+
         private final CronetImplementation mImplementation;
         private final ExperimentalCronetEngine.Builder mBuilder;
+        private final MutableContextWrapper mContextWrapperWithoutFlags;
         private final MutableContextWrapper mContextWrapper;
         private final StrictMode.VmPolicy mOldVmPolicy;
 
+        private HttpFlagsInterceptor mHttpFlagsInterceptor;
         private ExperimentalCronetEngine mCronetEngine;
         private boolean mClosed;
 
         private CronetTestFramework(CronetImplementation implementation) {
-            this.mContextWrapper =
+            this.mContextWrapperWithoutFlags =
                     new MutableContextWrapper(ApplicationProvider.getApplicationContext());
-            this.mBuilder = implementation.createBuilder(mContextWrapper)
-                                    .setUserAgent(UserAgent.from(mContextWrapper))
+            this.mContextWrapper = new MutableContextWrapper(mContextWrapperWithoutFlags);
+            assert sContextWrapper.getBaseContext() == ApplicationProvider.getApplicationContext();
+            sContextWrapper.setBaseContext(mContextWrapper);
+            this.mBuilder = implementation.createBuilder(sContextWrapper)
+                                    .setUserAgent(UserAgent.from(sContextWrapper))
                                     .enableQuic(true);
             this.mImplementation = implementation;
 
             System.loadLibrary("cronet_tests");
-            ContextUtils.initApplicationContext(getContext().getApplicationContext());
+            ContextUtils.initApplicationContext(sContextWrapper);
             PathUtils.setPrivateDataDirectorySuffix(PRIVATE_DATA_DIRECTORY_SUFFIX);
             prepareTestStorage(getContext());
             mOldVmPolicy = StrictMode.getVmPolicy();
@@ -329,6 +372,8 @@ public class CronetTestRule implements TestRule {
                                                .penaltyDeath()
                                                .build());
             }
+
+            setHttpFlags(null);
         }
 
         /**
@@ -347,18 +392,52 @@ public class CronetTestRule implements TestRule {
                         "Refusing to intercept context after the Cronet engine has been built");
             }
 
+            mContextWrapperWithoutFlags.setBaseContext(contextInterceptor.interceptContext(
+                    mContextWrapperWithoutFlags.getBaseContext()));
+        }
+
+        /**
+         * Sets the HTTP flags, if any, that the code under test should run with. This affects the
+         * behavior of the {@link Context} that the code under test sees.
+         *
+         * If this method is never called, the default behavior is to simulate the absence of a
+         * flags file. This ensures that the code under test does not end up accidentally using a
+         * flags file from the host system, which would lead to non-deterministic results.
+         *
+         * @param flagsFileContents the contents of the flags file, or null to simulate a missing
+         * file (default behavior).
+         *
+         * @throws IllegalStateException if called after the engine has already been built.
+         * Modifying flags while the code under test is running is always a mistake, because the
+         * code under test won't notice the changes.
+         *
+         * @see org.chromium.net.impl.HttpFlagsLoader
+         * @see HttpFlagsInterceptor
+         */
+        public void setHttpFlags(@Nullable Flags flagsFileContents) {
+            checkNotClosed();
+
+            if (mCronetEngine != null) {
+                throw new IllegalStateException(
+                        "Refusing to replace flags file provider after the Cronet engine has been "
+                        + "built");
+            }
+
+            if (mHttpFlagsInterceptor != null) mHttpFlagsInterceptor.close();
+            mHttpFlagsInterceptor = new HttpFlagsInterceptor(flagsFileContents);
             mContextWrapper.setBaseContext(
-                    contextInterceptor.interceptContext(mContextWrapper.getBaseContext()));
+                    mHttpFlagsInterceptor.interceptContext(mContextWrapperWithoutFlags));
         }
 
         /**
          * @return the context to be used by the Cronet engine
          *
          * @see #interceptContext
+         * @see #setFlagsFileContents
          */
         public Context getContext() {
             checkNotClosed();
-            return mContextWrapper;
+            return sContextWrapper;
         }
 
         public CronetEngine.Builder enableDiskCache(CronetEngine.Builder cronetEngineBuilder) {
@@ -433,7 +512,11 @@ public class CronetTestRule implements TestRule {
                 return;
             }
             shutdownEngine();
+            assert sContextWrapper.getBaseContext() == mContextWrapper;
+            sContextWrapper.setBaseContext(ApplicationProvider.getApplicationContext());
             mClosed = true;
+
+            if (mHttpFlagsInterceptor != null) mHttpFlagsInterceptor.close();
 
             try {
                 // Run GC and finalizers a few times to pick up leaked closeables
@@ -517,7 +600,44 @@ public class CronetTestRule implements TestRule {
         }
 
         private void verifyCronetEngineInstance(CronetEngine engine) {
-            // TODO(danstahr): Add assertions for expected class
+            switch (this) {
+                case STATICALLY_LINKED:
+                    checkImplClass(engine, CronetUrlRequestContext.class);
+                    break;
+                case FALLBACK:
+                    checkImplClass(engine, JavaCronetEngine.class);
+                    break;
+                case AOSP_PLATFORM:
+                    // TODO(crbug/1451404): Add once platform provider CL lands.
+                    break;
+            }
         }
+
+        private void checkImplClass(CronetEngine engine, Class expectedClass) {
+            assertThat(engine).isInstanceOf(expectedClass);
+        }
+    }
+
+    /**
+     * Returns the most specific annotation of a given type applicable to the test case described by
+     * {@code description}. Returns {@code null} if no such annotation is found.
+     */
+    @Nullable
+    private static <T extends Annotation> T getTestAnnotation(
+            Description description, Class<T> clazz) {
+        T annotation = description.getAnnotation(clazz);
+
+        if (annotation != null) {
+            return annotation;
+        }
+
+        return description.getTestClass().getAnnotation(clazz);
+    }
+
+    private static String safeGetIgnoreReason(IgnoreFor ignoreAnnotation) {
+        if (ignoreAnnotation == null) {
+            return "";
+        }
+        return ignoreAnnotation.reason();
     }
 }

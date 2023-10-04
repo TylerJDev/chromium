@@ -22,7 +22,7 @@ try_.defaults.set(
     reclient_instance = reclient.instance.DEFAULT_UNTRUSTED,
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CQ,
     service_account = try_.DEFAULT_SERVICE_ACCOUNT,
-    siso_configs = ["remote_all"],
+    siso_configs = ["builder"],
     siso_enable_cloud_profiler = True,
     siso_enable_cloud_trace = True,
     siso_project = siso.project.DEFAULT_UNTRUSTED,
@@ -57,22 +57,35 @@ try_.builder(
     reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
 )
 
+# TODO(crbug.com/1416662): Remove the builder after the experiment.
+try_.builder(
+    name = "android-12-x64-dual-coverage-exp-rel",
+    description_html = """\
+This builder shadows android-12-x64-rel builder to experiment both jacoco and clang coverage enabled builds.
+""",
+    mirrors = [
+        "ci/android-12-x64-rel",
+    ],
+    coverage_test_types = ["unit", "overall"],
+    main_list_view = "try",
+    tryjob = try_.job(
+        experiment_percentage = 3,
+    ),
+    # TODO(crbug.com/1372179): Use orchestrator pool once overloaded test pools
+    # are addressed
+    # use_orchestrator_pool = True,
+    use_clang_coverage = True,
+    use_java_coverage = True,
+)
+
 try_.orchestrator_builder(
     name = "android-12-x64-rel",
     branch_selector = branches.selector.ANDROID_BRANCHES,
     mirrors = [
         "ci/android-12-x64-rel",
     ],
-    try_settings = builder_config.try_settings(
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
     compilator = "android-12-x64-rel-compilator",
     coverage_test_types = ["unit", "overall"],
-    experiments = {
-        "chromium_rts.inverted_rts": 100,
-    },
     main_list_view = "try",
     tryjob = try_.job(),
     # TODO(crbug.com/1372179): Use orchestrator pool once overloaded test pools
@@ -84,35 +97,6 @@ try_.orchestrator_builder(
 try_.compilator_builder(
     name = "android-12-x64-rel-compilator",
     branch_selector = branches.selector.ANDROID_BRANCHES,
-    main_list_view = "try",
-)
-
-# TODO(b/277863839): remove Siso experimental builders after migrate
-# android-12-x64-rel to Siso.
-try_.orchestrator_builder(
-    name = "android-12-x64-siso-rel",
-    mirrors = builder_config.copy_from("try/android-12-x64-rel"),
-    try_settings = builder_config.try_settings(
-        is_compile_only = True,
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
-    compilator = "android-12-x64-siso-rel-compilator",
-    coverage_test_types = ["unit", "overall"],
-    experiments = {
-        "chromium_rts.inverted_rts": 100,
-    },
-    main_list_view = "try",
-    tryjob = try_.job(
-        # TODO(b/277863839): increase percentage.
-        experiment_percentage = 20,
-    ),
-    use_java_coverage = True,
-)
-
-try_.compilator_builder(
-    name = "android-12-x64-siso-rel-compilator",
     main_list_view = "try",
     siso_enabled = True,
 )
@@ -133,6 +117,11 @@ try_.builder(
     reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
 )
 
+try_.builder(
+    name = "android-arm-compile-dbg",
+    mirrors = ["ci/Android arm Builder (dbg)"],
+)
+
 try_.orchestrator_builder(
     name = "android-arm64-rel",
     branch_selector = branches.selector.ANDROID_BRANCHES,
@@ -141,16 +130,8 @@ try_.orchestrator_builder(
         "ci/Android Release (Nexus 5X)",  # Nexus 5X on Nougat
         "ci/android-pie-arm64-rel",  # Pixel 1, 2 on Pie
     ],
-    try_settings = builder_config.try_settings(
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
     compilator = "android-arm64-rel-compilator",
     coverage_test_types = ["unit", "overall"],
-    experiments = {
-        "chromium_rts.inverted_rts": 100,
-    },
     main_list_view = "try",
     tryjob = try_.job(),
     # TODO(crbug.com/1372179): Use orchestrator pool once overloaded test pools
@@ -165,27 +146,23 @@ try_.compilator_builder(
     main_list_view = "try",
 )
 
-# TODO(b/277863839): remove Siso experimental builders after migrate
-# android-arm64-rel to Siso.
 try_.orchestrator_builder(
     name = "android-arm64-siso-rel",
-    description_html = "This builder may trigger tests on multiple Android versions.",
+    description_html = """\
+This builder shadows android-arm64-rel builder to compare between Siso builds and Ninja builds.<br/>
+This builder should be removed after migrating android-arm64-rel from Ninja to Siso. b/277863839
+""",
     mirrors = builder_config.copy_from("try/android-arm64-rel"),
     try_settings = builder_config.try_settings(
+        # TODO: b/294287964 - waiting test devices to be allocated to handle
+        # extra traffic.
         is_compile_only = True,
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
     ),
     compilator = "android-arm64-siso-rel-compilator",
     coverage_test_types = ["unit", "overall"],
-    experiments = {
-        "chromium_rts.inverted_rts": 100,
-    },
     main_list_view = "try",
     tryjob = try_.job(
-        # TODO(b/277863839): increase percentage.
-        experiment_percentage = 20,
+        experiment_percentage = 10,
     ),
     use_clang_coverage = True,
 )
@@ -202,6 +179,11 @@ try_.compilator_builder(
 #     mirrors = ["ci/android-asan"],
 #     reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
 # )
+
+try_.builder(
+    name = "android-asan-compile-dbg",
+    mirrors = ["ci/Android ASAN (dbg)"],
+)
 
 try_.builder(
     name = "android-bfcache-rel",
@@ -223,19 +205,26 @@ try_.builder(
         "$build/binary_size": {
             "analyze_targets": [
                 "//chrome/android:monochrome_public_minimal_apks",
-                "//chrome/android:trichrome_minimal_apks",
+                "//chrome/android:trichrome_32_minimal_apks",
                 "//chrome/android:validate_expectations",
                 "//tools/binary_size:binary_size_trybot_py",
             ],
             "compile_targets": [
                 "monochrome_public_minimal_apks",
                 "monochrome_static_initializers",
-                "trichrome_minimal_apks",
+                "trichrome_32_minimal_apks",
                 "validate_expectations",
             ],
         },
     },
     tryjob = try_.job(),
+)
+
+try_.builder(
+    name = "android-clobber-rel",
+    mirrors = [
+        "ci/android-archive-rel",
+    ],
 )
 
 try_.builder(
@@ -307,7 +296,7 @@ try_.builder(
 
 try_.builder(
     name = "android-cronet-x64-dbg",
-    mirrors = ["ci/android-cronet-arm64-dbg"],
+    mirrors = ["ci/android-cronet-x64-dbg"],
     reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
 )
 
@@ -400,6 +389,36 @@ try_.builder(
 )
 
 try_.builder(
+    name = "android-cronet-x86-dbg-lollipop-tests",
+    mirrors = [
+        "ci/android-cronet-x86-dbg",
+        "ci/android-cronet-x86-dbg-lollipop-tests",
+    ],
+    contact_team_email = "cronet-team@google.com",
+    main_list_view = "try",
+    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
+    tryjob = try_.job(
+        location_filters = [
+            "components/cronet/.+",
+            "components/grpc_support/.+",
+            "build/android/.+",
+            "build/config/android/.+",
+            cq.location_filter(exclude = True, path_regexp = "components/cronet/ios/.+"),
+        ],
+    ),
+)
+
+try_.builder(
+    name = "android-cronet-x86-dbg-marshmallow-tests",
+    mirrors = [
+        "ci/android-cronet-x86-dbg",
+        "ci/android-cronet-x86-dbg-marshmallow-tests",
+    ],
+    contact_team_email = "cronet-team@google.com",
+    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
     name = "android-deterministic-dbg",
     executable = "recipe:swarming/deterministic_build",
     execution_timeout = 6 * time.hour,
@@ -421,36 +440,28 @@ try_.builder(
     mirrors = builder_config.copy_from("try/android-pie-x86-rel"),
 )
 
-# TODO(b/277863839): remove Siso experimental builders after migrate
-# android-nougat-x86-rel to Siso.
-try_.orchestrator_builder(
-    name = "android-nougat-x86-siso-rel",
-    mirrors = builder_config.copy_from("try/android-nougat-x86-rel"),
-    try_settings = builder_config.try_settings(
-        is_compile_only = True,
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
-    compilator = "android-nougat-x86-siso-rel-compilator",
+# TODO(crbug.com/1416662): Remove the builder after the experiment.
+try_.builder(
+    name = "android-nougat-x86-dual-coverage-exp-rel",
+    description_html = """\
+This builder shadows android-nougat-x86-rel builder to experiment both jacoco and clang coverage enabled builds.
+""",
+    mirrors = [
+        "ci/android-nougat-x86-rel",
+    ],
     coverage_test_types = ["unit", "overall"],
     experiments = {
-        "chromium_rts.inverted_rts": 100,
         "chromium.add_one_test_shard": 10,
     },
     main_list_view = "try",
     tryjob = try_.job(
-        # TODO(b/277863839): increase percentage.
-        experiment_percentage = 20,
+        experiment_percentage = 3,
     ),
+    # TODO(crbug.com/1372179): Use orchestrator pool once overloaded test pools
+    # are addressed
+    # use_orchestrator_pool = True,
+    use_clang_coverage = True,
     use_java_coverage = True,
-)
-
-try_.compilator_builder(
-    name = "android-nougat-x86-siso-rel-compilator",
-    cores = 64,
-    main_list_view = "try",
-    siso_enabled = True,
 )
 
 try_.orchestrator_builder(
@@ -459,15 +470,9 @@ try_.orchestrator_builder(
     mirrors = [
         "ci/android-nougat-x86-rel",
     ],
-    try_settings = builder_config.try_settings(
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.QUICK_RUN_ONLY,
-        ),
-    ),
     compilator = "android-nougat-x86-rel-compilator",
     coverage_test_types = ["unit", "overall"],
     experiments = {
-        "chromium_rts.inverted_rts": 100,
         "chromium.add_one_test_shard": 10,
     },
     main_list_view = "try",
@@ -483,6 +488,7 @@ try_.compilator_builder(
     branch_selector = branches.selector.ANDROID_BRANCHES,
     cores = 64 if settings.is_main else 32,
     main_list_view = "try",
+    siso_enabled = True,
 )
 
 try_.builder(
@@ -500,6 +506,8 @@ try_.builder(
     mirrors = [
         "ci/android-oreo-x86-rel",
     ],
+    coverage_test_types = ["unit", "overall"],
+    use_java_coverage = True,
 )
 
 try_.builder(
@@ -534,6 +542,19 @@ try_.builder(
             "third_party/gvr-android-sdk/.+",
             "third_party/arcore-android-sdk/.+",
             "third_party/arcore-android-sdk-client/.+",
+            # Diectories that have caused breakages in the past due to the
+            # TensorFlowLite roll.
+            "third_party/eigen3/.+",
+            "third_party/farmhash/.+",
+            "third_party/fft2d/.+",
+            "third_party/flatbuffers/.+",
+            "third_party/fp16/.+",
+            "third_party/fxdiv/.+",
+            "third_party/gemmlowp/.+",
+            "third_party/pthreadpool/.+",
+            "third_party/ruy/.+",
+            "third_party/tflite/.+",
+            "third_party/xnnpack/.+",
         ],
     ),
 )
@@ -556,6 +577,11 @@ try_.builder(
 try_.builder(
     name = "android-chrome-pie-x86-wpt-fyi-rel",
     mirrors = ["ci/android-chrome-pie-x86-wpt-fyi-rel"],
+)
+
+try_.builder(
+    name = "android-chrome-pie-x86-wpt-android-specific",
+    mirrors = ["ci/android-chrome-pie-x86-wpt-android-specific"],
 )
 
 try_.builder(
@@ -607,13 +633,6 @@ try_.builder(
         "ci/Android WebView P (dbg)",
     ],
     reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
-)
-
-try_.builder(
-    name = "android_archive_rel_ng",
-    mirrors = [
-        "ci/android-archive-rel",
-    ],
 )
 
 try_.builder(
@@ -712,7 +731,20 @@ try_.builder(
             "sandbox/linux/seccomp-bpf-helpers/.+",
             "sandbox/linux/system_headers/.+",
             "sandbox/linux/tests/.+",
+            # Diectories that have caused breakages in the past due to the
+            # TensorFlowLite roll.
+            "third_party/eigen3/.+",
+            "third_party/farmhash/.+",
+            "third_party/fft2d/.+",
+            "third_party/flatbuffers/.+",
+            "third_party/fp16/.+",
+            "third_party/fxdiv/.+",
+            "third_party/gemmlowp/.+",
             "third_party/gvr-android-sdk/.+",
+            "third_party/pthreadpool/.+",
+            "third_party/ruy/.+",
+            "third_party/tflite/.+",
+            "third_party/xnnpack/.+",
         ],
     ),
 )
@@ -800,6 +832,7 @@ try_.gpu.optional_tests_builder(
     main_list_view = "try",
     tryjob = try_.job(
         location_filters = [
+            # Inclusion filters.
             cq.location_filter(path_regexp = "cc/.+"),
             cq.location_filter(path_regexp = "chrome/browser/vr/.+"),
             cq.location_filter(path_regexp = "content/browser/xr/.+"),
@@ -825,6 +858,9 @@ try_.gpu.optional_tests_builder(
             cq.location_filter(path_regexp = "tools/clang/scripts/update.py"),
             cq.location_filter(path_regexp = "tools/mb/mb_config_expectations/tryserver.chromium.android.json"),
             cq.location_filter(path_regexp = "ui/gl/.+"),
+
+            # Exclusion filters.
+            cq.location_filter(exclude = True, path_regexp = ".*\\.md"),
         ],
     ),
 )
@@ -842,6 +878,7 @@ try_.gpu.optional_tests_builder(
     main_list_view = "try",
     tryjob = try_.job(
         location_filters = [
+            # Inclusion filters.
             cq.location_filter(path_regexp = "cc/.+"),
             cq.location_filter(path_regexp = "chrome/browser/vr/.+"),
             cq.location_filter(path_regexp = "content/browser/xr/.+"),
@@ -867,6 +904,9 @@ try_.gpu.optional_tests_builder(
             cq.location_filter(path_regexp = "tools/clang/scripts/update.py"),
             cq.location_filter(path_regexp = "tools/mb/mb_config_expectations/tryserver.chromium.android.json"),
             cq.location_filter(path_regexp = "ui/gl/.+"),
+
+            # Exclusion filters.
+            cq.location_filter(exclude = True, path_regexp = ".*\\.md"),
         ],
     ),
 )

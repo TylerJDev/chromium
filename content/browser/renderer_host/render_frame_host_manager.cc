@@ -59,7 +59,6 @@
 #include "content/browser/site_instance_impl.h"
 #include "content/browser/webui/web_ui_controller_factory_registry.h"
 #include "content/common/content_navigation_policy.h"
-#include "content/common/features.h"
 #include "content/common/navigation_params_utils.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_host.h"
@@ -962,7 +961,11 @@ void RenderFrameHostManager::PrepareForCollectingPage(
     if (group->IsRelatedSiteInstanceGroup(it.second->site_instance_group())) {
       DCHECK(base::Contains(*render_view_hosts,
                             it.second->GetRenderViewHost()->GetSafeRef()));
-      (*proxy_hosts)[it.first] = std::move(it.second);
+      auto pair = proxy_hosts->insert({it.first, std::move(it.second)});
+      bool insertion_took_place = pair.second;
+      // There should be only one proxy for any given SiteInstanceGroup, so this
+      // should never replace an existing element.
+      CHECK(insertion_took_place);
     }
   }
 
@@ -1113,6 +1116,17 @@ void RenderFrameHostManager::UnloadOldFrame(
                 "bfcache_eligibility",
                 bfcache_eligibility.flattened_reasons.ToString());
     if (can_store) {
+      bool is_same_process =
+          (old_render_frame_host->GetProcess() ==
+           frame_tree_node_->current_frame_host()->GetProcess());
+      if (old_render_frame_host->GetSiteInstance()->IsSameSiteWithURL(
+              frame_tree_node_->current_url())) {
+        base::UmaHistogramBoolean("BackForwardCache.ProcessReuse.SameSite",
+                                  is_same_process);
+      } else {
+        base::UmaHistogramBoolean("BackForwardCache.ProcessReuse.CrossSite",
+                                  is_same_process);
+      }
       auto stored_page = CollectPage(std::move(old_render_frame_host));
       auto entry =
           std::make_unique<BackForwardCacheImpl::Entry>(std::move(stored_page));
@@ -1354,8 +1368,44 @@ void RenderFrameHostManager::DidCreateNavigationRequest(
   }
 }
 
-void RenderFrameHostManager::PerformEarlyRenderFrameHostSwapIfNeeded(
+bool RenderFrameHostManager::ShouldPerformEarlySwapForNavigationTransition(
     NavigationRequest* request) {
+  if (!base::FeatureList::IsEnabled(
+          features::kEarlyDocumentSwapForBackForwardTransitions)) {
+    return false;
+  }
+
+  // Early swaps are allowed in outermost main frames only, as that's where
+  // a navigation transition may be shown.
+  if (!frame_tree_node_->IsOutermostMainFrame()) {
+    return false;
+  }
+
+  // Same-document navigations stay in the same RenderFrameHost and hence
+  // cannot do the early swap.
+  if (request->IsSameDocument()) {
+    return false;
+  }
+
+  // Only browser-initiated navigations are eligible for navigation transitions.
+  if (request->IsRendererInitiated()) {
+    return false;
+  }
+
+  // Check for back/forward history navigations.  These should have both the
+  // dest_site_instance() set from the NavigationEntry and have the back/forward
+  // page transition.  Note that this explicitly excludes reloads.
+  //
+  // TODO(alexmos, creis): For now, the early swap is done for all back/forward
+  // navigations.  In the future, there will be other APIs for deciding when to
+  // do it.
+  return request->dest_site_instance() &&
+         (request->GetPageTransition() & ui::PAGE_TRANSITION_FORWARD_BACK);
+}
+
+void RenderFrameHostManager::PerformEarlyRenderFrameHostSwapIfNeeded(
+    NavigationRequest* request,
+    bool is_called_after_did_start_navigation) {
   // The early swap is possible only when there's a speculative RenderFrameHost
   // to swap with the current one.
   if (!speculative_render_frame_host_) {
@@ -1374,32 +1424,54 @@ void RenderFrameHostManager::PerformEarlyRenderFrameHostSwapIfNeeded(
     return;
   }
 
-  // Currently, only non-live frames do the early swap.  This is possible in
-  // two cases: (1) if a frame's process dies (e.g., due to a crash or OOM),
-  // and (2) if we navigate a frame immediately after its creation, and the
-  // navigation cannot reuse the initial non-live RFH and must create a
-  // speculative RFH. The latter case is possible with WebUI and <webview>
-  // tags.
-  if (render_frame_host_->IsRenderFrameLive()) {
-    return;
-  }
-
-  // Skip the early swap if we explicitly do not want it when recovering from a
-  // crash.
-  if (ShouldSkipEarlyCommitPendingForCrashedFrame() &&
-      render_frame_host_->must_be_replaced()) {
-    return;
-  }
-
-  // Remember why the early swap is occurring for metrics. Note that we're
-  // being slightly imprecise here by using kCrashedFrame for
-  // must_be_replaced(), which includes all cases where a RenderFrameHost has
-  // had a process in the past but then lost it via RenderProcessGone, which
-  // also includes cases like OOM.
   using EarlySwapType = NavigationRequest::EarlyRenderFrameHostSwapType;
-  EarlySwapType early_swap_type = render_frame_host_->must_be_replaced()
-                                      ? EarlySwapType::kCrashedFrame
-                                      : EarlySwapType::kInitialFrame;
+  EarlySwapType early_swap_type = EarlySwapType::kNone;
+
+  // Currently, the early swap might be invoked in two places:
+  // - (Legacy timing) At the very beginning of navigation, as part of picking
+  //   the target RenderFrameHost via GetFrameHostForNavigation().
+  // - (New timing) After DidStartNavigation has been dispatched to observers
+  //   and WillStartRequest navigation throttle events have been processed.
+  //
+  // `is_called_after_did_start_navigation` determines which timing was used
+  // (legacy timing when false, new timing when true).  Currently, the legacy
+  // timing is used when doing early RenderFrameHost swap for initial and
+  // crashed frames, and the new timing is used for experimental early swaps for
+  // back/forward navigations. Eventually, we want to only have the new timing
+  // and to move all early swaps to happen after
+  // DidStartNavigation/WillStartRequest.  See crbug.com/1467011.
+  if (is_called_after_did_start_navigation) {
+    // Perform the early swap for navigations that will be subject to navigation
+    // transitions.
+    if (ShouldPerformEarlySwapForNavigationTransition(request)) {
+      early_swap_type = EarlySwapType::kNavigationTransition;
+    }
+  } else if (!render_frame_host_->IsRenderFrameLive()) {
+    // Currently, non-live frames do the early swap before reaching
+    // DidStartNavigation.  This is possible in two cases: (1) if a frame's
+    // process dies (e.g., due to a crash or OOM), and (2) if we navigate a
+    // frame immediately after its creation, and the navigation cannot reuse the
+    // initial non-live RFH and must create a speculative RFH.  For case (1),
+    // must_be_replaced() will always be true, but note that there's also an
+    // experimental feature that skips the early swap for case (1).  Case (2) is
+    // possible in cases like WebUI, <webview> tags, and dynamic isolation on
+    // Android.
+    if (render_frame_host_->must_be_replaced()) {
+      if (!ShouldSkipEarlyCommitPendingForCrashedFrame()) {
+        // Note that we're being slightly imprecise here by using
+        // kCrashedFrame for must_be_replaced(), which includes all cases
+        // where a RenderFrameHost has had a process in the past but then lost
+        // it via RenderProcessGone, which also includes cases like OOM.
+        early_swap_type = EarlySwapType::kCrashedFrame;
+      }
+    } else {
+      early_swap_type = EarlySwapType::kInitialFrame;
+    }
+  }
+
+  if (early_swap_type == EarlySwapType::kNone) {
+    return;
+  }
 
   // Now, proceed with the early swap. There's no reason to sit around with a
   // sad tab or a newly created RFH while we wait for the navigation to
@@ -1583,28 +1655,28 @@ RenderFrameHostManager::GetFrameHostForNavigation(
                                    use_current_rfh);
   bool notify_webui_of_rf_creation = request->HasWebUI();
 
+  // For navigation queueing, if the speculative RFH is already committing a
+  // cross-document navigation, avoid discarding it here: the commit needs to
+  // complete in order for the browser and the renderer state to remain in
+  // sync. See https://crbug.com/838348.
+  //
+  // In theory, it would be possible to simply avoid discarding it (see the
+  // later branch for avoiding redundant cancellations: however, this
+  // navigation race should be fairly rare, so for navigation queueing, do the
+  // simple thing and give up trying to assign a RenderFrameHost for the
+  // navigation.
+  if (ShouldQueueNavigationsWhenPendingCommitRFHExists() &&
+      request->ShouldQueueDueToExistingPendingCommitRFH()) {
+    return base::unexpected(
+        GetFrameHostForNavigationFailed::kBlockedByPendingCommit);
+  }
+
   // We only do this if the policy allows it and are recovering a crashed frame.
   bool recovering_without_early_commit =
       ShouldSkipEarlyCommitPendingForCrashedFrame() &&
       render_frame_host_->must_be_replaced();
   if (use_current_rfh) {
     AppendReason(reason, "GetFrameHostForNavigation / use-current-rfh");
-    // For navigation queueing, if the speculative RFH is already committing a
-    // cross-document navigation, avoid discarding it here: the commit needs to
-    // complete in order for the browser and the renderer state to remain in
-    // sync. See https://crbug.com/838348.
-    //
-    // In theory, it would be possible to simply avoid discarding it (see the
-    // later branch for avoiding redundant cancellations: however, this
-    // navigation race should be fairly rare, so for navigation queueing, do the
-    // simple thing and give up trying to assign a RenderFrameHost for the
-    // navigation.
-    if (ShouldQueueNavigationsWhenPendingCommitRFHExists() &&
-        request->ShouldQueueDueToExistingPendingCommitRFH()) {
-      return base::unexpected(
-          GetFrameHostForNavigationFailed::kBlockedByPendingCommit);
-    }
-
     navigation_rfh = render_frame_host_.get();
 
     // Set the associated RenderFrameHost type for the navigation, and discard
@@ -1636,19 +1708,6 @@ RenderFrameHostManager::GetFrameHostForNavigation(
         speculative_render_frame_host_->GetSiteInstance() !=
             dest_site_instance.get()) {
       AppendReason(reason, "GetFrameHostForNavigation / new-speculative-rfh");
-      // If a previous speculative RenderFrameHost didn't exist or if its
-      // SiteInstance differs from the one for the current URL, a new one needs
-      // to be created.
-      //
-      // However, if the speculative RFH is already committing a cross-document
-      // navigation, avoid discarding it now: the commit needs to complete in
-      // order for the browser and the renderer state to remain in sync. See
-      // https://crbug.com/838348.
-      if (ShouldQueueNavigationsWhenPendingCommitRFHExists() &&
-          request->ShouldQueueDueToExistingPendingCommitRFH()) {
-        return base::unexpected(
-            GetFrameHostForNavigationFailed::kBlockedByPendingCommit);
-      }
 
       // Determine if the old speculative RFH and new speculative RFH will use
       // the same process.  If so, add a reference to that process so that
@@ -1681,9 +1740,10 @@ RenderFrameHostManager::GetFrameHostForNavigation(
     request->SetAssociatedRFHType(
         NavigationRequest::AssociatedRenderFrameHostType::SPECULATIVE);
 
-    // TODO(crbug.com/1467011): Move the early swap to happen after
-    // DidStartNavigation.
-    PerformEarlyRenderFrameHostSwapIfNeeded(request);
+    // TODO(crbug.com/1467011): Move this early swap to happen after
+    // DidStartNavigation, together with the back/forward early swap.
+    PerformEarlyRenderFrameHostSwapIfNeeded(
+        request, /*is_called_after_did_start_navigation=*/false);
   }
 
   DCHECK(navigation_rfh &&
@@ -4522,7 +4582,8 @@ void RenderFrameHostManager::CommitPending(
     // not affect the visibility of the blink::WidgetBase. We should unify these
     // two visibility states to prevent them from drifting.
     old_view->Hide();
-    if (base::FeatureList::IsEnabled(kNavigationUpdatesChildViewsVisibility) &&
+    if (base::FeatureList::IsEnabled(
+            features::kNavigationUpdatesChildViewsVisibility) &&
         old_render_frame_host->child_count()) {
       old_render_frame_host->SetVisibilityForChildViews(false);
     }
@@ -4739,7 +4800,7 @@ void RenderFrameHostManager::CommitPending(
     if (!frame_tree_node_->frame_tree().IsHidden()) {
       new_view->Show();
       if (base::FeatureList::IsEnabled(
-              kNavigationUpdatesChildViewsVisibility) &&
+              features::kNavigationUpdatesChildViewsVisibility) &&
           render_frame_host_->child_count()) {
         render_frame_host_->SetVisibilityForChildViews(true);
       }

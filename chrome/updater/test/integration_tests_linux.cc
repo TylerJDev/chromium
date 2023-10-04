@@ -10,6 +10,7 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
 #include "base/path_service.h"
 #include "base/process/process_iterator.h"
@@ -23,7 +24,8 @@
 #include "chrome/updater/constants.h"
 #include "chrome/updater/external_constants_builder.h"
 #include "chrome/updater/linux/systemd_util.h"
-#include "chrome/updater/registration_data.h"
+#include "chrome/updater/persisted_data.h"
+#include "chrome/updater/prefs.h"
 #include "chrome/updater/service_proxy_factory.h"
 #include "chrome/updater/test/integration_tests_impl.h"
 #include "chrome/updater/update_service.h"
@@ -208,21 +210,17 @@ void ExpectLegacyUpdaterMigrated(UpdaterScope scope) {
 void InstallApp(UpdaterScope scope,
                 const std::string& app_id,
                 const base::Version& version) {
-  scoped_refptr<UpdateService> update_service = CreateUpdateServiceProxy(scope);
-  RegistrationRequest registration;
-  registration.app_id = app_id;
-  registration.version = version;
-  base::RunLoop loop;
-  update_service->RegisterApp(registration,
-                              base::BindLambdaForTesting([&loop](int result) {
-                                EXPECT_EQ(result, 0);
-                                loop.Quit();
-                              }));
-  loop.Run();
+  RegisterApp(scope, app_id, version);
 }
 
 void UninstallApp(UpdaterScope scope, const std::string& app_id) {
   // This can probably be combined with mac into integration_tests_posix.cc.
+  const base::FilePath& install_path =
+      base::MakeRefCounted<PersistedData>(
+          scope, CreateGlobalPrefs(scope)->GetPrefService())
+          ->GetExistenceCheckerPath(app_id);
+  VLOG(1) << "Deleting app install path: " << install_path;
+  base::DeletePathRecursively(install_path);
   SetExistenceCheckerPath(scope, app_id,
                           base::FilePath(FILE_PATH_LITERAL("NONE")));
 }
@@ -230,6 +228,10 @@ void UninstallApp(UpdaterScope scope, const std::string& app_id) {
 base::CommandLine MakeElevated(base::CommandLine command_line) {
   command_line.PrependWrapper("/usr/bin/sudo");
   return command_line;
+}
+
+void SetPlatformPolicies(const base::Value::Dict& values) {
+  // TODO(crbug.com/1464354): implement.
 }
 
 }  // namespace updater::test

@@ -213,12 +213,17 @@ struct HttpAuthStaticNetworkContextParams {
 
 [EnableIf=is_ct_supported]
 struct CTPolicy {
-  array<string> required_hosts;
   array<string> excluded_hosts;
   array<string> excluded_spkis;
   array<string> excluded_legacy_spkis;
 };
 
+// Some of the fields below point to sqlite databases. On Android, when the
+// network service is sandboxed, those paths are also tracked by a sqlite
+// SandboxedVFSDelegate so that the browser knows which paths are safe to open
+// databases in. Any new sqlite databases used here will need to similarly
+// update the list of paths the browser can open in a sandboxed network service
+// on Android.
 struct NetworkContextFilePaths {
   // Points to the shared dictionary directory containing the sqlite database
   // file named "db" for metadata and the disk cache directory named "cache".
@@ -439,12 +444,13 @@ struct NetworkContextParams {
   pending_remote<ProxyErrorClient>? proxy_error_client;
 
   // Broker used by the network service sandbox to create sockets in
-  // the browser. Set when the sandbox is enabled.
+  // the browser. Set when the sandbox is enabled on Windows.
+  [EnableIf=is_win]
   pending_remote<SocketBroker>? socket_broker;
 
   // A service to fetch blind-signed auth tokens for IP protection. If this
   // is not set, then no tokens are available.
-  pending_remote<IpProtectionAuthTokenGetter>? ip_protection_auth_token_getter;
+  pending_remote<IpProtectionConfigGetter>? ip_protection_config_getter;
 
   // When PAC quick checking is enabled, DNS lookups for PAC script's host are
   // timed out aggressively. This prevents hanging all network request on DNS
@@ -580,6 +586,20 @@ struct NetworkContextParams {
   // TODO(crbug.com/1228178): This flag is intended to be temporary and to be
   // removed (always enabled) in the future.
   bool acam_preflight_spec_conformant = true;
+
+  // To support 3PCD experimentation, a per-partition `cookie_deprecation_label`
+  // will be sent to developers who opt-in to receiving it. This enables server
+  // side opt-in to testing without cookies. See:
+  // https://developer.chrome.com/en/docs/privacy-sandbox/chrome-testing/#mode-a
+  string? cookie_deprecation_label;
+
+  // Whether the experimental AFP block list is enabled for this NetworkContext.
+  // Default is false and will only be true if a feature corresponding to the
+  // type of NetworkContext is enabled.
+  // TODO(crbug.com/1478868): This is an interim field only for AFP block list
+  // experiment. This field should not be used for other use cases. This will
+  // be removed when AFP block list logic is migrated to subresource filter.
+  bool afp_block_list_experiment_enabled = false;
 };
 
 struct NetworkConditions {
@@ -895,7 +915,7 @@ struct BlindSignedAuthToken {
 };
 
 // A source for new BlindSignedAuthTokens.
-interface IpProtectionAuthTokenGetter {
+interface IpProtectionConfigGetter {
   // Try to get a batch of new tokens.
   //
   // This may take some time, if external network requests are required. If no
@@ -908,6 +928,14 @@ interface IpProtectionAuthTokenGetter {
   TryGetAuthTokens(uint32 batch_size) =>
     (array<BlindSignedAuthToken>? bsa_tokens,
      mojo_base.mojom.Time? try_again_after);
+
+  // Get the list of IP Protection proxies. The list contains proxy hostnames,
+  // in order of preference. Callers should prefer the first proxy, falling
+  // back to later proxies in the list. All proxies are implicitly HTTPS.
+  //
+  // This method will return an up-to-date list, possibly fetching that list
+  // remotely before returning it.
+  GetProxyList() => (array<string>? proxy_list);
 };
 
 // Represents a distinct context for making network requests, with its own
@@ -1481,9 +1509,22 @@ interface NetworkContext {
                                                    bool pkp_bypassed,
                                                    string pinning_failure_log);
 
-  // Initiates an IP Protection token request to the browser process and
-  // returns a received token, for testing.
-  VerifyIpProtectionAuthTokenGetterForTesting() => (BlindSignedAuthToken token);
+  // Used to facilitate cross-process testing of the IP Protection feature. This
+  // method will:
+  //  - Disable active cache management and reset the IP Protection cache to a
+  //    no-tokens and no-cooldown state, and,
+  //  - Return the current cooldown if one has been set, or,
+  //  - Initiate an IP Protection token request to the browser process and
+  //    return either a returned token or the returned cooldown time
+  VerifyIpProtectionConfigGetterForTesting()
+      => (BlindSignedAuthToken? bsa_token,
+          mojo_base.mojom.Time? try_again_after);
+
+  // Indicates that the IP Protection config cache in the Network Service should
+  // no longer wait before requesting tokens from the browser process (called in
+  // response to user account status changes that allow IP Protection to start
+  // working as expected).
+  InvalidateIpProtectionConfigCacheTryAgainAfterTime();
 
   // Adds explicitly-specified data as if it was processed from an
   // HSTS header. Used by tests and implementation of chrome://net-internals.
@@ -1628,4 +1669,11 @@ interface NetworkContext {
   // `client_token` identifies which client has changed its visibility.
   ResourceSchedulerClientVisibilityChanged(
       mojo_base.mojom.UnguessableToken client_token, bool visible);
+
+  // Will flush cached client certificate for `host` if `certificate`
+  // doesn't match the corresponding cached certificate.
+  FlushCachedClientCertIfNeeded(HostPortPair host, X509Certificate certificate);
+
+ // Sets cookie deprecation label.
+  SetCookieDeprecationLabel(string? label);
 };

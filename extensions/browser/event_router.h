@@ -111,7 +111,8 @@ class EventRouter : public KeyedService,
    public:
     virtual ~TestObserver() = default;
     virtual void OnWillDispatchEvent(const Event& event) = 0;
-    virtual void OnDidDispatchEventToProcess(const Event& event) = 0;
+    virtual void OnDidDispatchEventToProcess(const Event& event,
+                                             int process_id) = 0;
   };
 
   // Gets the EventRouter for |browser_context|.
@@ -357,6 +358,8 @@ class EventRouter : public KeyedService,
                            ExtensionUpdatedEventOnPermissionsChange);
   FRIEND_TEST_ALL_PREFIXES(DeveloperPrivateApiUnitTest,
                            OnUserSiteSettingsChanged);
+  FRIEND_TEST_ALL_PREFIXES(DeveloperPrivateApiUnitTest,
+                           ExtensionUpdatedEventOnPinnedActionsChange);
   FRIEND_TEST_ALL_PREFIXES(DeveloperPrivateApiAllowlistUnitTest,
                            ExtensionUpdatedEventOnAllowlistWarningChange);
   FRIEND_TEST_ALL_PREFIXES(DeveloperPrivateApiWithPermittedSitesUnitTest,

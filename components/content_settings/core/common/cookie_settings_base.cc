@@ -146,15 +146,18 @@ bool CookieSettingsBase::IsFullCookieAccessAllowed(
     const GURL& url,
     const net::SiteForCookies& site_for_cookies,
     const absl::optional<url::Origin>& top_frame_origin,
-    net::CookieSettingOverrides overrides) const {
-  ContentSetting setting =
-      GetCookieSettingInternal(
-          url,
-          GetFirstPartyURL(site_for_cookies,
-                           base::OptionalToPtr(top_frame_origin)),
-          IsThirdPartyRequest(url, site_for_cookies), overrides, nullptr)
-          .cookie_setting();
-  return IsAllowed(setting);
+    net::CookieSettingOverrides overrides,
+    CookieSettingWithMetadata* cookie_settings) const {
+  CookieSettingWithMetadata setting = GetCookieSettingInternal(
+      url,
+      GetFirstPartyURL(site_for_cookies, base::OptionalToPtr(top_frame_origin)),
+      IsThirdPartyRequest(url, site_for_cookies), overrides, nullptr);
+
+  if (cookie_settings) {
+    *cookie_settings = setting;
+  }
+
+  return IsAllowed(setting.cookie_setting());
 }
 
 bool CookieSettingsBase::IsCookieSessionOnly(const GURL& origin) const {
@@ -189,8 +192,13 @@ CookieSettingsBase::GetCookieAccessSemanticsForDomain(
 
 bool CookieSettingsBase::ShouldConsider3pcdSupportSettings(
     net::CookieSettingOverrides overrides) const {
-  return base::FeatureList::IsEnabled(net::features::kTpcdSupportSettings) &&
-         overrides.Has(net::CookieSettingOverride::k3pcdSupport);
+  // TODO(crbug.com/1466156): Once able, check that third-party cookie blocking
+  // isn't being forced.
+  return base::FeatureList::IsEnabled(net::features::kTpcdSupportSettings);
+}
+
+bool CookieSettingsBase::ShouldConsider3pcdMetadataGrantsSettings() const {
+  return base::FeatureList::IsEnabled(net::features::kTpcdMetadataGrants);
 }
 
 bool CookieSettingsBase::ShouldConsiderStorageAccessGrants(
@@ -208,9 +216,6 @@ net::CookieSettingOverrides CookieSettingsBase::SettingOverridesForStorage()
   if (is_storage_partitioned_) {
     overrides.Put(
         net::CookieSettingOverride::kTopLevelStorageAccessGrantEligible);
-    // TODO(crbug.com/1466156): Revisit whether the global setting/pref should
-    // be checked here.
-    overrides.Put(net::CookieSettingOverride::k3pcdSupport);
   }
   return overrides;
 }
@@ -256,6 +261,14 @@ CookieSettingsBase::GetCookieSettingInternal(
   if (IsAllowed(setting) && !block_third) {
     FireStorageAccessHistogram(
         net::cookie_util::StorageAccessResult::ACCESS_ALLOWED);
+  }
+
+  if (block_third && ShouldConsider3pcdMetadataGrantsSettings() &&
+      IsAllowed(GetContentSetting(url, first_party_url,
+                                  ContentSettingsType::TPCD_METADATA_GRANTS))) {
+    block_third = false;
+    FireStorageAccessHistogram(net::cookie_util::StorageAccessResult::
+                                   ACCESS_ALLOWED_3PCD_METADATA_GRANT);
   }
 
   if (block_third) {

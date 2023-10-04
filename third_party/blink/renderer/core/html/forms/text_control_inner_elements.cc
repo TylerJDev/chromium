@@ -37,7 +37,7 @@
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/html_names.h"
-#include "third_party/blink/renderer/core/layout/ng/layout_ng_text_control_inner_editor.h"
+#include "third_party/blink/renderer/core/layout/forms/layout_text_control_inner_editor.h"
 
 namespace blink {
 
@@ -47,8 +47,8 @@ EditingViewPortElement::EditingViewPortElement(Document& document)
   setAttribute(html_names::kIdAttr, shadow_element_names::kIdEditingViewPort);
 }
 
-scoped_refptr<const ComputedStyle>
-EditingViewPortElement::CustomStyleForLayoutObject(const StyleRecalcContext&) {
+const ComputedStyle* EditingViewPortElement::CustomStyleForLayoutObject(
+    const StyleRecalcContext&) {
   // FXIME: Move these styles to html.css.
 
   ComputedStyleBuilder style_builder =
@@ -124,11 +124,10 @@ void TextControlInnerEditorElement::FocusChanged() {
 
 LayoutObject* TextControlInnerEditorElement::CreateLayoutObject(
     const ComputedStyle&) {
-  return MakeGarbageCollected<LayoutNGTextControlInnerEditor>(this);
+  return MakeGarbageCollected<LayoutTextControlInnerEditor>(this);
 }
 
-scoped_refptr<const ComputedStyle>
-TextControlInnerEditorElement::CustomStyleForLayoutObject(
+const ComputedStyle* TextControlInnerEditorElement::CustomStyleForLayoutObject(
     const StyleRecalcContext&) {
   Element* host = OwnerShadowHost();
   DCHECK(host);
@@ -199,7 +198,7 @@ TextControlInnerEditorElement::CustomStyleForLayoutObject(
   if (!is_visible_)
     style_builder.SetOpacity(0);
 
-  scoped_refptr<const ComputedStyle> style = style_builder.TakeStyle();
+  const ComputedStyle* style = style_builder.TakeStyle();
 
   if (style->HasPseudoElementStyle(kPseudoIdScrollbar)) {
     ComputedStyleBuilder no_scrollbar_style_builder =

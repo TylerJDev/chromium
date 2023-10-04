@@ -48,7 +48,7 @@
 #include "third_party/blink/renderer/modules/mediastream/test/transfer_test_utils.h"
 #include "third_party/blink/renderer/modules/peerconnection/rtc_certificate.h"
 #include "third_party/blink/renderer/modules/peerconnection/rtc_certificate_generator.h"
-#include "third_party/blink/renderer/modules/webcodecs/allow_shared_buffer_source_util.h"
+#include "third_party/blink/renderer/modules/webcodecs/array_buffer_util.h"
 #include "third_party/blink/renderer/modules/webcodecs/audio_data.h"
 #include "third_party/blink/renderer/modules/webcodecs/audio_data_transfer_list.h"
 #include "third_party/blink/renderer/modules/webcodecs/video_frame.h"
@@ -1132,8 +1132,8 @@ TEST(V8ScriptValueSerializerForModulesTest, RoundTripDOMFileSystem) {
 TEST(V8ScriptValueSerializerForModulesTest, RoundTripDOMFileSystemNotClonable) {
   V8TestingScope scope;
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
 
   auto* fs = MakeGarbageCollected<DOMFileSystem>(
       scope.GetExecutionContext(), "http_example.com_0:Persistent",
@@ -1261,8 +1261,8 @@ TEST(V8ScriptValueSerializerForModulesTest, TransferVideoFrame) {
 TEST(V8ScriptValueSerializerForModulesTest, ClosedVideoFrameThrows) {
   V8TestingScope scope;
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
 
   const gfx::Size kFrameSize(600, 480);
   scoped_refptr<media::VideoFrame> media_frame =
@@ -1383,8 +1383,8 @@ TEST(V8ScriptValueSerializerForModulesTest, TransferAudioData) {
 TEST(V8ScriptValueSerializerForModulesTest, ClosedAudioDataThrows) {
   V8TestingScope scope;
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
 
   auto audio_buffer = media::AudioBuffer::CreateEmptyBuffer(
       media::ChannelLayout::CHANNEL_LAYOUT_STEREO,
@@ -1537,8 +1537,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
   MediaStreamComponent* video_component = MakeTabCaptureVideoComponentForTest(
       &scope.GetFrame(), base::UnguessableToken::Create());
   MediaStreamComponent* audio_component =
@@ -1605,8 +1605,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   serialize_options.transferables = &transferables;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
   EXPECT_FALSE(
       V8ScriptValueSerializerForModules(script_state, serialize_options)
           .Serialize(wrapper, exception_state));
@@ -1657,8 +1657,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   serialize_options.transferables = &transferables;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
   EXPECT_FALSE(
       V8ScriptValueSerializerForModules(script_state, serialize_options)
           .Serialize(wrapper, exception_state));
@@ -1709,8 +1709,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   serialize_options.transferables = &transferables;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
   EXPECT_FALSE(
       V8ScriptValueSerializerForModules(script_state, serialize_options)
           .Serialize(wrapper, exception_state));
@@ -1724,8 +1724,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
 
   MediaStreamComponent* component = MakeTabCaptureVideoComponentForTest(
       &scope.GetFrame(), base::UnguessableToken::Create());
@@ -1755,8 +1755,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
 
   MediaStreamComponent* component = MakeTabCaptureVideoComponentForTest(
       &scope.GetFrame(), base::UnguessableToken::Create());
@@ -1787,8 +1787,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform;
   ScriptState* script_state = scope.GetScriptState();
   ExceptionState exception_state(scope.GetIsolate(),
-                                 ExceptionState::kExecutionContext, "Window",
-                                 "postMessage");
+                                 ExceptionContextType::kOperationInvoke,
+                                 "Window", "postMessage");
 
   auto mock_source = std::make_unique<MediaStreamVideoCapturerSource>(
       scope.GetFrame().GetTaskRunner(TaskType::kInternalMediaRealTime),
@@ -1847,7 +1847,7 @@ TEST(V8ScriptValueSerializerForModulesTest, RoundTripCropTarget) {
   CropTarget* const new_crop_target =
       V8CropTarget::ToWrappable(scope.GetIsolate(), result);
   ASSERT_NE(new_crop_target, nullptr);
-  EXPECT_EQ(new_crop_target->GetCropId(), crop_id);
+  EXPECT_EQ(new_crop_target->GetId(), crop_id);
 }
 #endif
 
@@ -1870,8 +1870,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   transferables.array_buffers.push_back(ab);
   V8ScriptValueSerializer::Options serialize_options;
   serialize_options.transferables = &transferables;
-  ExceptionState exception_state(isolate, ExceptionState::kExecutionContext,
-                                 "Window", "postMessage");
+  ExceptionState exception_state(
+      isolate, ExceptionContextType::kOperationInvoke, "Window", "postMessage");
   EXPECT_FALSE(
       V8ScriptValueSerializerForModules(script_state, serialize_options)
           .Serialize(v8_ab, exception_state));
@@ -1900,8 +1900,8 @@ TEST(V8ScriptValueSerializerForModulesTest,
   // Attempt to serialize the ArrayBuffer. It should not fail with a TypeError
   // even though it has an ArrayBufferDetachKey because it will not be detached.
   V8ScriptValueSerializer::Options serialize_options;
-  ExceptionState exception_state(isolate, ExceptionState::kExecutionContext,
-                                 "Window", "postMessage");
+  ExceptionState exception_state(
+      isolate, ExceptionContextType::kOperationInvoke, "Window", "postMessage");
   EXPECT_TRUE(V8ScriptValueSerializerForModules(script_state, serialize_options)
                   .Serialize(v8_ab, exception_state));
   EXPECT_FALSE(exception_state.HadException());

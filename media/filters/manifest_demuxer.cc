@@ -65,6 +65,7 @@ bool ManifestDemuxer::ManifestDemuxerStream::SupportsConfigChanges() {
 
 ManifestDemuxer::~ManifestDemuxer() {
   DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
+  impl_->Stop();
   impl_.reset();
   chunk_demuxer_.reset();
 }
@@ -231,7 +232,6 @@ void ManifestDemuxer::SeekInternal() {
 }
 
 bool ManifestDemuxer::IsSeekable() const {
-  DCHECK(!media_task_runner_->RunsTasksInCurrentSequence());
   return impl_->IsSeekable();
 }
 
@@ -363,6 +363,7 @@ void ManifestDemuxer::RemoveAndReset(base::StringPiece role,
   CHECK(chunk_demuxer_);
   Remove(role, start, end);
   chunk_demuxer_->ResetParserState(std::string(role), start, end, offset);
+  chunk_demuxer_->AbortPendingReads();
 }
 
 void ManifestDemuxer::SetGroupStartIfParsingAndSequenceMode(

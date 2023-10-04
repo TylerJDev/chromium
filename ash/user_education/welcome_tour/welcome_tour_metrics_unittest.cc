@@ -19,6 +19,11 @@
 namespace ash::welcome_tour_metrics {
 namespace {
 
+// Constants -------------------------------------------------------------------
+
+static constexpr auto kAllStepsSet =
+    base::EnumSet<Step, Step::kMinValue, Step::kMaxValue>::All();
+
 // Helpers ---------------------------------------------------------------------
 
 // Clears the pref with the given `pref_name`. Must be called when there is an
@@ -30,14 +35,15 @@ void ClearPref(const std::string& pref_name) {
 
 }  // namespace
 
-// WelcomeTourMetricsTest ------------------------------------------------------
+// WelcomeTourInteractionMetricsTest -------------------------------------------
 
-// Base class for tests that verify metrics are properly submitted.
-class WelcomeTourMetricsTest
+// Base class for tests that verify Welcome Tour Interaction metrics are
+// properly submitted.
+class WelcomeTourInteractionMetricsTest
     : public UserEducationAshTestBase,
       public ::testing::WithParamInterface<absl::optional<PreventedReason>> {
  public:
-  WelcomeTourMetricsTest() {
+  WelcomeTourInteractionMetricsTest() {
     scoped_feature_list.InitAndEnableFeatureWithParameters(
         features::kWelcomeTour,
         {{"is-counterfactual", IsCounterfactual() ? "true" : "false"}});
@@ -86,7 +92,7 @@ class WelcomeTourMetricsTest
 
 INSTANTIATE_TEST_SUITE_P(
     All,
-    WelcomeTourMetricsTest,
+    WelcomeTourInteractionMetricsTest,
     ::testing::Values(
         absl::nullopt,
         absl::make_optional(PreventedReason::kCounterfactualExperimentArm),
@@ -96,7 +102,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 // Verifies that, when an `Interaction` is recorded for the first time, the
 // appropriate histogram is submitted.
-TEST_P(WelcomeTourMetricsTest, RecordInteraction) {
+TEST_P(WelcomeTourInteractionMetricsTest, RecordInteraction) {
   SimulateNewUserFirstLogin("user@test");
   ClearPref("ash.welcome_tour.prevented.first_reason");
   ClearPref("ash.welcome_tour.prevented.first_time");
@@ -169,6 +175,15 @@ TEST_P(WelcomeTourMetricsTest, RecordInteraction) {
   }
 }
 
+// Verifies that attempting to record an interaction before login doesn't crash.
+TEST_P(WelcomeTourInteractionMetricsTest, RecordInteractionBeforeLogin) {
+  EXPECT_FALSE(
+      Shell::Get()->session_controller()->GetLastActiveUserPrefService());
+  for (auto interaction : kAllInteractionsSet) {
+    RecordInteraction(interaction);
+  }
+}
+
 // WelcomeTourMetricsEnumTest --------------------------------------------------
 
 // Base class of tests that verify all valid enum values and no other are
@@ -186,6 +201,7 @@ TEST_F(WelcomeTourMetricsEnumTest, AllInteractions) {
     bool should_exist_in_all_set = false;
 
     switch (interaction) {
+      case Interaction::kExploreApp:
       case Interaction::kFilesApp:
       case Interaction::kLauncher:
       case Interaction::kQuickSettings:
@@ -221,6 +237,121 @@ TEST_F(WelcomeTourMetricsEnumTest, AllPreventedReasons) {
 
     EXPECT_EQ(kAllPreventedReasonsSet.Has(reason), should_exist_in_all_set);
   }
+}
+
+// WelcomeTourMetricsTest ------------------------------------------------------
+
+// Base class for tests that verify Welcome Tour metrics are properly submitted.
+class WelcomeTourMetricsTest : public UserEducationAshTestBase {
+ protected:
+  // Verifies that `record_function` will successfully record all enum values in
+  // `valid_enum_set` to a histogram with name `metric_name`.
+  template <typename E>
+  static void TestEnumHistogram(
+      const std::string& metric_name,
+      base::EnumSet<E, E::kMinValue, E::kMaxValue> valid_enum_set,
+      base::FunctionRef<void(E)> record_function) {
+    static_assert(std::is_enum<E>::value);
+
+    for (auto value : valid_enum_set) {
+      base::HistogramTester histogram_tester;
+
+      record_function(value);
+      histogram_tester.ExpectBucketCount(metric_name, value, 1);
+      histogram_tester.ExpectTotalCount(metric_name, 1);
+    }
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_{features::kWelcomeTour};
+};
+
+// Tests -----------------------------------------------------------------------
+
+// Verifies that all valid values of the `Step` enum can be successfully
+// recorded by the `RecordStepAborted()` utility function.
+TEST_F(WelcomeTourMetricsTest, RecordStepAborted) {
+  TestEnumHistogram<Step>("Ash.WelcomeTour.Step.Aborted", kAllStepsSet,
+                          &RecordStepAborted);
+}
+
+// Verifies that all valid values of the `Step` enum record their associated
+// duration metrics through the `RecordStepDuration()` utility function.
+TEST_F(WelcomeTourMetricsTest, RecordStepDuration) {
+  base::HistogramTester histogram_tester;
+  for (auto step : kAllStepsSet) {
+    const auto step_duration_metric_name =
+        base::StrCat({"Ash.WelcomeTour.Step.Duration.", ToString(step)});
+
+    const auto test_step_length = base::Seconds(10);
+    histogram_tester.ExpectTotalCount(step_duration_metric_name, 0);
+    histogram_tester.ExpectTimeBucketCount(step_duration_metric_name,
+                                           test_step_length, 0);
+    RecordStepDuration(step, test_step_length);
+    histogram_tester.ExpectTotalCount(step_duration_metric_name, 1);
+    histogram_tester.ExpectTimeBucketCount(step_duration_metric_name,
+                                           test_step_length, 1);
+  }
+}
+
+// Verifies that all valid values of the `Step` enum can be successfully
+// recorded by the `RecordStepShown()` utility function.
+TEST_F(WelcomeTourMetricsTest, RecordStepShown) {
+  TestEnumHistogram<Step>("Ash.WelcomeTour.Step.Shown", kAllStepsSet,
+                          &RecordStepShown);
+}
+
+// Verifies that all valid values of the `AbortedReason` enum can be
+// successfully recorded by the `RecordTourAborted()` utility function.
+TEST_F(WelcomeTourMetricsTest, RecordTourAborted) {
+  using AbortedReasonSetType =
+      base::EnumSet<AbortedReason, AbortedReason::kMinValue,
+                    AbortedReason::kMaxValue>;
+
+  TestEnumHistogram<AbortedReason>("Ash.WelcomeTour.Aborted.Reason",
+                                   AbortedReasonSetType::All(),
+                                   &RecordTourAborted);
+}
+
+TEST_F(WelcomeTourMetricsTest, RecordTourDuration) {
+  static constexpr char kAbortedTourDurationMetricName[] =
+      "Ash.WelcomeTour.Aborted.Duration";
+  static constexpr char kCompletedTourDurationMetricName[] =
+      "Ash.WelcomeTour.Completed.Duration";
+  static constexpr auto kTestTourLength = base::Seconds(30);
+
+  SimulateNewUserFirstLogin("user@test");
+
+  // Case: Tour is aborted.
+  {
+    base::HistogramTester histogram_tester;
+
+    RecordTourDuration(kTestTourLength, /*completed=*/false);
+    histogram_tester.ExpectTotalCount(kAbortedTourDurationMetricName, 1);
+    histogram_tester.ExpectTotalCount(kCompletedTourDurationMetricName, 0);
+    histogram_tester.ExpectTimeBucketCount(kAbortedTourDurationMetricName,
+                                           kTestTourLength, 1);
+  }
+
+  // Case: Tour is completed.
+  {
+    base::HistogramTester histogram_tester;
+
+    RecordTourDuration(kTestTourLength, /*completed=*/true);
+    histogram_tester.ExpectTotalCount(kAbortedTourDurationMetricName, 0);
+    histogram_tester.ExpectTotalCount(kCompletedTourDurationMetricName, 1);
+    histogram_tester.ExpectTimeBucketCount(kCompletedTourDurationMetricName,
+                                           kTestTourLength, 1);
+  }
+}
+
+// Verifies that all valid values of the `PreventedReason` enum can be
+// successfully recorded by the `RecordTourPrevented()` utility function.
+TEST_F(WelcomeTourMetricsTest, RecordTourPrevented) {
+  SimulateNewUserFirstLogin("user@test");
+  TestEnumHistogram<PreventedReason>("Ash.WelcomeTour.Prevented.Reason",
+                                     kAllPreventedReasonsSet,
+                                     &RecordTourPrevented);
 }
 
 }  // namespace ash::welcome_tour_metrics

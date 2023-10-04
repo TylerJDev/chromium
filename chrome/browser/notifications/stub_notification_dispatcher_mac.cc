@@ -12,7 +12,10 @@
 
 #include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
+#include "chrome/browser/notifications/notification_platform_bridge.h"
 #include "chrome/browser/notifications/notification_platform_bridge_mac_utils.h"
+#include "chrome/browser/profiles/profile.h"
+#include "url/origin.h"
 
 StubNotificationDispatcherMac::StubNotificationDispatcherMac() = default;
 
@@ -22,6 +25,9 @@ void StubNotificationDispatcherMac::DisplayNotification(
     NotificationHandler::Type notification_type,
     Profile* profile,
     const message_center::Notification& notification) {
+  CloseNotificationWithId({notification.id(),
+                           NotificationPlatformBridge::GetProfileId(profile),
+                           profile->IsOffTheRecord()});
   notifications_.push_back(
       CreateMacNotification(notification_type, profile, notification));
 }
@@ -65,8 +71,28 @@ void StubNotificationDispatcherMac::GetDisplayedNotificationsForProfileId(
   for (const auto& notification : notifications_) {
     const auto& notification_id = notification->meta->id->id;
     const auto& profile = notification->meta->id->profile;
-    if (profile->id == profile_id && profile->incognito == incognito)
+    if (profile->id == profile_id && profile->incognito == incognito) {
       notifications.insert(notification_id);
+    }
+  }
+  std::move(callback).Run(std::move(notifications),
+                          /*supports_synchronization=*/true);
+}
+
+void StubNotificationDispatcherMac::
+    GetDisplayedNotificationsForProfileIdAndOrigin(
+        const std::string& profile_id,
+        bool incognito,
+        const GURL& origin,
+        GetDisplayedNotificationsCallback callback) {
+  std::set<std::string> notifications;
+  for (const auto& notification : notifications_) {
+    const auto& notification_id = notification->meta->id->id;
+    const auto& profile = notification->meta->id->profile;
+    if (profile->id == profile_id && profile->incognito == incognito &&
+        url::IsSameOriginWith(notification->meta->origin_url, origin)) {
+      notifications.insert(notification_id);
+    }
   }
   std::move(callback).Run(std::move(notifications),
                           /*supports_synchronization=*/true);

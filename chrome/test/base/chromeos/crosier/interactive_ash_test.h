@@ -7,11 +7,13 @@
 
 #include <memory>
 
+#include "base/files/scoped_temp_dir.h"
 #include "base/memory/weak_ptr.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/test/base/mixin_based_in_process_browser_test.h"
 #include "chrome/test/interaction/interactive_browser_test.h"
 #include "content/public/test/browser_test.h"
+#include "ui/base/interaction/interaction_sequence.h"
 
 #if BUILDFLAG(IS_CHROMEOS_DEVICE)
 #include "chrome/test/base/chromeos/crosier/chromeos_integration_test_mixin.h"
@@ -19,6 +21,10 @@
 
 class GURL;
 class Profile;
+
+namespace base {
+class CommandLine;
+}
 
 namespace content {
 class NavigationHandle;
@@ -75,6 +81,39 @@ class InteractiveAshTest
   // browser_navigator.h.
   base::WeakPtr<content::NavigationHandle> CreateBrowserWindow(const GURL& url);
 
+  // Sets up the command line and environment variables to support Lacros (by
+  // enabling the Wayland server in ash). Call this from SetUpCommandLine() if
+  // your test starts Lacros.
+  void SetUpCommandLineForLacros(base::CommandLine* command_line);
+
+  // Waits for Ash to be ready for Lacros, including starting the "Exo" Wayland
+  // server. Call this method if your test starts Lacros, otherwise Exo may not
+  // be ready and Lacros may not start.
+  // TODO(http://b/297930282): Ensure we compile ToT Lacros and use it when
+  // testing ToT ash. The rootfs Lacros may be too old to run with ToT ash.
+  void WaitForAshFullyStarted();
+
+  // MixinBasedInProcessBrowserTest:
+  void TearDownOnMainThread() override;
+
+  // Blocks until a window exists with the given title. If a matching window
+  // already exists the test will resume immediately.
+  ui::test::internal::InteractiveTestPrivate::MultiStep WaitForWindowWithTitle(
+      aura::Env* env,
+      std::u16string title);
+
+  // Waits for an element identified by `query` to exist in the DOM of an
+  // instrumented WebUI identified by `element_id`.
+  ui::test::internal::InteractiveTestPrivate::MultiStep WaitForElementExists(
+      const ui::ElementIdentifier& element_id,
+      const DeepQuery& query);
+
+  // Waits for an element identified by `query` to not exist in the DOM of an
+  // instrumented WebUI identified by `element_id`.
+  ui::test::internal::InteractiveTestPrivate::MultiStep
+  WaitForElementDoesNotExist(const ui::ElementIdentifier& element_id,
+                             const DeepQuery& query);
+
  private:
 #if BUILDFLAG(IS_CHROMEOS_DEVICE)
   // This test runs on linux-chromeos in interactive_ui_tests and on a DUT in
@@ -88,6 +127,9 @@ class InteractiveAshTest
   std::unique_ptr<FakeSessionManagerClientBrowserHelper>
       fake_session_manager_client_helper_;
 #endif
+
+  // Directory used by Wayland/Lacros in environment variable XDG_RUNTIME_DIR.
+  base::ScopedTempDir scoped_temp_dir_xdg_;
 };
 
 #endif  // CHROME_TEST_BASE_CHROMEOS_CROSIER_INTERACTIVE_ASH_TEST_H_

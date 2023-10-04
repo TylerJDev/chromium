@@ -26,7 +26,6 @@ import org.chromium.base.TraceEvent;
 import org.chromium.base.metrics.TimingMetric;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.omnibox.OmniboxFeatures;
 import org.chromium.chrome.browser.omnibox.OmniboxMetrics;
 import org.chromium.chrome.browser.omnibox.R;
@@ -82,6 +81,7 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
     @VisibleForTesting
     /* package */ class SuggestionLayoutScrollListener extends LinearLayoutManager {
         private boolean mLastKeyboardShownState;
+        private boolean mCurrentGestureAffectedKeyboardState;
 
         public SuggestionLayoutScrollListener(Context context) {
             super(context);
@@ -119,6 +119,12 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
         @VisibleForTesting
         /* package */ int updateKeyboardVisibilityAndScroll(
                 int resultingDeltaY, int requestedDeltaY) {
+            // Change keyboard visibility only once per gesture.
+            // This helps in situations where the user interacts with the horizontal caoursel (e.g.
+            // the Most Visited Sites), where a horizontal finger swipe could result in a series of
+            // keyboard show/hide events.
+            if (mCurrentGestureAffectedKeyboardState) return resultingDeltaY;
+
             // If the effective scroll distance is:
             // - same as the desired one, we have enough content to scroll in a given direction
             //   (negative values = up, positive values = down).
@@ -138,8 +144,9 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
             //    visibility), or
             // 2. the list is too short, and almost entirely fits on the screen, leaving at most
             //    just a few pixels of content hiding under the keyboard.
-            // There's no need to dismiss the keyboard in any of these cases.
-            if (resultingDeltaY < requestedDeltaY) return resultingDeltaY;
+            // Note that the list may extend below the keyboard and still be non-scrollable:
+            // http://crbug/1479437
+
             // Otherwise decide whether keyboard should be shown or not.
             // We want to call keyboard up only when we know we reached the top of the list.
             // Note: the condition below evaluates `true` only if the scroll direction is "up",
@@ -151,6 +158,7 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
 
             if (mLastKeyboardShownState == keyboardShouldShow) return resultingDeltaY;
             mLastKeyboardShownState = keyboardShouldShow;
+            mCurrentGestureAffectedKeyboardState = true;
 
             if (keyboardShouldShow) {
                 if (mSuggestionDropdownOverscrolledToTopListener != null) {
@@ -181,6 +189,15 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
         @VisibleForTesting
         /* package */ void resetKeyboardShownState() {
             mLastKeyboardShownState = true;
+            mCurrentGestureAffectedKeyboardState = false;
+        }
+
+        /**
+         * Reset internal state, preparing to handle a new gesture.
+         * Note: currently invoked both when a gesture begins and ends.
+         */
+        /* package */ void onNewGesture() {
+            mCurrentGestureAffectedKeyboardState = false;
         }
     }
 
@@ -212,9 +229,7 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
                 ? ChromeColors.getSurfaceColor(
                         context, R.dimen.omnibox_suggestion_dropdown_bg_elevation)
                 : ChromeColors.getDefaultThemeColor(context, false);
-        int incognitoBgColorRes = ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                ? R.color.default_bg_color_dark_elev_1_gm3_baseline
-                : R.color.omnibox_dropdown_bg_incognito;
+        int incognitoBgColorRes = R.color.omnibox_dropdown_bg_incognito;
         mIncognitoBgColor = shouldShowModernizeVisualUpdate
                 ? context.getColor(incognitoBgColorRes)
                 : ChromeColors.getDefaultThemeColor(context, true);
@@ -340,7 +355,8 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         try (TraceEvent tracing = TraceEvent.scoped("OmniboxSuggestionsList.Measure");
-                TimingMetric metric = OmniboxMetrics.recordSuggestionListMeasureTime()) {
+                TimingMetric metric = OmniboxMetrics.recordSuggestionListMeasureTime();
+                TimingMetric metric2 = OmniboxMetrics.recordSuggestionListMeasureWallTime()) {
             OmniboxAlignment omniboxAlignment = mEmbedder.getCurrentAlignment();
             maybeUpdateLayoutParams(omniboxAlignment.top);
             int availableViewportHeight = omniboxAlignment.height;
@@ -388,7 +404,8 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         try (TraceEvent tracing = TraceEvent.scoped("OmniboxSuggestionsList.Layout");
-                TimingMetric metric = OmniboxMetrics.recordSuggestionListLayoutTime()) {
+                TimingMetric metric = OmniboxMetrics.recordSuggestionListLayoutTime();
+                TimingMetric metric2 = OmniboxMetrics.recordSuggestionListLayoutWallTime()) {
             super.onLayout(changed, l, t, r, b);
         }
     }
@@ -429,9 +446,11 @@ public class OmniboxSuggestionsDropdown extends RecyclerView {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         final int eventType = ev.getActionMasked();
-        if ((eventType == MotionEvent.ACTION_UP || eventType == MotionEvent.ACTION_DOWN)
-                && mGestureObserver != null) {
-            mGestureObserver.onGesture(eventType == MotionEvent.ACTION_UP, ev.getEventTime());
+        if (eventType == MotionEvent.ACTION_UP || eventType == MotionEvent.ACTION_DOWN) {
+            mLayoutScrollListener.onNewGesture();
+            if (mGestureObserver != null) {
+                mGestureObserver.onGesture(eventType == MotionEvent.ACTION_UP, ev.getEventTime());
+            }
         }
         return super.dispatchTouchEvent(ev);
     }

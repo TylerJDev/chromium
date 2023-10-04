@@ -17,16 +17,10 @@
 
 namespace feed {
 
-BASE_DECLARE_FEATURE(kInterestFeedContentSuggestions);
 BASE_DECLARE_FEATURE(kInterestFeedV2);
 BASE_DECLARE_FEATURE(kInterestFeedV2Autoplay);
 BASE_DECLARE_FEATURE(kInterestFeedV2Hearts);
 BASE_DECLARE_FEATURE(kInterestFeedV2Scrolling);
-
-extern const base::FeatureParam<std::string> kDisableTriggerTypes;
-extern const base::FeatureParam<int> kTimeoutDurationSeconds;
-extern const base::FeatureParam<bool> kThrottleBackgroundFetches;
-extern const base::FeatureParam<bool> kOnlySetLastRefreshAttemptOnSuccess;
 
 // Feature that allows the client to automatically dismiss the notice card based
 // on the clicks and views on the notice card.
@@ -70,10 +64,6 @@ BASE_DECLARE_FEATURE(kFeedBackToTop);
 BASE_DECLARE_FEATURE(kFeedBottomSyncStringRemoval);
 #endif
 
-// When enabled, shows a sign in bottom sheet when p13n actions on boc are used
-// by signed out client.
-BASE_DECLARE_FEATURE(kFeedBoCSigninInterstitial);
-
 // Feature that enables StAMP cards in the feed.
 BASE_DECLARE_FEATURE(kFeedStamp);
 
@@ -96,6 +86,8 @@ extern const base::FeatureParam<std::string> kWebUiFeedUrl;
 extern const base::FeatureParam<bool> kWebUiDisableContentSecurityPolicy;
 
 std::string GetFeedReferrerUrl();
+
+bool IsCormorantEnabledForLocale(std::string country);
 
 // Personalize feed for unsigned users.
 BASE_DECLARE_FEATURE(kPersonalizeFeedUnsignedUsers);
@@ -138,9 +130,6 @@ BASE_DECLARE_FEATURE(kFeedPerformanceStudy);
 // by the client, primarily to retroactively work around bugs.
 BASE_DECLARE_FEATURE(kSyntheticCapabilities);
 
-// Feature that enables Cormorant for users.
-BASE_DECLARE_FEATURE(kCormorant);
-
 // Feature that enables reporting feed user interaction reliability.
 BASE_DECLARE_FEATURE(kFeedUserInteractionReliabilityReport);
 
@@ -152,6 +141,9 @@ BASE_DECLARE_FEATURE(kFeedDynamicColors);
 
 // Feature that enables UI update for Follow.
 BASE_DECLARE_FEATURE(kFeedFollowUiUpdate);
+
+// Feature that enables sports card in the feed.
+BASE_DECLARE_FEATURE(kFeedSportsCard);
 
 }  // namespace feed
 

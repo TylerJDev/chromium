@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Wedi newid i adlewyrchu</translation>
 <translation id="2031987842108996681">Sianel goch</translation>
 <translation id="2060505056492490888">Defnyddir '<ph name="DOT" />' mewn safle anghywir yn '<ph name="INVALIDDOMAIN" />'.</translation>
+<translation id="2068711044993563745">Rhaid i isafswm gwerth (<ph name="MINIMUM" />) fod yn llai na'r gwerth mwyaf (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Heddiw</translation>
 <translation id="2226276347425096477">Mae angen cwtogi'r testun hwn i <ph name="MAX_CHARACTERS" /> o nodau neu lai (rydych yn defnyddio <ph name="CURRENT_LENGTH" /> nod ar hyn o bryd).</translation>
 <translation id="2247351761944213033">Wythnos <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Ticiwch y blwch hwn os hoffech barhau.</translation>
 <translation id="2908441821576996758">Rhowch gyfeiriadau e-bost sydd wedi'u gwahanu gan atalnodau.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">dangos dewislen disgrifiadau sain</translation>
 <translation id="3075154866155599887">Rhowch werth dilys. Mae'r maes yn anghyflawn neu mae ganddo ddyddiad annilys.</translation>
 <translation id="310520048233152454">Rhowch URL.</translation>
 <translation id="3220661731597678625">cam presennol</translation>

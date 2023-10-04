@@ -443,20 +443,11 @@ class USER_MANAGER_EXPORT UserManager {
   // Returns "Local State" PrefService instance.
   virtual PrefService* GetLocalState() const = 0;
 
-  // Returns account id of the Guest user.
-  virtual const AccountId& GetGuestAccountId() const = 0;
-
   // Returns true if this is first exec after boot.
   virtual bool IsFirstExecAfterBoot() const = 0;
 
   // Actually removes cryptohome.
   virtual void AsyncRemoveCryptohome(const AccountId& account_id) const = 0;
-
-  // Returns true if |account_id| is Guest user.
-  virtual bool IsGuestAccountId(const AccountId& account_id) const = 0;
-
-  // Returns true if |account_id| is Stub user.
-  virtual bool IsStubAccountId(const AccountId& account_id) const = 0;
 
   // Returns true if |account_id| is deprecated supervised.
   // TODO(crbug/1155729): Check it is not used anymore and remove it.
@@ -471,7 +462,7 @@ class USER_MANAGER_EXPORT UserManager {
   virtual bool HasBrowserRestarted() const = 0;
 
   // Returns image from resources bundle.
-  virtual const gfx::ImageSkia& GetResourceImagekiaNamed(int id) const = 0;
+  virtual const gfx::ImageSkia& GetResourceImageSkiaNamed(int id) const = 0;
 
   // Returns string from resources bundle.
   virtual std::u16string GetResourceStringUTF16(int string_id) const = 0;

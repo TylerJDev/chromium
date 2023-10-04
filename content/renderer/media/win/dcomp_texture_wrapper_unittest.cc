@@ -48,6 +48,7 @@ class TestGpuChannelHost : public gpu::GpuChannelHost {
             0 /* channel_id */,
             gpu::GPUInfo(),
             gpu::GpuFeatureInfo(),
+            gpu::SharedImageCapabilities(),
             mojo::ScopedMessagePipeHandle(
                 mojo::MessagePipeHandle(mojo::kInvalidHandleValue))) {}
 
@@ -100,9 +101,10 @@ void DCOMPTextureWrapperTest::CreateDXBackedVideoFrameTestTask(
 
   dcomp_texture_wrapper->CreateVideoFrame(
       frame_size, std::move(dx_handle),
-      base::BindRepeating(
+      base::BindOnce(
           [](gfx::Size orig_frame_size, base::WaitableEvent* wait_event,
-             scoped_refptr<media::VideoFrame> frame) {
+             scoped_refptr<media::VideoFrame> frame,
+             const gpu::Mailbox& mailbox) {
             EXPECT_EQ(frame->coded_size().width(), orig_frame_size.width());
             EXPECT_EQ(frame->coded_size().height(), orig_frame_size.height());
             wait_event->Signal();

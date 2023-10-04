@@ -53,6 +53,10 @@
 #include "ui/gfx/win/rendering_window_manager.h"
 #endif
 
+#if BUILDFLAG(IS_OZONE)
+#include "ui/ozone/buildflags.h"
+#endif
+
 namespace content {
 namespace {
 
@@ -62,7 +66,6 @@ constexpr uint32_t kBrowserClientId = 0u;
 
 scoped_refptr<viz::ContextProviderCommandBuffer> CreateContextProvider(
     scoped_refptr<gpu::GpuChannelHost> gpu_channel_host,
-    gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager,
     bool supports_locking,
     bool supports_gles2_interface,
     bool supports_raster_interface,
@@ -83,10 +86,9 @@ scoped_refptr<viz::ContextProviderCommandBuffer> CreateContextProvider(
 
   GURL url("chrome://gpu/VizProcessTransportFactory::CreateContextProvider");
   return base::MakeRefCounted<viz::ContextProviderCommandBuffer>(
-      std::move(gpu_channel_host), gpu_memory_buffer_manager,
-      kGpuStreamIdDefault, kGpuStreamPriorityUI, gpu::kNullSurfaceHandle,
-      std::move(url), kAutomaticFlushes, supports_locking, supports_grcontext,
-      memory_limits, attributes, type);
+      std::move(gpu_channel_host), kGpuStreamIdDefault, kGpuStreamPriorityUI,
+      gpu::kNullSurfaceHandle, std::move(url), kAutomaticFlushes,
+      supports_locking, supports_grcontext, memory_limits, attributes, type);
 }
 
 bool IsContextLost(viz::ContextProvider* context_provider) {
@@ -108,13 +110,13 @@ class HostDisplayClient : public viz::HostDisplayClient {
   HostDisplayClient& operator=(const HostDisplayClient&) = delete;
 
   // viz::HostDisplayClient:
-// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
-// of lacros-chrome is complete.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#if BUILDFLAG(IS_OZONE)
+#if BUILDFLAG(OZONE_PLATFORM_X11)
   void DidCompleteSwapWithNewSize(const gfx::Size& size) override {
     compositor_->OnCompleteSwapWithNewSize(size);
   }
-#endif
+#endif  // BUILDFLAG(OZONE_PLATFORM_X11)
+#endif  // BUILFFLAG(IS_OZONE)
 
 #if BUILDFLAG(IS_WIN)
   void AddChildWindowToBrowser(gpu::SurfaceHandle child_window) override {
@@ -528,8 +530,7 @@ VizProcessTransportFactory::TryCreateContextsForGpuCompositing(
 
   if (!worker_context_provider_wrapper_) {
     auto worker_context_provider = CreateContextProvider(
-        gpu_channel_host, GetGpuMemoryBufferManager(),
-        /*supports_locking=*/true,
+        gpu_channel_host, /*supports_locking=*/true,
         /*supports_gles2_interface=*/false,
         /*supports_raster_interface=*/true,
         /*supports_grcontext=*/false, enable_gpu_rasterization,
@@ -563,10 +564,9 @@ VizProcessTransportFactory::TryCreateContextsForGpuCompositing(
     constexpr bool kCompositorContextSupportsOOPR = false;
 
     main_context_provider_ = CreateContextProvider(
-        std::move(gpu_channel_host), GetGpuMemoryBufferManager(),
-        kCompositorContextSupportsLocking, kCompositorContextSupportsGLES2,
-        kCompositorContextSupportsRaster, kCompositorContextSupportsGrContext,
-        kCompositorContextSupportsOOPR,
+        std::move(gpu_channel_host), kCompositorContextSupportsLocking,
+        kCompositorContextSupportsGLES2, kCompositorContextSupportsRaster,
+        kCompositorContextSupportsGrContext, kCompositorContextSupportsOOPR,
         viz::command_buffer_metrics::ContextType::BROWSER_MAIN_THREAD);
     main_context_provider_->SetDefaultTaskRunner(resize_task_runner_);
 

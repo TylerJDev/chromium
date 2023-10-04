@@ -53,8 +53,9 @@ void FormattedText::Dispose() {
 void FormattedText::UpdateComputedStylesIfNeeded(
     Document& document,
     const FontDescription& defaultFont) {
-  auto style = document.GetStyleResolver().StyleForFormattedText(
-      /*is_text_run*/ false, defaultFont, GetCssPropertySet());
+  const ComputedStyle* style =
+      document.GetStyleResolver().StyleForFormattedText(
+          /*is_text_run*/ false, defaultFont, GetCssPropertySet());
   block_->SetStyle(style, LayoutObject::ApplyStyleChanges::kNo);
   block_->SetHorizontalWritingMode(style->IsHorizontalWritingMode());
   for (auto& text_run : text_runs_)
@@ -196,7 +197,7 @@ PaintRecord FormattedText::PaintFormattedText(Document& document,
   const auto& fragment =
       To<NGPhysicalBoxFragment>(block_results->PhysicalFragment());
   block_->RecalcFragmentsVisualOverflow();
-  bounds = gfx::RectF{block_->PhysicalVisualOverflowRect()};
+  bounds = gfx::RectF{block_->VisualOverflowRect()};
   auto* paint_record_builder = MakeGarbageCollected<PaintRecordBuilder>();
   PaintInfo paint_info(paint_record_builder->Context(), CullRect::Infinite(),
                        PaintPhase::kForeground);

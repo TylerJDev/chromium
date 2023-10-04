@@ -14,7 +14,6 @@ import org.chromium.chrome.browser.auxiliary_search.AuxiliarySearchGroupProto.Au
 import org.chromium.chrome.browser.auxiliary_search.AuxiliarySearchGroupProto.AuxiliarySearchTabGroup;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
-import org.chromium.chrome.browser.tab.state.CriticalPersistedTabData;
 import org.chromium.chrome.browser.tabmodel.TabList;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.url.GURL;
@@ -47,7 +46,6 @@ public class AuxiliarySearchProvider {
      * @return AuxiliarySearchGroup for {@link Tab}s.
      */
     public AuxiliarySearchTabGroup getTabsSearchableDataProto() {
-        var tabGroupBuilder = AuxiliarySearchTabGroup.newBuilder();
         TabList tabList = mTabModelSelector.getModel(false).getComprehensiveModel();
 
         // Find the the bottom of tabs in the tab switcher view if the number of the tabs more than
@@ -55,8 +53,15 @@ public class AuxiliarySearchProvider {
         // tabs, and then another's.
         int firstTabIndex = Math.max(tabList.getCount() - kNumTabsToSend, 0);
         int end = tabList.getCount() - 1;
+        List<Tab> listTab = new ArrayList<>();
         for (int i = firstTabIndex; i <= end; i++) {
-            Tab tab = tabList.getTabAt(i);
+            listTab.add(tabList.getTabAt(i));
+        }
+
+        // Send tabs to native to filter the tabs.
+        List<Tab> filteredTabs = mAuxiliarySearchBridge.getSearchableTabs(listTab);
+        var tabGroupBuilder = AuxiliarySearchTabGroup.newBuilder();
+        for (Tab tab : filteredTabs) {
             AuxiliarySearchEntry entry = tabToAuxiliarySearchEntry(tab);
             if (entry != null) {
                 tabGroupBuilder.addTab(entry);
@@ -98,8 +103,8 @@ public class AuxiliarySearchProvider {
         if (TextUtils.isEmpty(title) || url == null || !url.isValid()) return null;
 
         var tabBuilder = AuxiliarySearchEntry.newBuilder().setTitle(title).setUrl(url.getSpec());
-        final long lastAccessTime = CriticalPersistedTabData.from(tab).getTimestampMillis();
-        if (lastAccessTime != CriticalPersistedTabData.INVALID_TIMESTAMP) {
+        final long lastAccessTime = tab.getTimestampMillis();
+        if (lastAccessTime != Tab.INVALID_TIMESTAMP) {
             tabBuilder.setLastAccessTimestamp(lastAccessTime);
         }
 

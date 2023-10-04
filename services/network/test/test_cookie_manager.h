@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/functional/callback_forward.h"
+#include "components/content_settings/core/common/content_settings.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 
@@ -58,9 +59,12 @@ class TestCookieManager : public network::mojom::CookieManager {
   void SetForceKeepSessionState() override {}
   void BlockThirdPartyCookies(bool block) override {}
   void BlockTruncatedCookies(bool block) override {}
+  void SetMitigationsEnabledFor3pcd(bool enable) override {}
   void SetContentSettingsForLegacyCookieAccess(
       const std::vector<::ContentSettingPatternSource>& settings) override {}
   void SetContentSettingsFor3pcd(
+      const std::vector<::ContentSettingPatternSource>& settings) override {}
+  void SetContentSettingsFor3pcdMetadataGrants(
       const std::vector<::ContentSettingPatternSource>& settings) override {}
   void SetStorageAccessGrantSettings(
       const std::vector<::ContentSettingPatternSource>& settings,

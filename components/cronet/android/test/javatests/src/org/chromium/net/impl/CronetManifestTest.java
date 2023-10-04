@@ -4,6 +4,7 @@
 
 package org.chromium.net.impl;
 
+import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
 import android.os.Bundle;
@@ -19,15 +20,11 @@ import org.junit.runner.RunWith;
 import org.chromium.base.test.util.Batch;
 import org.chromium.net.CronetTestRule;
 import org.chromium.net.CronetTestRule.CronetTestFramework;
-import org.chromium.net.CronetTestRule.OnlyRunNativeCronet;
 import org.chromium.net.impl.CronetLogger.CronetSource;
 
-/**
- * Tests {@link CronetManifest}
- */
+/** Tests {@link CronetManifest} */
 @Batch(Batch.UNIT_TESTS)
 @RunWith(AndroidJUnit4.class)
-@OnlyRunNativeCronet
 public class CronetManifestTest {
     @Rule
     public final CronetTestRule mTestRule = CronetTestRule.withManualEngineStartup();
@@ -106,5 +103,31 @@ public class CronetManifestTest {
                             mCronetTestFramework.getContext(), source))
                     .isFalse();
         }
+    }
+
+    private void setReadHttpFlags(boolean value) {
+        Bundle metaData = new Bundle();
+        metaData.putBoolean(CronetManifest.READ_HTTP_FLAGS_META_DATA_KEY, value);
+        mCronetTestFramework.interceptContext(new CronetManifestInterceptor(metaData));
+    }
+
+    @Test
+    @SmallTest
+    public void testShouldReadHttpFlags_whenNoMetadata() throws Exception {
+        assertThat(CronetManifest.shouldReadHttpFlags(mCronetTestFramework.getContext())).isFalse();
+    }
+
+    @Test
+    @SmallTest
+    public void testShouldReadHttpFlags_whenMetadataIsTrue() throws Exception {
+        setReadHttpFlags(true);
+        assertThat(CronetManifest.shouldReadHttpFlags(mCronetTestFramework.getContext())).isTrue();
+    }
+
+    @Test
+    @SmallTest
+    public void testShouldReadHttpFlags_whenMetadataIsFalse() throws Exception {
+        setReadHttpFlags(false);
+        assertThat(CronetManifest.shouldReadHttpFlags(mCronetTestFramework.getContext())).isFalse();
     }
 }

@@ -42,33 +42,27 @@ class TestPersonalDataManager : public PersonalDataManager {
   // PersonalDataManager overrides.  These functions are overridden as needed
   // for various tests, whether to skip calls to uncreated databases/services,
   // or to make things easier in general to toggle.
-  AutofillSyncSigninState GetSyncSigninState() const override;
+  bool IsPaymentsWalletSyncTransportEnabled() const override;
   void RecordUseOf(absl::variant<const AutofillProfile*, const CreditCard*>
                        profile_or_credit_card) override;
   std::string SaveImportedCreditCard(
       const CreditCard& imported_credit_card) override;
-  void AddUpiId(const std::string& upi_id) override;
   void AddProfile(const AutofillProfile& profile) override;
   void UpdateProfile(const AutofillProfile& profile) override;
   void RemoveByGUID(const std::string& guid) override;
   bool IsEligibleForAddressAccountStorage() const override;
   void AddCreditCard(const CreditCard& credit_card) override;
-  std::string AddIban(const Iban& iban) override;
+  std::string AddIban(Iban iban) override;
   void DeleteLocalCreditCards(const std::vector<CreditCard>& cards) override;
   void UpdateCreditCard(const CreditCard& credit_card) override;
   void AddFullServerCreditCard(const CreditCard& credit_card) override;
   const std::string& GetDefaultCountryCodeForNewAddress() const override;
-  void SetProfilesForAllSources(
-      std::vector<AutofillProfile>* profiles) override;
-  bool SetProfilesForSource(base::span<const AutofillProfile> new_profiles,
-                            AutofillProfile::Source source) override;
   void LoadProfiles() override;
   void LoadCreditCards() override;
   void LoadCreditCardCloudTokenData() override;
   void LoadIbans() override;
-  void LoadUpiIds() override;
   bool IsAutofillProfileEnabled() const override;
-  bool IsAutofillCreditCardEnabled() const override;
+  bool IsAutofillPaymentMethodsEnabled() const override;
   bool IsAutofillWalletImportEnabled() const override;
   bool ShouldSuggestServerCards() const override;
   std::string CountryCodeForCurrentTimezone() const override;
@@ -131,12 +125,8 @@ class TestPersonalDataManager : public PersonalDataManager {
     return num_times_save_imported_credit_card_called_;
   }
 
-  int num_times_save_upi_id_called() const {
-    return num_times_save_upi_id_called_;
-  }
-
-  void SetAutofillCreditCardEnabled(bool autofill_credit_card_enabled) {
-    autofill_credit_card_enabled_ = autofill_credit_card_enabled;
+  void SetAutofillPaymentMethodsEnabled(bool autofill_payment_methods_enabled) {
+    autofill_payment_methods_enabled_ = autofill_payment_methods_enabled;
   }
 
   void SetAutofillProfileEnabled(bool autofill_profile_enabled) {
@@ -156,8 +146,8 @@ class TestPersonalDataManager : public PersonalDataManager {
     payments_customer_data_ = std::move(customer_data);
   }
 
-  void SetSyncAndSignInState(AutofillSyncSigninState sync_and_signin_state) {
-    sync_and_signin_state_ = sync_and_signin_state;
+  void SetIsPaymentsWalletSyncTransportEnabled(bool enabled) {
+    payments_wallet_sync_transport_enabled_ = enabled;
   }
 
   void SetAccountInfoForPayments(const CoreAccountInfo& account_info) {
@@ -170,14 +160,12 @@ class TestPersonalDataManager : public PersonalDataManager {
   std::string timezone_country_code_;
   std::string default_country_code_;
   int num_times_save_imported_credit_card_called_ = 0;
-  int num_times_save_upi_id_called_ = 0;
   absl::optional<bool> autofill_profile_enabled_;
-  absl::optional<bool> autofill_credit_card_enabled_;
+  absl::optional<bool> autofill_payment_methods_enabled_;
   absl::optional<bool> autofill_wallet_import_enabled_;
   absl::optional<bool> eligible_for_account_storage_;
   absl::optional<bool> payment_methods_mandatory_reauth_enabled_;
-  AutofillSyncSigninState sync_and_signin_state_ =
-      AutofillSyncSigninState::kSignedInAndSyncFeatureEnabled;
+  absl::optional<bool> payments_wallet_sync_transport_enabled_;
   CoreAccountInfo account_info_;
 
   TestInMemoryStrikeDatabase inmemory_strike_database_;

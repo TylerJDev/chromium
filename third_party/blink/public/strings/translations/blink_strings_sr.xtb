@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Пребачено је на пресликавање</translation>
 <translation id="2031987842108996681">Црвени канал</translation>
 <translation id="2060505056492490888">„<ph name="DOT" />“ је стављено на погрешно место у „<ph name="INVALIDDOMAIN" />“.</translation>
+<translation id="2068711044993563745">Минимална вредност (<ph name="MINIMUM" />) мора да буде мања од максималне вредности (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Данас</translation>
 <translation id="2226276347425096477">Скратите овај текст на <ph name="MAX_CHARACTERS" /> знак(ов)а или мање (тренутно користите <ph name="CURRENT_LENGTH" /> знак(ов)а).</translation>
 <translation id="2247351761944213033"><ph name="WEEKNUMBER" />. недеља, <ph name="YEAR" />.</translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Потврдите избор у овом пољу за потврду уколико желите да наставите.</translation>
 <translation id="2908441821576996758">Унесите листу имејл адреса раздвојених зарезима.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">омогућите приказ менија са звучним описима</translation>
 <translation id="3075154866155599887">Унесите важећу вредност. Поље није попуњено или садржи неважећи датум.</translation>
 <translation id="310520048233152454">Унесите URL адресу.</translation>
 <translation id="3220661731597678625">актуелни корак</translation>

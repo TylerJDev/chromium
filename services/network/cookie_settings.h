@@ -102,6 +102,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieSettings
     settings_for_3pcd_ = settings;
   }
 
+  void set_content_settings_for_3pcd_metadata_grants(
+      const ContentSettingsForOneType& settings) {
+    settings_for_3pcd_metadata_grants_ = settings;
+  }
+
   void set_storage_access_grants(const ContentSettingsForOneType& settings) {
     storage_access_grants_ = settings;
   }
@@ -113,6 +118,10 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieSettings
 
   void set_block_truncated_cookies(bool block_truncated_cookies) {
     block_truncated_cookies_ = block_truncated_cookies;
+  }
+
+  void set_mitigations_enabled_for_3pcd(bool enable) {
+    mitigations_enabled_for_3pcd_ = enable;
   }
 
   bool are_truncated_cookies_blocked() const {
@@ -180,6 +189,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieSettings
   bool IsThirdPartyCookiesAllowedScheme(
       const std::string& scheme) const override;
   bool ShouldBlockThirdPartyCookies() const override;
+  bool MitigationsEnabledFor3pcd() const override;
   bool IsStorageAccessApiEnabled() const override;
 
   const ContentSettingsForOneType& GetContentSettings(
@@ -200,12 +210,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieSettings
   static net::NetworkDelegate::PrivacySetting PrivacySetting(
       const CookieSettingWithMetadata& setting);
 
-  // Determines the scope of third-party-cookie-blocking, i.e. whether it
-  // applies to all cookies or just unpartitioned cookies. Assumes that
-  // checks have already determined to block third-party cookies.
-  ThirdPartyBlockingScope GetThirdPartyBlockingScope(
-      const GURL& first_party_url) const;
-
   // Returns the cookie setting for the given request, along with metadata
   // associated with the lookup. Namely, whether the setting is due to
   // third-party cookie blocking settings or not.
@@ -223,11 +227,19 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieSettings
   bool block_third_party_cookies_ =
       net::cookie_util::IsForceThirdPartyCookieBlockingEnabled();
   bool block_truncated_cookies_ = true;
+  bool mitigations_enabled_for_3pcd_ = false;
   std::set<std::string> secure_origin_cookies_allowed_schemes_;
   std::set<std::string> matching_scheme_cookies_allowed_schemes_;
   std::set<std::string> third_party_cookies_allowed_schemes_;
   ContentSettingsForOneType settings_for_legacy_cookie_access_;
+  // Used to represent content settings for 3PC accesses granted via 3PC
+  // deprecation trial. This type will only be populated when
+  // `net::features::kTpcdSupportSettings` is enabled.
   ContentSettingsForOneType settings_for_3pcd_;
+  // Used to represent content settings for 3PC accesses granted via the
+  // component updater service. This type will only be populated when
+  // `net::features::kTpcdMetadataGrants` is enabled.
+  ContentSettingsForOneType settings_for_3pcd_metadata_grants_;
   // Used to represent storage access grants provided by the StorageAccessAPI.
   // Will only be populated when the StorageAccessAPI feature is enabled
   // https://crbug.com/989663.

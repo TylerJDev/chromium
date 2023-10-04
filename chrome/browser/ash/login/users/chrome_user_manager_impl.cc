@@ -653,8 +653,8 @@ void ChromeUserManagerImpl::LoadDeviceLocalAccounts(
       continue;
     }
 
-    users_.push_back(
-        CreateUserFromDeviceLocalAccount(account_id, type).release());
+    user_storage_.push_back(CreateUserFromDeviceLocalAccount(account_id, type));
+    users_.push_back(user_storage_.back().get());
   }
 }
 
@@ -702,30 +702,25 @@ void ChromeUserManagerImpl::RetrieveTrustedDevicePolicies() {
   bool changed = UpdateAndCleanUpDeviceLocalAccounts(
       policy::GetDeviceLocalAccounts(cros_settings_));
 
-  // If ephemeral users are enabled and we are on the login screen, take this
-  // opportunity to clean up by removing all regular users except the owner.
+  // Remove ephemeral regular users (except the owner) when on the login screen.
   if (!IsUserLoggedIn()) {
     ScopedListPrefUpdate prefs_users_update(GetLocalState(),
                                             user_manager::kRegularUsersPref);
-    prefs_users_update->clear();
-    for (user_manager::UserList::iterator it = users_.begin();
-         it != users_.end();) {
-      const AccountId account_id = (*it)->GetAccountId();
-      if ((*it)->HasGaiaAccount() && account_id != GetOwnerAccountId() &&
+    // Take snapshot because DeleteUser called in the loop will update it.
+    std::vector<user_manager::User*> users = users_;
+    for (user_manager::User* user : users) {
+      const AccountId account_id = user->GetAccountId();
+      if (user->HasGaiaAccount() && account_id != GetOwnerAccountId() &&
           IsEphemeralAccountId(account_id)) {
         user_manager::UserManager::Get()->NotifyUserToBeRemoved(account_id);
         RemoveNonCryptohomeData(account_id);
-        DeleteUser(*it);
+        DeleteUser(user);
         user_manager::UserManager::Get()->NotifyUserRemoved(
             account_id,
             user_manager::UserRemovalReason::DEVICE_EPHEMERAL_USERS_ENABLED);
-        it = users_.erase(it);
+
+        prefs_users_update->EraseValue(base::Value(account_id.GetUserEmail()));
         changed = true;
-      } else {
-        if ((*it)->GetType() != user_manager::USER_TYPE_PUBLIC_ACCOUNT) {
-          prefs_users_update->Append(account_id.GetUserEmail());
-        }
-        ++it;
       }
     }
   }
@@ -1001,15 +996,15 @@ bool ChromeUserManagerImpl::UpdateAndCleanUpDeviceLocalAccounts(
   }
 
   // Remove the old device local accounts from the user list.
-  for (user_manager::UserList::iterator it = users_.begin();
-       it != users_.end();) {
-    if ((*it)->IsDeviceLocalAccount()) {
-      if (*it != GetActiveUser()) {
-        DeleteUser(*it);
+  // Take snapshot because DeleteUser will update |user_|.
+  std::vector<user_manager::User*> users = users_;
+  for (user_manager::User* user : users) {
+    if (user->IsDeviceLocalAccount()) {
+      if (user != GetActiveUser()) {
+        DeleteUser(user);
+      } else {
+        base::Erase(users_, user);
       }
-      it = users_.erase(it);
-    } else {
-      ++it;
     }
   }
 
@@ -1024,10 +1019,9 @@ bool ChromeUserManagerImpl::UpdateAndCleanUpDeviceLocalAccounts(
             active_user->GetAccountId()) {
       users_.insert(users_.begin(), active_user);
     } else {
-      users_.insert(users_.begin(),
-                    CreateUserFromDeviceLocalAccount(
-                        AccountId::FromUserEmail(account.user_id), account.type)
-                        .release());
+      user_storage_.push_back(CreateUserFromDeviceLocalAccount(
+          AccountId::FromUserEmail(account.user_id), account.type));
+      users_.insert(users_.begin(), user_storage_.back().get());
     }
     if (account.type == policy::DeviceLocalAccount::TYPE_PUBLIC_SESSION ||
         account.type == policy::DeviceLocalAccount::TYPE_SAML_PUBLIC_SESSION) {
@@ -1222,10 +1216,6 @@ void ChromeUserManagerImpl::SetUserAffiliation(
   }
 }
 
-const AccountId& ChromeUserManagerImpl::GetGuestAccountId() const {
-  return user_manager::GuestAccountId();
-}
-
 void ChromeUserManagerImpl::AsyncRemoveCryptohome(
     const AccountId& account_id) const {
   cryptohome::AccountIdentifier identifier =
@@ -1234,23 +1224,13 @@ void ChromeUserManagerImpl::AsyncRemoveCryptohome(
       identifier, base::BindOnce(&OnRemoveUserComplete, account_id));
 }
 
-bool ChromeUserManagerImpl::IsGuestAccountId(
-    const AccountId& account_id) const {
-  return account_id == user_manager::GuestAccountId();
-}
-
-bool ChromeUserManagerImpl::IsStubAccountId(const AccountId& account_id) const {
-  return account_id == user_manager::StubAccountId() ||
-         account_id == user_manager::StubAdAccountId();
-}
-
 bool ChromeUserManagerImpl::IsDeprecatedSupervisedAccountId(
     const AccountId& account_id) const {
   return gaia::ExtractDomainName(account_id.GetUserEmail()) ==
          user_manager::kSupervisedUserDomain;
 }
 
-const gfx::ImageSkia& ChromeUserManagerImpl::GetResourceImagekiaNamed(
+const gfx::ImageSkia& ChromeUserManagerImpl::GetResourceImageSkiaNamed(
     int id) const {
   return *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(id);
 }

@@ -30,6 +30,9 @@
 #include "chrome/browser/apps/app_service/app_service_proxy.h"
 #include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
 #include "chrome/browser/apps/app_service/launch_utils.h"
+#include "chrome/browser/apps/app_service/package_id.h"
+#include "chrome/browser/apps/app_service/promise_apps/promise_app.h"
+#include "chrome/browser/apps/app_service/promise_apps/promise_app_registry_cache.h"
 #include "chrome/browser/apps/platform_apps/app_browsertest_util.h"
 #include "chrome/browser/ash/app_list/app_list_client_impl.h"
 #include "chrome/browser/ash/app_list/app_list_controller_delegate.h"
@@ -54,6 +57,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/browser/ui/ash/shelf/shelf_controller_helper.h"
 #include "chrome/browser/ui/ash/system_web_apps/system_web_app_ui_utils.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
@@ -91,6 +95,9 @@
 using AppListClientImplBrowserTest = extensions::PlatformAppBrowserTest;
 
 namespace {
+
+const apps::PackageId kTestPackageId =
+    apps::PackageId(apps::AppType::kArc, "com.test.package");
 
 class TestObserver : public app_list::AppListSyncableService::Observer {
  public:
@@ -192,6 +199,9 @@ IN_PROC_BROWSER_TEST_F(AppListClientImplBrowserTest, IsPlatformAppOpen) {
 IN_PROC_BROWSER_TEST_F(AppListClientImplBrowserTest, UninstallApp) {
   AppListClientImpl* client = AppListClientImpl::GetInstance();
   const extensions::Extension* app = InstallPlatformApp("minimal");
+  auto* app_service_proxy =
+      apps::AppServiceProxyFactory::GetForProfile(browser()->profile());
+  ASSERT_TRUE(app_service_proxy);
 
   // Bring up the app list.
   EXPECT_FALSE(client->GetAppListWindow());
@@ -204,9 +214,11 @@ IN_PROC_BROWSER_TEST_F(AppListClientImplBrowserTest, UninstallApp) {
 
   // Open the uninstall dialog.
   base::RunLoop run_loop;
-  client->UninstallApp(profile(), app->id());
+  app_service_proxy->UninstallForTesting(
+      app->id(), client->GetAppListWindow(),
+      base::BindLambdaForTesting([&](bool) { run_loop.Quit(); }));
+  run_loop.Run();
 
-  run_loop.RunUntilIdle();
   EXPECT_FALSE(wm::GetTransientChildren(client->GetAppListWindow()).empty());
 
   // The app list should not be dismissed when the dialog is shown.
@@ -404,6 +416,70 @@ IN_PROC_BROWSER_TEST_F(AppListClientImplBrowserTest, ShowContextMenu) {
     std::u16string label = menu_model->GetLabelAt(i);
     EXPECT_FALSE(label.empty());
   }
+}
+
+class AppListClientImplBrowserPromiseAppTest
+    : public AppListClientImplBrowserTest {
+ public:
+  AppListClientImplBrowserPromiseAppTest() {
+    feature_list_.InitWithFeatures({ash::features::kPromiseIcons}, {});
+  }
+
+  // extensions::PlatformAppBrowserTest:
+  void SetUpOnMainThread() override {
+    extensions::PlatformAppBrowserTest::SetUpOnMainThread();
+    AppListClientImpl* client = AppListClientImpl::GetInstance();
+    ASSERT_TRUE(client);
+    client->UpdateProfile();
+  }
+
+  apps::PromiseAppRegistryCache* cache() {
+    return apps::AppServiceProxyFactory::GetForProfile(profile())
+        ->PromiseAppRegistryCache();
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Tests that progress updates from promise apps registry are reflected into the
+// launcher.
+IN_PROC_BROWSER_TEST_F(AppListClientImplBrowserPromiseAppTest,
+                       PromiseAppsInLauncher) {
+  AppListClientImpl* client = AppListClientImpl::GetInstance();
+  EXPECT_TRUE(client);
+
+  // Register a promise app in the promise app registry cache.
+  apps::PromiseAppPtr promise_app =
+      std::make_unique<apps::PromiseApp>(kTestPackageId);
+  promise_app->status = apps::PromiseStatus::kPending;
+  promise_app->should_show = true;
+  cache()->OnPromiseApp(std::move(promise_app));
+
+  // Show the app list to ensure it has loaded a profile.
+  client->ShowAppList(ash::AppListShowSource::kSearchKey);
+  AppListModelUpdater* model_updater = test::GetModelUpdater(client);
+  EXPECT_TRUE(model_updater);
+
+  ChromeAppListItem* item = model_updater->FindItem(kTestPackageId.ToString());
+  ASSERT_TRUE(item);
+  EXPECT_EQ(item->progress(), 0);
+  EXPECT_EQ(item->app_status(), ash::AppStatus::kPending);
+  ASSERT_EQ(item->name(), ShelfControllerHelper::GetLabelForPromiseStatus(
+                              apps::PromiseStatus::kPending));
+
+  // Update the promise app in the promise app registry cache.
+  apps::PromiseAppPtr update =
+      std::make_unique<apps::PromiseApp>(kTestPackageId);
+  update->progress = 0.3;
+  update->status = apps::PromiseStatus::kInstalling;
+  cache()->OnPromiseApp(std::move(update));
+
+  // Promise app item should have updated fields.
+  EXPECT_EQ(item->progress(), 0.3f);
+  EXPECT_EQ(item->app_status(), ash::AppStatus::kInstalling);
+  EXPECT_EQ(item->name(), ShelfControllerHelper::GetLabelForPromiseStatus(
+                              apps::PromiseStatus::kInstalling));
 }
 
 // Test that OpenSearchResult that dismisses app list runs fine without

@@ -10,7 +10,9 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_url_pattern_init.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_router_condition.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_router_rule.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_router_source.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_router_source_enum.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_union_routersource_routersourceenum.h"
 #include "third_party/liburlpattern/parse.h"
 #include "third_party/liburlpattern/pattern.h"
 
@@ -75,12 +77,15 @@ TEST(ServiceWorkerRouterTypeConverterTest, Basic) {
       MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
           kFakeUrlPattern));
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kNetwork)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
   expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kUrlPattern;
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
   blink::SafeUrlPattern expected_url_pattern = DefaultStringUrlPattern();
   {
     auto parse_result = liburlpattern::Parse(
@@ -92,7 +97,7 @@ TEST(ServiceWorkerRouterTypeConverterTest, Basic) {
   expected_condition.url_pattern = std::move(expected_url_pattern);
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type = blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
   expected_source.network_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -117,12 +122,15 @@ TEST(ServiceWorkerRouterTypeConverterTest, BasicURLPatternInit) {
   idl_condition->setUrlPattern(
       MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(init));
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kNetwork)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
   expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kUrlPattern;
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
   blink::SafeUrlPattern expected_url_pattern =
       DefaultURLPatternInitUrlPattern();
   {
@@ -149,7 +157,7 @@ TEST(ServiceWorkerRouterTypeConverterTest, BasicURLPatternInit) {
   expected_condition.url_pattern = std::move(expected_url_pattern);
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type = blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
   expected_source.network_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -174,12 +182,15 @@ TEST(ServiceWorkerRouterTypeConverterTest, URLPatternInitWithEmptyPathname) {
   idl_condition->setUrlPattern(
       MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(init));
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kNetwork)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
   expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kUrlPattern;
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
   blink::SafeUrlPattern expected_url_pattern =
       DefaultURLPatternInitUrlPattern();
   {
@@ -201,7 +212,7 @@ TEST(ServiceWorkerRouterTypeConverterTest, URLPatternInitWithEmptyPathname) {
   expected_condition.url_pattern = std::move(expected_url_pattern);
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type = blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
   expected_source.network_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -222,16 +233,19 @@ TEST(ServiceWorkerRouterTypeConverterTest,
       MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
           kFakeUrlPattern));
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kNetwork)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
   expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kUrlPattern;
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
   expected_condition.url_pattern = DefaultStringUrlPattern();
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type = blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
   expected_source.network_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -253,7 +267,10 @@ TEST(ServiceWorkerRouterTypeConverterTest,
       MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
           kFakeUrlPattern));
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kNetwork)));
 
   V8TestingScope scope;
   auto blink_rule = ConvertV8RouterRuleToBlink(idl_rule, kFakeBaseUrl,
@@ -270,7 +287,10 @@ TEST(ServiceWorkerRouterTypeConverterTest, RegexpUrlPatternShouldBeNullopt) {
         MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
             test_url_pattern));
     idl_rule->setCondition(idl_condition);
-    idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+    idl_rule->setSource(
+        MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+            blink::V8RouterSourceEnum(
+                blink::V8RouterSourceEnum::Enum::kNetwork)));
 
     V8TestingScope scope;
     auto blink_rule = ConvertV8RouterRuleToBlink(idl_rule, DefaultBaseUrl(),
@@ -291,12 +311,14 @@ TEST(ServiceWorkerRouterTypeConverterTest, Race) {
           kFakeUrlPattern));
   idl_rule->setCondition(idl_condition);
   idl_rule->setSource(
-      blink::V8RouterSourceEnum::Enum::kRaceNetworkAndFetchHandler);
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kRaceNetworkAndFetchHandler)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
   expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kUrlPattern;
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
   blink::SafeUrlPattern expected_url_pattern = DefaultStringUrlPattern();
   {
     auto parse_result = liburlpattern::Parse(
@@ -308,7 +330,7 @@ TEST(ServiceWorkerRouterTypeConverterTest, Race) {
   expected_condition.url_pattern = std::move(expected_url_pattern);
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type = blink::ServiceWorkerRouterSource::SourceType::kRace;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kRace;
   expected_source.race_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -328,12 +350,15 @@ TEST(ServiceWorkerRouterTypeConverterTest, FetchEvent) {
       MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
           kFakeUrlPattern));
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kFetchEvent);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kFetchEvent)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
   expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kUrlPattern;
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
   blink::SafeUrlPattern expected_url_pattern = DefaultStringUrlPattern();
   {
     auto parse_result = liburlpattern::Parse(
@@ -345,8 +370,7 @@ TEST(ServiceWorkerRouterTypeConverterTest, FetchEvent) {
   expected_condition.url_pattern = std::move(expected_url_pattern);
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type =
-      blink::ServiceWorkerRouterSource::SourceType::kFetchEvent;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kFetchEvent;
   expected_source.fetch_event_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -366,12 +390,14 @@ TEST(ServiceWorkerRouterTypeConverterTest, Request) {
   idl_condition->setRequestDestination(
       blink::V8RequestDestination::Enum::kDocument);
   idl_rule->setCondition(idl_condition);
-  idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(
+              blink::V8RouterSourceEnum::Enum::kNetwork)));
 
   blink::ServiceWorkerRouterRule expected_rule;
   blink::ServiceWorkerRouterCondition expected_condition;
-  expected_condition.type =
-      blink::ServiceWorkerRouterCondition::ConditionType::kRequest;
+  expected_condition.type = blink::ServiceWorkerRouterCondition::Type::kRequest;
   blink::ServiceWorkerRouterRequestCondition expected_request;
   expected_request.method = "FakeRequestMethod";
   expected_request.mode = network::mojom::RequestMode::kNavigate;
@@ -379,7 +405,7 @@ TEST(ServiceWorkerRouterTypeConverterTest, Request) {
   expected_condition.request = std::move(expected_request);
   expected_rule.conditions.emplace_back(expected_condition);
   blink::ServiceWorkerRouterSource expected_source;
-  expected_source.type = blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
   expected_source.network_source.emplace();
   expected_rule.sources.emplace_back(expected_source);
 
@@ -398,19 +424,21 @@ TEST(ServiceWorkerRouterTypeConverterTest, RequestMethodNormalize) {
     auto* idl_condition = blink::RouterCondition::Create();
     idl_condition->setRequestMethod(input);
     idl_rule->setCondition(idl_condition);
-    idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+    idl_rule->setSource(
+        MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+            blink::V8RouterSourceEnum(
+                blink::V8RouterSourceEnum::Enum::kNetwork)));
 
     blink::ServiceWorkerRouterRule expected_rule;
     blink::ServiceWorkerRouterCondition expected_condition;
     expected_condition.type =
-        blink::ServiceWorkerRouterCondition::ConditionType::kRequest;
+        blink::ServiceWorkerRouterCondition::Type::kRequest;
     blink::ServiceWorkerRouterRequestCondition expected_request;
     expected_request.method = expected;
     expected_condition.request = std::move(expected_request);
     expected_rule.conditions.emplace_back(expected_condition);
     blink::ServiceWorkerRouterSource expected_source;
-    expected_source.type =
-        blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+    expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
     expected_source.network_source.emplace();
     expected_rule.sources.emplace_back(expected_source);
 
@@ -439,19 +467,21 @@ TEST(ServiceWorkerRouterTypeConverterTest, RunningStatus) {
         auto* idl_condition = blink::RouterCondition::Create();
         idl_condition->setRunningStatus(idl_status);
         idl_rule->setCondition(idl_condition);
-        idl_rule->setSource(blink::V8RouterSourceEnum::Enum::kNetwork);
+        idl_rule->setSource(
+            MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+                blink::V8RouterSourceEnum(
+                    blink::V8RouterSourceEnum::Enum::kNetwork)));
 
         blink::ServiceWorkerRouterRule expected_rule;
         blink::ServiceWorkerRouterCondition expected_condition;
         expected_condition.type =
-            blink::ServiceWorkerRouterCondition::ConditionType::kRunningStatus;
+            blink::ServiceWorkerRouterCondition::Type::kRunningStatus;
         blink::ServiceWorkerRouterRunningStatusCondition expected_status;
         expected_status.status = blink_status;
         expected_condition.running_status = std::move(expected_status);
         expected_rule.conditions.emplace_back(expected_condition);
         blink::ServiceWorkerRouterSource expected_source;
-        expected_source.type =
-            blink::ServiceWorkerRouterSource::SourceType::kNetwork;
+        expected_source.type = blink::ServiceWorkerRouterSource::Type::kNetwork;
         expected_source.network_source.emplace();
         expected_rule.sources.emplace_back(expected_source);
 
@@ -468,6 +498,88 @@ TEST(ServiceWorkerRouterTypeConverterTest, RunningStatus) {
   verify(blink::V8RunningStatusEnum::Enum::kNotRunning,
          blink::ServiceWorkerRouterRunningStatusCondition::RunningStatusEnum::
              kNotRunning);
+}
+
+TEST(ServiceWorkerRouterTypeConverterTest, Cache) {
+  constexpr const char kFakeUrlPattern[] = "/fake";
+  auto* idl_rule = blink::RouterRule::Create();
+  auto* idl_condition = blink::RouterCondition::Create();
+  idl_condition->setUrlPattern(
+      MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
+          kFakeUrlPattern));
+  idl_rule->setCondition(idl_condition);
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          blink::V8RouterSourceEnum(blink::V8RouterSourceEnum::Enum::kCache)));
+
+  blink::ServiceWorkerRouterRule expected_rule;
+  blink::ServiceWorkerRouterCondition expected_condition;
+  expected_condition.type =
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
+  blink::SafeUrlPattern expected_url_pattern = DefaultStringUrlPattern();
+  {
+    auto parse_result = liburlpattern::Parse(
+        kFakeUrlPattern,
+        [](base::StringPiece input) { return std::string(input); });
+    ASSERT_TRUE(parse_result.ok());
+    expected_url_pattern.pathname = parse_result.value().PartList();
+  }
+  expected_condition.url_pattern = std::move(expected_url_pattern);
+  expected_rule.conditions.emplace_back(expected_condition);
+  blink::ServiceWorkerRouterSource expected_source;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kCache;
+  expected_source.cache_source.emplace();
+  expected_rule.sources.emplace_back(expected_source);
+
+  V8TestingScope scope;
+  auto blink_rule = ConvertV8RouterRuleToBlink(idl_rule, DefaultBaseUrl(),
+                                               scope.GetExceptionState());
+  EXPECT_FALSE(scope.GetExceptionState().HadException());
+  EXPECT_TRUE(blink_rule.has_value());
+  EXPECT_EQ(expected_rule, *blink_rule);
+}
+
+TEST(ServiceWorkerRouterTypeConverterTest, CacheName) {
+  constexpr const char kFakeUrlPattern[] = "/fake";
+  auto* idl_rule = blink::RouterRule::Create();
+  auto* idl_condition = blink::RouterCondition::Create();
+  idl_condition->setUrlPattern(
+      MakeGarbageCollected<blink::V8UnionURLPatternInitOrUSVString>(
+          kFakeUrlPattern));
+  idl_rule->setCondition(idl_condition);
+  auto* idl_source = blink::RouterSource::Create();
+  idl_source->setCacheName("cache_name");
+  idl_rule->setSource(
+      MakeGarbageCollected<blink::V8UnionRouterSourceOrRouterSourceEnum>(
+          idl_source));
+
+  blink::ServiceWorkerRouterRule expected_rule;
+  blink::ServiceWorkerRouterCondition expected_condition;
+  expected_condition.type =
+      blink::ServiceWorkerRouterCondition::Type::kUrlPattern;
+  blink::SafeUrlPattern expected_url_pattern = DefaultStringUrlPattern();
+  {
+    auto parse_result = liburlpattern::Parse(
+        kFakeUrlPattern,
+        [](base::StringPiece input) { return std::string(input); });
+    ASSERT_TRUE(parse_result.ok());
+    expected_url_pattern.pathname = parse_result.value().PartList();
+  }
+  expected_condition.url_pattern = std::move(expected_url_pattern);
+  expected_rule.conditions.emplace_back(expected_condition);
+  blink::ServiceWorkerRouterSource expected_source;
+  expected_source.type = blink::ServiceWorkerRouterSource::Type::kCache;
+  blink::ServiceWorkerRouterCacheSource cache_source;
+  cache_source.cache_name = "cache_name";
+  expected_source.cache_source = std::move(cache_source);
+  expected_rule.sources.emplace_back(expected_source);
+
+  V8TestingScope scope;
+  auto blink_rule = ConvertV8RouterRuleToBlink(idl_rule, DefaultBaseUrl(),
+                                               scope.GetExceptionState());
+  EXPECT_FALSE(scope.GetExceptionState().HadException());
+  EXPECT_TRUE(blink_rule.has_value());
+  EXPECT_EQ(expected_rule, *blink_rule);
 }
 
 }  // namespace

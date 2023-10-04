@@ -138,16 +138,6 @@ void FCMInvalidationListener::Acknowledge(const Topic& topic,
   lookup->second.Acknowledge(handle);
 }
 
-void FCMInvalidationListener::Drop(const Topic& topic,
-                                   const AckHandle& handle) {
-  auto lookup = unacked_invalidations_map_.find(topic);
-  if (lookup == unacked_invalidations_map_.end()) {
-    DLOG(WARNING) << "Received drop for untracked topic";
-    return;
-  }
-  lookup->second.Drop(handle);
-}
-
 void FCMInvalidationListener::DoSubscriptionUpdate() {
   if (!per_user_topic_subscription_manager_ || instance_id_token_.empty() ||
       !topics_update_requested_) {
@@ -177,12 +167,6 @@ void FCMInvalidationListener::DoSubscriptionUpdate() {
   // already been saved to storage (that's where we found them) so all we need
   // to do now is emit them.
   EmitSavedInvalidations(topic_invalidation_map);
-}
-
-void FCMInvalidationListener::RequestDetailedStatus(
-    const base::RepeatingCallback<void(base::Value::Dict)>& callback) const {
-  network_channel_->RequestDetailedStatus(callback);
-  callback.Run(CollectDebugData());
 }
 
 void FCMInvalidationListener::StartForTest(Delegate* delegate) {
@@ -246,21 +230,4 @@ void FCMInvalidationListener::OnSubscriptionRequestStarted(Topic topic) {}
 
 void FCMInvalidationListener::OnSubscriptionRequestFinished(Topic topic,
                                                             Status code) {}
-
-base::Value::Dict FCMInvalidationListener::CollectDebugData() const {
-  base::Value::Dict status =
-      per_user_topic_subscription_manager_->CollectDebugData();
-  status.SetByDottedPath("InvalidationListener.FCM-channel-state",
-                         FcmChannelStateToString(fcm_network_state_));
-  status.SetByDottedPath(
-      "InvalidationListener.Subscription-channel-state",
-      SubscriptionChannelStateToString(subscription_channel_state_));
-  for (const auto& topic : interested_topics_) {
-    if (!status.Find(topic.first)) {
-      status.Set(topic.first, "Unsubscribed");
-    }
-  }
-  return status;
-}
-
 }  // namespace invalidation

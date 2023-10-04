@@ -23,9 +23,6 @@ import static org.chromium.cc.mojom.RootScrollOffsetUpdateFrequency.NONE;
 import static org.chromium.cc.mojom.RootScrollOffsetUpdateFrequency.ON_SCROLL_END;
 import static org.chromium.chrome.browser.customtabs.content.RealtimeEngagementSignalObserver.REAL_VALUES;
 import static org.chromium.chrome.browser.customtabs.content.RealtimeEngagementSignalObserver.TIME_CAN_UPDATE_AFTER_END;
-import static org.chromium.url.JUnitTestGURLs.HTTP_URL;
-import static org.chromium.url.JUnitTestGURLs.TEXT_FRAGMENT_URL;
-import static org.chromium.url.JUnitTestGURLs.URL_1;
 
 import android.graphics.Point;
 import android.os.Bundle;
@@ -70,13 +67,12 @@ import org.chromium.content_public.browser.NavigationHandle;
 import org.chromium.content_public.browser.WebContents;
 import org.chromium.content_public.browser.WebContentsObserver;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.util.List;
 
 /** Unit test for {@link RealtimeEngagementSignalObserver}. */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(shadows = {ShadowSystemClock.class, ShadowGURL.class})
+@Config(shadows = {ShadowSystemClock.class})
 @EnableFeatures({ChromeFeatureList.CCT_REAL_TIME_ENGAGEMENT_SIGNALS,
         ChromeFeatureList.CCT_REAL_TIME_ENGAGEMENT_SIGNALS_ALTERNATIVE_IMPL})
 public class RealtimeEngagementSignalObserverUnitTest {
@@ -432,8 +428,8 @@ public class RealtimeEngagementSignalObserverUnitTest {
                 .onGreatestScrollPercentageIncreased(eq(50), any(Bundle.class));
         clearInvocations(mEngagementSignalsCallback);
 
-        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.getGURL(URL_1),
-                false, /*isSameDocument=*/false, /*isMainFrame=*/true, 200);
+        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.URL_1, false,
+                /*isSameDocument=*/false, /*isMainFrame=*/true, 200);
         webContentsObserver.navigationEntryCommitted(details);
 
         // Scroll down to 10%.
@@ -466,8 +462,8 @@ public class RealtimeEngagementSignalObserverUnitTest {
                 .onGreatestScrollPercentageIncreased(eq(30), any(Bundle.class));
         clearInvocations(mEngagementSignalsCallback);
 
-        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.getGURL(URL_1),
-                false, /*isSameDocument=*/true, /*isMainFrame=*/true, 200);
+        LoadCommittedDetails details = new LoadCommittedDetails(
+                0, JUnitTestGURLs.URL_1, false, /*isSameDocument=*/true, /*isMainFrame=*/true, 200);
         webContentsObserver.navigationEntryCommitted(details);
 
         // Scroll down to 10%.
@@ -500,8 +496,8 @@ public class RealtimeEngagementSignalObserverUnitTest {
                 .onGreatestScrollPercentageIncreased(eq(90), any(Bundle.class));
         clearInvocations(mEngagementSignalsCallback);
 
-        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.getGURL(URL_1),
-                false, /*isSameDocument=*/false, /*isMainFrame=*/false, 200);
+        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.URL_1, false,
+                /*isSameDocument=*/false, /*isMainFrame=*/false, 200);
         webContentsObserver.navigationEntryCommitted(details);
 
         // Scroll down to 50%.
@@ -795,7 +791,7 @@ public class RealtimeEngagementSignalObserverUnitTest {
 
         // Navigate to a URL with text fragment.
         var navigationHandle = NavigationHandle.createForTesting(
-                JUnitTestGURLs.getGURL(TEXT_FRAGMENT_URL), false, 0, false);
+                JUnitTestGURLs.TEXT_FRAGMENT_URL, false, 0, false);
         webContentsObserver.didStartNavigationInPrimaryMainFrame(navigationHandle);
 
         // Do a scroll.
@@ -810,8 +806,8 @@ public class RealtimeEngagementSignalObserverUnitTest {
                 .onGreatestScrollPercentageIncreased(anyInt(), any(Bundle.class));
 
         // Navigate back to a URL with no text fragment.
-        var navigationHandle2 = NavigationHandle.createForTesting(
-                JUnitTestGURLs.getGURL(HTTP_URL), false, 0, false);
+        var navigationHandle2 =
+                NavigationHandle.createForTesting(JUnitTestGURLs.HTTP_URL, false, 0, false);
         webContentsObserver.didStartNavigationInPrimaryMainFrame(navigationHandle2);
 
         // Do a scroll.
@@ -869,8 +865,8 @@ public class RealtimeEngagementSignalObserverUnitTest {
                 .onGreatestScrollPercentageIncreased(eq(25), any(Bundle.class));
         // Now, navigate to another page.
         WebContentsObserver webContentsObserver = captureWebContentsObserver();
-        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.getGURL(URL_1),
-                false, /*isSameDocument=*/false, /*isMainFrame=*/true, 200);
+        LoadCommittedDetails details = new LoadCommittedDetails(0, JUnitTestGURLs.URL_1, false,
+                /*isSameDocument=*/false, /*isMainFrame=*/true, 200);
         webContentsObserver.navigationEntryCommitted(details);
         // Scroll up from some point in the page, e.g. back navigation or anchor fragment on page.
         // We shouldn't get any (more) signals.

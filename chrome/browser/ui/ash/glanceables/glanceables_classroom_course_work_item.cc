@@ -27,9 +27,9 @@ absl::optional<base::Time> ConvertCourseWorkItemDue(
     return absl::nullopt;
   }
 
-  const auto exploded_due = base::Time::Exploded{.year = raw_due->year,
-                                                 .month = raw_due->month,
-                                                 .day_of_month = raw_due->day};
+  const base::Time::Exploded exploded_due = {.year = raw_due->year,
+                                             .month = raw_due->month,
+                                             .day_of_month = raw_due->day};
   base::Time due;
   if (!base::Time::FromUTCExploded(exploded_due, &due)) {
     return absl::nullopt;
@@ -79,7 +79,6 @@ GlanceablesClassroomCourseWorkItem::~GlanceablesClassroomCourseWorkItem() =
 
 void GlanceablesClassroomCourseWorkItem::SetCourseWorkItem(
     const google_apis::classroom::CourseWorkItem* course_work) {
-  CHECK(!course_work_item_set_);
   course_work_item_set_ = true;
   can_course_work_item_be_revalidated_ = false;
 

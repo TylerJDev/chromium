@@ -356,11 +356,16 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
         -([self stickyOmniboxHeight] + [self feedHeaderHeight]);
     [self.contentSuggestionsViewController.view setNeedsLayout];
     [self.contentSuggestionsViewController.view layoutIfNeeded];
+    [self.headerViewController updateConstraints];
+    [self updateOverscrollActionsState];
+    [self updateHeightAboveFeed];
   }
 
   if (previousTraitCollection.preferredContentSizeCategory !=
       self.traitCollection.preferredContentSizeCategory) {
     [self updateFakeOmniboxForScrollPosition];
+    [self.headerViewController updateConstraints];
+    [self updateOverscrollActionsState];
     // Subviews will receive traitCollectionDidChange after this call, so the
     // only way to ensure that the scrollview isn't scrolled up too far is to
     // circle back afterwards and adjust if needed.
@@ -369,10 +374,6 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
           [self updateHeightAboveFeed];
         }));
   }
-
-  [self.headerViewController updateConstraints];
-  [self updateOverscrollActionsState];
-  [self updateHeightAboveFeed];
 }
 
 #pragma mark - Public
@@ -573,7 +574,7 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
   return heightAboveFeed;
 }
 
-- (void)setContentOffsetToTopOfFeed:(CGFloat)contentOffset {
+- (void)setContentOffsetToTopOfFeedOrLess:(CGFloat)contentOffset {
   if (contentOffset < [self offsetWhenScrolledIntoFeed]) {
     [self setContentOffset:contentOffset];
   } else {
@@ -635,6 +636,10 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
     // ensures that new content is being fetched.
     [self.NTPContentDelegate refreshNTPContent];
   }
+}
+
+- (void)restoreScrollPositionToTopOfFeed {
+  [self setSavedContentOffset:[self offsetWhenScrolledIntoFeed]];
 }
 
 - (CGFloat)scrollPosition {
@@ -896,10 +901,7 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
 
 // Returns the height of the fake omnibox to stick to the top of the NTP.
 - (CGFloat)stickyOmniboxHeight {
-  // Takes the height of the entire header and subtracts the margin to stick the
-  // fake omnibox. Adjusts this for the device by further subtracting the
-  // toolbar height.
-  return content_suggestions::FakeOmniboxHeight();
+  return content_suggestions::FakeToolbarHeight();
 }
 
 // Sets the feed collection contentOffset from the saved state to `offset` to
@@ -1155,6 +1157,9 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
 
 // Checks whether the feed top section is visible and updates the
 // `NTPContentDelegate`.
+// TODO(crbug.com/1331010): This function currently checks the visibility of the
+// entire feed top section, but it should only check the visibility of the promo
+// within it.
 - (void)updateFeedSigninPromoIsVisible {
   if (!self.feedTopSectionViewController) {
     return;
@@ -1435,11 +1440,9 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
   // for Discover infinite feed.
   CGFloat minimumHeight = collectionViewHeight + headerHeight;
   if (!IsRegularXRegularSizeClass(self.collectionView)) {
-    CGFloat toolbarHeight =
-        IsSplitToolbarMode(self.collectionView)
-            ? ToolbarExpandedHeight([UIApplication sharedApplication]
-                                        .preferredContentSizeCategory)
-            : 0;
+    CGFloat toolbarHeight = IsSplitToolbarMode(self.collectionView)
+                                ? [self stickyOmniboxHeight]
+                                : 0;
     CGFloat additionalHeight =
         toolbarHeight + self.collectionView.contentInset.bottom;
     minimumHeight -= additionalHeight;
@@ -1469,21 +1472,12 @@ const CGFloat kShiftTilesUpAnimationDuration = 0.1;
 }
 
 // The y-position content offset for when the user has completely scrolled into
-// the Feed. Only takes sticky omnibox into consideration for non-iPad devices.
+// the Feed.
 - (CGFloat)offsetWhenScrolledIntoFeed {
-  CGFloat offset;
+  CGFloat offset = -[self feedHeaderHeight];
   if ([self shouldPinFakeOmnibox]) {
-    offset = -(self.headerViewController.view.frame.size.height -
-               [self stickyOmniboxHeight] -
-               [self.feedHeaderViewController customSearchEngineViewHeight]);
-  } else {
-    offset = -[self feedHeaderHeight];
+    offset -= [self stickyOmniboxHeight];
   }
-
-  if (self.feedTopSectionViewController) {
-    offset -= self.feedTopSectionViewController.view.frame.size.height;
-  }
-
   return offset;
 }
 

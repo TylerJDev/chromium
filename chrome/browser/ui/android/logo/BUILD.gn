@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build/config/android/rules.gni")
+import("//third_party/jni_zero/jni_zero.gni")
 
 android_library("java") {
   srcjar_deps = [ ":jni_headers" ]
@@ -12,6 +13,7 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/logo/LogoCoordinator.java",
     "java/src/org/chromium/chrome/browser/logo/LogoMediator.java",
     "java/src/org/chromium/chrome/browser/logo/LogoProperties.java",
+    "java/src/org/chromium/chrome/browser/logo/LogoUtils.java",
     "java/src/org/chromium/chrome/browser/logo/LogoView.java",
     "java/src/org/chromium/chrome/browser/logo/LogoViewBinder.java",
   ]
@@ -53,7 +55,9 @@ android_resources("java_resources") {
     "java/res/drawable-xxhdpi/google_logo.png",
     "java/res/drawable-xxxhdpi/google_logo.png",
     "java/res/values-night/colors.xml",
+    "java/res/values-sw600dp/dimens.xml",
     "java/res/values/colors.xml",
+    "java/res/values/dimens.xml",
   ]
 
   deps = [ "//chrome/browser/ui/android/strings:ui_strings_grd" ]
@@ -64,6 +68,7 @@ robolectric_library("junit") {
   sources = [
     "java/src/org/chromium/chrome/browser/logo/CachedTintedBitmapUnitTest.java",
     "java/src/org/chromium/chrome/browser/logo/LogoMediatorUnitTest.java",
+    "java/src/org/chromium/chrome/browser/logo/LogoUtilsUnitTest.java",
     "java/src/org/chromium/chrome/browser/logo/LogoViewBinderUnitTest.java",
     "java/src/org/chromium/chrome/browser/logo/LogoViewTest.java",
   ]

@@ -27,8 +27,14 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
     r.PRIVACY_GUIDE = r.PRIVACY.createChild('guide');
   }
   r.SITE_SETTINGS = r.PRIVACY.createChild('/content');
-  r.COOKIES = r.PRIVACY.createChild('/cookies');
   r.SECURITY = r.PRIVACY.createChild('/security');
+
+  r.TRACKING_PROTECTION = r.PRIVACY.createChild('/trackingProtection');
+  r.COOKIES = r.PRIVACY.createChild('/cookies');
+  if (!loadTimeData.getBoolean(
+          'isPerformanceSettingsPreloadingSubpageEnabled')) {
+    r.PRELOADING = r.COOKIES.createChild('/preloading');
+  }
 
   if (loadTimeData.getBoolean('isPrivacySandboxSettings4') &&
       !loadTimeData.getBoolean('isPrivacySandboxRestricted')) {
@@ -62,11 +68,6 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
     // </if>
   }
 
-  if (!loadTimeData.getBoolean(
-          'isPerformanceSettingsPreloadingSubpageEnabled')) {
-    r.PRELOADING = r.COOKIES.createChild('/preloading');
-  }
-
   r.SITE_SETTINGS_ALL = r.SITE_SETTINGS.createChild('all');
   r.SITE_SETTINGS_SITE_DETAILS =
       r.SITE_SETTINGS_ALL.createChild('/content/siteDetails');
@@ -79,6 +80,10 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
   r.SITE_SETTINGS_AR = r.SITE_SETTINGS.createChild('ar');
   r.SITE_SETTINGS_AUTOMATIC_DOWNLOADS =
       r.SITE_SETTINGS.createChild('automaticDownloads');
+  if (loadTimeData.getBoolean('autoPictureInPictureEnabled')) {
+    r.SITE_SETTINGS_AUTO_PICTURE_IN_PICTURE =
+        r.SITE_SETTINGS.createChild('autoPictureInPicture');
+  }
   if (loadTimeData.getBoolean('privateStateTokensEnabled')) {
     r.SITE_SETTINGS_AUTO_VERIFY = r.SITE_SETTINGS.createChild('autoVerify');
   }
@@ -161,6 +166,9 @@ function createBrowserSettingsRoutes(): SettingsRoutes {
 
     r.SYNC = r.PEOPLE.createChild('/syncSetup');
     r.SYNC_ADVANCED = r.SYNC.createChild('/syncSetup/advanced');
+    if (loadTimeData.getBoolean('enablePageContentSetting')) {
+      r.PAGE_CONTENT = r.SYNC.createChild('/syncSetup/pageContent');
+    }
   }
 
   const visibility = pageVisibility || {};
@@ -268,10 +276,6 @@ function createBrowserSettingsRoutes(): SettingsRoutes {
       r.PERFORMANCE = r.BASIC.createSection(
           '/performance', 'performance',
           loadTimeData.getString('performancePageTitle'));
-      if (loadTimeData.getBoolean(
-              'isPerformanceSettingsPreloadingSubpageEnabled')) {
-        r.PRELOADING = r.PERFORMANCE.createChild('/preloading');
-      }
     }
 
     // <if expr="_google_chrome">

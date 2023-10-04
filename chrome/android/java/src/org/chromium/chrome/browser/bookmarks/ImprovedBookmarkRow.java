@@ -11,12 +11,14 @@ import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewPropertyAnimator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.ColorInt;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 
 import org.chromium.chrome.R;
 import org.chromium.components.bookmarks.BookmarkId;
@@ -30,11 +32,20 @@ import org.chromium.components.browser_ui.widget.selectable_list.SelectableListU
 /**
  * Common logic for improved bookmark and folder rows.
  */
-// TODO(crbug.com/): Make selection delegate optional for this class.
+// TODO(crbug.com/): Make selection delegate optional for this class and remove
+// SelectableItemViewBase inheritance. It's no longer needed.
 public class ImprovedBookmarkRow extends SelectableItemViewBase<BookmarkId> {
+    /**
+     * The base duration of the settling animation of the sheet. 218 ms is a spec for material
+     * design (this is the minimum time a user is guaranteed to pay attention to something).
+     */
+    @VisibleForTesting
+    static final int BASE_ANIMATION_DURATION_MS = 218;
+
     private ViewGroup mContainer;
     // The start image view which is shows the favicon.
     private ImageView mStartImageView;
+    private View mStartImageContainer;
     private ImprovedBookmarkFolderView mFolderIconView;
     // Displays the title of the bookmark.
     private TextView mTitleView;
@@ -53,8 +64,6 @@ public class ImprovedBookmarkRow extends SelectableItemViewBase<BookmarkId> {
     private boolean mBookmarkIdEditable;
     private boolean mMoreButtonVisible;
     private boolean mSelectionEnabled;
-
-    private Runnable mOpenBookmarkCallback;
 
     /**
      * Factory constructor for building the view programmatically.
@@ -97,6 +106,7 @@ public class ImprovedBookmarkRow extends SelectableItemViewBase<BookmarkId> {
         mContainer = findViewById(R.id.container);
 
         mStartImageView = findViewById(R.id.start_image);
+        mStartImageContainer = findViewById(R.id.start_image_container);
         mFolderIconView = findViewById(R.id.folder_view);
 
         mTitleView = findViewById(R.id.title);
@@ -124,15 +134,25 @@ public class ImprovedBookmarkRow extends SelectableItemViewBase<BookmarkId> {
     }
 
     void setStartImageVisible(boolean visible) {
-        mStartImageView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        mStartImageContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     void setFolderViewVisible(boolean visible) {
         mFolderIconView.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
-    void setStartIconDrawable(Drawable drawable) {
+    void setStartIconDrawable(@Nullable Drawable drawable) {
         mStartImageView.setImageDrawable(drawable);
+        // No need to fade-in a null drawable.
+        if (drawable == null) return;
+
+        mStartImageView.setAlpha(0f);
+
+        // Using a local variable to facilitate testing.
+        ViewPropertyAnimator anim = mStartImageView.animate();
+        anim.setDuration(BASE_ANIMATION_DURATION_MS);
+        anim.alpha(1f);
+        anim.start();
     }
 
     void setStartIconTint(ColorStateList tint) {
@@ -226,13 +246,14 @@ public class ImprovedBookmarkRow extends SelectableItemViewBase<BookmarkId> {
         mCheckImageView.setVisibility(checkVisible ? View.VISIBLE : View.GONE);
         mMoreButton.setVisibility(moreVisible ? View.VISIBLE : View.GONE);
     }
-
     @Override
-    protected void onClick() {
-        mOpenBookmarkCallback.run();
-    }
+    protected void onClick() {}
 
     ImprovedBookmarkFolderView getFolderView() {
         return mFolderIconView;
+    }
+
+    void setStartImageViewForTesting(ImageView startImageView) {
+        mStartImageView = startImageView;
     }
 }

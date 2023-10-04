@@ -44,14 +44,14 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.omnibox.voice.VoiceRecognitionUtil;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.toolbar.ButtonData.ButtonSpec;
 import org.chromium.chrome.browser.toolbar.ButtonDataImpl;
 import org.chromium.chrome.browser.toolbar.ButtonDataProvider;
 import org.chromium.chrome.browser.toolbar.ButtonDataProvider.ButtonDataObserver;
 import org.chromium.chrome.browser.toolbar.R;
-import org.chromium.chrome.browser.toolbar.adaptive.settings.AdaptiveToolbarPreferenceFragment;
+import org.chromium.chrome.browser.toolbar.adaptive.settings.AdaptiveToolbarSettingsFragment;
 import org.chromium.chrome.test.util.browser.Features;
 import org.chromium.chrome.test.util.browser.Features.DisableFeatures;
 import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
@@ -95,15 +95,16 @@ public class AdaptiveToolbarButtonControllerTest {
                 /*canShow=*/true, /*drawable=*/null, mock(View.OnClickListener.class),
                 /*contentDescription=*/"", /*supportsTinting=*/false,
                 /*iphCommandBuilder=*/null, /*isEnabled=*/true,
-                AdaptiveToolbarButtonVariant.UNKNOWN);
+                AdaptiveToolbarButtonVariant.UNKNOWN, /*tooltipTextResId=*/Resources.ID_NULL,
+                /*showHoverHighlight=*/false);
         mConfiguration.screenWidthDp = 420;
     }
 
     @After
     public void tearDown() {
-        SharedPreferencesManager.getInstance().removeKey(
+        ChromeSharedPreferences.getInstance().removeKey(
                 ChromePreferenceKeys.ADAPTIVE_TOOLBAR_CUSTOMIZATION_ENABLED);
-        SharedPreferencesManager.getInstance().removeKey(ADAPTIVE_TOOLBAR_CUSTOMIZATION_SETTINGS);
+        ChromeSharedPreferences.getInstance().removeKey(ADAPTIVE_TOOLBAR_CUSTOMIZATION_SETTINGS);
     }
 
     @Test
@@ -193,7 +194,7 @@ public class AdaptiveToolbarButtonControllerTest {
         Assert.assertEquals(mVoiceToolbarButtonController,
                 adaptiveToolbarButtonController.getSingleProviderForTesting());
 
-        SharedPreferencesManager.getInstance().writeInt(
+        ChromeSharedPreferences.getInstance().writeInt(
                 ADAPTIVE_TOOLBAR_CUSTOMIZATION_SETTINGS, AdaptiveToolbarButtonVariant.NEW_TAB);
 
         verify(observer, times(2)).buttonDataChanged(true);
@@ -224,7 +225,7 @@ public class AdaptiveToolbarButtonControllerTest {
         AdaptiveToolbarButtonController adaptiveToolbarButtonController =
                 new AdaptiveToolbarButtonController(activity, settingsLauncher,
                         mActivityLifecycleDispatcher, menuCoordinator, mAndroidPermissionDelegate,
-                        SharedPreferencesManager.getInstance());
+                        ChromeSharedPreferences.getInstance());
         adaptiveToolbarButtonController.addButtonVariant(
                 AdaptiveToolbarButtonVariant.NEW_TAB, mNewTabButtonController);
         adaptiveToolbarButtonController.onFinishNativeInitialization();
@@ -242,7 +243,7 @@ public class AdaptiveToolbarButtonControllerTest {
         adaptiveToolbarButtonController.destroy();
 
         verify(settingsLauncher)
-                .launchSettingsActivity(activity, AdaptiveToolbarPreferenceFragment.class);
+                .launchSettingsActivity(activity, AdaptiveToolbarSettingsFragment.class);
     }
 
     @Test
@@ -272,7 +273,7 @@ public class AdaptiveToolbarButtonControllerTest {
         AdaptiveToolbarButtonController adaptiveToolbarButtonController =
                 new AdaptiveToolbarButtonController(activity, settingsLauncher,
                         mActivityLifecycleDispatcher, menuCoordinator, mAndroidPermissionDelegate,
-                        SharedPreferencesManager.getInstance());
+                        ChromeSharedPreferences.getInstance());
         adaptiveToolbarButtonController.addButtonVariant(
                 AdaptiveToolbarButtonVariant.PRICE_TRACKING, mPriceTrackingButtonController);
         ButtonDataObserver observer = mock(ButtonDataObserver.class);
@@ -430,7 +431,7 @@ public class AdaptiveToolbarButtonControllerTest {
                 new AdaptiveToolbarButtonController(mockActivity, mock(SettingsLauncher.class),
                         mActivityLifecycleDispatcher,
                         mock(AdaptiveButtonActionMenuCoordinator.class), mAndroidPermissionDelegate,
-                        SharedPreferencesManager.getInstance());
+                        ChromeSharedPreferences.getInstance());
         adaptiveToolbarButtonController.addButtonVariant(
                 AdaptiveToolbarButtonVariant.NEW_TAB, mNewTabButtonController);
         adaptiveToolbarButtonController.addButtonVariant(
@@ -444,6 +445,7 @@ public class AdaptiveToolbarButtonControllerTest {
         return new ButtonSpec(/*drawable=*/null, mock(View.OnClickListener.class),
                 /*onLongClickListener=*/null,
                 /*contentDescription=*/"description", /*supportsTinting=*/false,
-                /*iphCommandBuilder=*/null, variant, /*actionChipLabelResId=*/0);
+                /*iphCommandBuilder=*/null, variant, /*actionChipLabelResId=*/0,
+                /*tooltipTextResId=*/Resources.ID_NULL, /*showHoverHighlight=*/false);
     }
 }

@@ -44,6 +44,7 @@
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
 #include "third_party/blink/renderer/core/html/html_html_element.h"
 #include "third_party/blink/renderer/core/html/html_meter_element.h"
+#include "third_party/blink/renderer/core/html/html_permission_element.h"
 #include "third_party/blink/renderer/core/html/html_progress_element.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
 #include "third_party/blink/renderer/core/mathml_names.h"
@@ -128,6 +129,7 @@ void CSSDefaultStyleSheets::PrepareForLeakDetection() {
   selectlist_style_sheet_.Clear();
   marker_style_sheet_.Clear();
   form_controls_not_vertical_style_sheet_.Clear();
+  form_controls_not_vertical_style_text_sheet_.Clear();
   // Recreate the default style sheet to clean up possible SVG resources.
   String default_rules = UncompressResourceAsASCIIString(IDR_UASTYLE_HTML_CSS) +
                          LayoutTheme::GetTheme().ExtraDefaultStyleSheet();
@@ -277,6 +279,15 @@ bool CSSDefaultStyleSheets::EnsureDefaultStyleSheetsForElement(
     changed_default_style = true;
   }
 
+  if (!permission_element_style_sheet_ && IsA<HTMLPermissionElement>(element)) {
+    CHECK(RuntimeEnabledFeatures::PermissionElementEnabled());
+    permission_element_style_sheet_ = ParseUASheet(
+        UncompressResourceAsASCIIString(IDR_UASTYLE_PERMISSION_ELEMENT_CSS));
+    AddRulesToDefaultStyleSheets(permission_element_style_sheet_,
+                                 NamespaceType::kHTML);
+    changed_default_style = true;
+  }
+
   if (!text_track_style_sheet_ && IsA<HTMLVideoElement>(element)) {
     Settings* settings = element.GetDocument().GetSettings();
     if (settings) {
@@ -319,19 +330,32 @@ bool CSSDefaultStyleSheets::EnsureDefaultStyleSheetsForElement(
     changed_default_style = true;
   }
 
-  // TODO(crbug.com/681917): The FormControlsVerticalWritingModeSupport
-  // flag enables vertical writing mode to be used on form controls. When
-  // it is *disabled*, we need to force horizontal writing mode.
+  // TODO(crbug.com/681917, crbug.com/484651): We enable vertical writing mode
+  // on form controls using features FormControlsVerticalWritingModeSupport
+  // and FormControlsVerticalWritingModeTextSupport. When it is *disabled*,
+  // we need to force horizontal writing mode.
+  const auto* input = DynamicTo<HTMLInputElement>(element);
   if (!RuntimeEnabledFeatures::
           FormControlsVerticalWritingModeSupportEnabled() &&
       !form_controls_not_vertical_style_sheet_ &&
       (IsA<HTMLProgressElement>(element) || IsA<HTMLMeterElement>(element) ||
-       IsA<HTMLInputElement>(element) || IsA<HTMLTextAreaElement>(element) ||
-       IsA<HTMLButtonElement>(element) || IsA<HTMLSelectElement>(element))) {
+       IsA<HTMLButtonElement>(element) || IsA<HTMLSelectElement>(element) ||
+       (input && !input->IsTextField()))) {
     form_controls_not_vertical_style_sheet_ =
         ParseUASheet(UncompressResourceAsASCIIString(
             IDR_UASTYLE_FORM_CONTROLS_NOT_VERTICAL_CSS));
     AddRulesToDefaultStyleSheets(form_controls_not_vertical_style_sheet_,
+                                 NamespaceType::kHTML);
+    changed_default_style = true;
+  }
+  if (!RuntimeEnabledFeatures::
+          FormControlsVerticalWritingModeTextSupportEnabled() &&
+      !form_controls_not_vertical_style_text_sheet_ &&
+      (IsA<HTMLTextAreaElement>(element) || (input && input->IsTextField()))) {
+    form_controls_not_vertical_style_text_sheet_ =
+        ParseUASheet(UncompressResourceAsASCIIString(
+            IDR_UASTYLE_FORM_CONTROLS_NOT_VERTICAL_CSS_TEXT));
+    AddRulesToDefaultStyleSheets(form_controls_not_vertical_style_text_sheet_,
                                  NamespaceType::kHTML);
     changed_default_style = true;
   }
@@ -444,12 +468,14 @@ void CSSDefaultStyleSheets::Trace(Visitor* visitor) const {
   visitor->Trace(svg_style_sheet_);
   visitor->Trace(mathml_style_sheet_);
   visitor->Trace(media_controls_style_sheet_);
+  visitor->Trace(permission_element_style_sheet_);
   visitor->Trace(text_track_style_sheet_);
   visitor->Trace(forced_colors_style_sheet_);
   visitor->Trace(fullscreen_style_sheet_);
   visitor->Trace(selectlist_style_sheet_);
   visitor->Trace(marker_style_sheet_);
   visitor->Trace(form_controls_not_vertical_style_sheet_);
+  visitor->Trace(form_controls_not_vertical_style_text_sheet_);
 }
 
 }  // namespace blink

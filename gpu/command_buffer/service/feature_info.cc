@@ -208,7 +208,10 @@ FeatureInfo::FeatureInfo(
       gpu_feature_info.supported_buffer_formats_for_allocation_and_texturing,
       gfx::BufferFormat::P010);
 #elif BUILDFLAG(IS_MAC)
-  feature_flags_.chromium_image_ycbcr_p010 = base::mac::IsAtLeastOS11();
+  feature_flags_.chromium_image_ycbcr_p010 =
+      base::mac::MacOSMajorVersion() >= 11;
+#elif BUILDFLAG(IS_IOS)
+  feature_flags_.chromium_image_ycbcr_p010 = true;
 #endif
 }
 
@@ -1291,7 +1294,7 @@ void FeatureInfo::InitializeFeatures() {
   }
 
 #if BUILDFLAG(IS_MAC)
-  if (base::mac::IsAtLeastOS11()) {
+  if (base::mac::MacOSMajorVersion() >= 11) {
     feature_flags_.gpu_memory_buffer_formats.Put(
         gfx::BufferFormat::YUVA_420_TRIPLANAR);
   }
@@ -1345,7 +1348,6 @@ void FeatureInfo::InitializeFeatures() {
   bool is_webgl_compatibility_context =
       gfx::HasExtension(extensions, "GL_ANGLE_webgl_compatibility");
   bool have_es2_draw_buffers =
-      !workarounds_.disable_ext_draw_buffers &&
       (have_es2_draw_buffers_vendor_agnostic ||
        can_emulate_es2_draw_buffers_on_es3_nv) &&
       (context_type_ == CONTEXT_TYPE_OPENGLES2 ||
@@ -1574,7 +1576,7 @@ void FeatureInfo::InitializeFeatures() {
       gl_version_info_->IsAtLeastGL(3, 3) ||
       (gl_version_info_->IsAtLeastGL(3, 2) &&
        gfx::HasExtension(extensions, "GL_ARB_blend_func_extended"));
-  if (!disable_shader_translator_ && !workarounds_.get_frag_data_info_bug &&
+  if (!disable_shader_translator_ &&
       ((gl_version_info_->IsAtLeastGL(3, 2) &&
         has_opengl_dual_source_blending) ||
        (gl_version_info_->IsAtLeastGLES(3, 0) &&
@@ -1757,6 +1759,76 @@ void FeatureInfo::InitializeFeatures() {
   if (gfx::HasExtension(extensions, "GL_ANGLE_clip_cull_distance")) {
     feature_flags_.angle_clip_cull_distance = true;
     AddExtensionString("GL_ANGLE_clip_cull_distance");
+  }
+
+  if (gfx::HasExtension(extensions, "GL_ANGLE_polygon_mode")) {
+    feature_flags_.angle_polygon_mode = true;
+    AddExtensionString("GL_ANGLE_polygon_mode");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_ANGLE_stencil_texturing")) {
+    AddExtensionString("GL_ANGLE_stencil_texturing");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_blend_func_extended")) {
+    feature_flags_.ext_blend_func_extended = true;
+    AddExtensionString("GL_EXT_blend_func_extended");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_clip_control")) {
+    feature_flags_.ext_clip_control = true;
+    AddExtensionString("GL_EXT_clip_control");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_conservative_depth")) {
+    AddExtensionString("GL_EXT_conservative_depth");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_depth_clamp")) {
+    AddExtensionString("GL_EXT_depth_clamp");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_polygon_offset_clamp")) {
+    feature_flags_.ext_polygon_offset_clamp = true;
+    AddExtensionString("GL_EXT_polygon_offset_clamp");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_render_snorm")) {
+    AddExtensionString("GL_EXT_render_snorm");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_texture_mirror_clamp_to_edge")) {
+    AddExtensionString("GL_EXT_texture_mirror_clamp_to_edge");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions,
+                        "GL_NV_shader_noperspective_interpolation")) {
+    AddExtensionString("GL_NV_shader_noperspective_interpolation");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_OES_sample_variables")) {
+    AddExtensionString("GL_OES_sample_variables");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions,
+                        "GL_OES_shader_multisample_interpolation")) {
+    AddExtensionString("GL_OES_shader_multisample_interpolation");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_QCOM_render_shared_exponent")) {
+    AddExtensionString("GL_QCOM_render_shared_exponent");
   }
 }
 

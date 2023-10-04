@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">เปลี่ยนเป็นการมิเรอร์</translation>
 <translation id="2031987842108996681">ช่องสีแดง</translation>
 <translation id="2060505056492490888">"<ph name="DOT" />" ถูกใช้งานในตำแหน่งที่ไม่ถูกต้องใน "<ph name="INVALIDDOMAIN" />"</translation>
+<translation id="2068711044993563745">ค่าต่ำสุด (<ph name="MINIMUM" />) ต้องน้อยกว่าค่าสูงสุด (<ph name="MAXIMUM" />)</translation>
 <translation id="2148716181193084225">วันนี้</translation>
 <translation id="2226276347425096477">โปรดย่อข้อความนี้ให้เหลือไม่เกิน <ph name="MAX_CHARACTERS" /> อักขระ (ขณะนี้ข้อความของคุณมี <ph name="CURRENT_LENGTH" /> อักขระ)</translation>
 <translation id="2247351761944213033">สัปดาห์ที่ <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">โปรดเลือกช่องนี้หากคุณต้องการดำเนินการต่อ</translation>
 <translation id="2908441821576996758">โปรดป้อนรายการที่อยู่อีเมลโดยคั่นด้วยเครื่องหมายจุลภาค</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">แสดงเมนูเสียงบรรยาย</translation>
 <translation id="3075154866155599887">โปรดป้อนค่าที่ถูกต้อง ฟิลด์นี้ไม่สมบูรณ์หรือมีวันที่ที่ไม่ถูกต้อง</translation>
 <translation id="310520048233152454">โปรดป้อน URL</translation>
 <translation id="3220661731597678625">ขั้นตอนปัจจุบัน</translation>

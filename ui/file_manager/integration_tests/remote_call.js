@@ -98,11 +98,12 @@ export class RemoteCall {
       }
       window.currentStep = new Promise(resolve => {
         finishCurrentStep = () => {
+          console.groupEnd();
           window.currentStep = null;
           resolve();
         };
       });
-      console.info('Executing: ' + func + ' on ' + appId + ' with args: ');
+      console.group('Executing: ' + func + ' on ' + appId + ' with args: ');
       console.info(args);
       if (window.autostep !== true) {
         await new Promise((onFulfilled) => {
@@ -181,10 +182,10 @@ export class RemoteCall {
    *     If query is an array, |query[0]| specifies the first
    *     element(s), |query[1]| specifies elements inside the shadow DOM of
    *     the first element, and so on.
-   * @return {Promise<ElementObject>} Promise to be fulfilled when the element
+   * @return {!Promise<!ElementObject>} Promise to be fulfilled when the element
    *     appears.
    */
-  waitForElement(appId, query) {
+  async waitForElement(appId, query) {
     return this.waitForElementStyles(appId, query, []);
   }
 
@@ -197,10 +198,10 @@ export class RemoteCall {
    *     the first element, and so on.
    * @param {!Array<string>} styleNames List of CSS property name to be
    *     obtained. NOTE: Causes element style re-calculation.
-   * @return {Promise<ElementObject>} Promise to be fulfilled when the element
+   * @return {!Promise<!ElementObject>} Promise to be fulfilled when the element
    *     appears.
    */
-  waitForElementStyles(appId, query, styleNames) {
+  async waitForElementStyles(appId, query, styleNames) {
     const caller = getCaller();
     return repeatUntil(async () => {
       const elements = await this.callRemoteTestUtil(
@@ -276,7 +277,7 @@ export class RemoteCall {
    * @param {number} count The expected element match count.
    * @return {Promise} Promise to be fulfilled on success.
    */
-  waitForElementsCount(appId, query, count) {
+  async waitForElementsCount(appId, query, count) {
     const caller = getCaller();
     return repeatUntil(async () => {
       const expect = `Waiting for [${query}] to match ${count} elements`;
@@ -359,7 +360,8 @@ export class RemoteCall {
    *     element(s), |query[1]| specifies elements inside the shadow DOM of
    *     the first element, and so on.
    * @param {KeyModifiers=} opt_keyModifiers Object
-   * @return {Promise} Promise to be fulfilled with the clicked element.
+   * @return {!Promise<ElementObject>} Promise to be fulfilled with the clicked
+   *     element.
    */
   async waitAndClickElement(appId, query, opt_keyModifiers) {
     const element = await this.waitForElement(appId, query);
@@ -767,77 +769,6 @@ export class RemoteCallFilesApp extends RemoteCall {
   }
 
   /**
-   * Expands tree item.
-   * @param {string} appId App window Id.
-   * @param {string} query Query to the <tree-item> element.
-   */
-  async expandTreeItemInDirectoryTree(appId, query) {
-    await this.waitForElement(appId, query);
-    const elements = await this.callRemoteTestUtil(
-        'queryAllElements', appId, [`${query}[expanded]`]);
-    // If it's already expanded just set the focus on directory tree.
-    if (elements.length > 0) {
-      return this.callRemoteTestUtil('focus', appId, ['#directory-tree']);
-    }
-
-    // We must wait until <tree-item> has attribute [has-children=true]
-    // otherwise it won't expand. We must also to account for the case
-    // :not([expanded]) to ensure it has NOT been expanded by some async
-    // operation since the [expanded] checks above.
-    const expandIcon =
-        query + ':not([expanded]) > .tree-row[has-children=true] .expand-icon';
-    await this.waitAndClickElement(appId, expandIcon);
-    // Wait for the expansion to finish.
-    await this.waitForElement(appId, query + '[expanded]');
-    // Force the focus on directory tree.
-    await this.callRemoteTestUtil('focus', appId, ['#directory-tree']);
-  }
-
-  /**
-   * Expands directory tree for specified path.
-   */
-  expandDirectoryTreeFor(appId, path, volumeType = 'downloads') {
-    return this.expandDirectoryTreeForInternal_(
-        appId, path.split('/'), 0, volumeType);
-  }
-
-  /**
-   * Internal function for expanding directory tree for specified path.
-   */
-  async expandDirectoryTreeForInternal_(appId, components, index, volumeType) {
-    if (index >= components.length - 1) {
-      return;
-    }
-
-    // First time we should expand the root/volume first.
-    if (index === 0) {
-      await this.expandVolumeInDirectoryTree(appId, volumeType);
-      return this.expandDirectoryTreeForInternal_(
-          appId, components, index + 1, volumeType);
-    }
-    const path = '/' + components.slice(1, index + 1).join('/');
-    await this.expandTreeItemInDirectoryTree(
-        appId, `[full-path-for-testing="${path}"]`);
-    await this.expandDirectoryTreeForInternal_(
-        appId, components, index + 1, volumeType);
-  }
-
-  /**
-   * Expands download volume in directory tree.
-   */
-  expandDownloadVolumeInDirectoryTree(appId) {
-    return this.expandVolumeInDirectoryTree(appId, 'downloads');
-  }
-
-  /**
-   * Expands download volume in directory tree.
-   */
-  expandVolumeInDirectoryTree(appId, volumeType) {
-    return this.expandTreeItemInDirectoryTree(
-        appId, `[volume-type-for-testing="${volumeType}"]`);
-  }
-
-  /**
    * Wait until the expected number of volumes is mounted.
    * @param {number} expectedVolumesCount Expected number of mounted volumes.
    * @return {Promise} promise Promise to be fulfilled.
@@ -1155,6 +1086,37 @@ export class RemoteCallFilesApp extends RemoteCall {
           caller,
           `Still waiting for xf-cloud-panel to have items=${
               items} and percentage=${percentage}`);
+    });
+  }
+
+  /**
+   * Wait for the feedback panel to show an item with the provided messages.
+   * @param {!string} appId app window ID
+   * @param {!RegExp} expectedPrimaryMessageRegex The expected primary-text of
+   *     the item.
+   * @param {!RegExp} expectedSecondaryMessageRegex The expected secondary-text
+   *     of the item.
+   */
+  async waitForFeedbackPanelItem(
+      appId, expectedPrimaryMessageRegex, expectedSecondaryMessageRegex) {
+    const caller = getCaller();
+    return repeatUntil(async () => {
+      const element = await this.waitForElement(
+          appId, ['#progress-panel', 'xf-panel-item']);
+
+      const actualPrimaryText = element.attributes['primary-text'];
+      const actualSecondaryText = element.attributes['secondary-text'];
+
+      if (expectedPrimaryMessageRegex.test(actualPrimaryText) &&
+          expectedSecondaryMessageRegex.test(actualSecondaryText)) {
+        return;
+      }
+      return pending(
+          caller,
+          `Expected feedback panel item with primary-text regex:"${
+              expectedPrimaryMessageRegex}" and secondary-text regex:"${
+              expectedSecondaryMessageRegex}", got item with primary-text "${
+              actualPrimaryText}" and secondary-text "${actualSecondaryText}"`);
     });
   }
 

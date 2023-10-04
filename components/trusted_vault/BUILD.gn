@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
+
 static_library("trusted_vault") {
   sources = [
     "trusted_vault_client.h",
@@ -98,21 +100,47 @@ if (!is_android) {
       "//testing/gtest",
     ]
   }
+}
 
-  static_library("test_support") {
-    testonly = true
-    sources = [
+static_library("test_support") {
+  testonly = true
+
+  sources = [
+    "test/fake_trusted_vault_client.cc",
+    "test/fake_trusted_vault_client.h",
+  ]
+
+  deps = [ "//components/signin/public/identity_manager" ]
+
+  public_deps = [
+    ":trusted_vault",
+    "//base",
+  ]
+
+  if (!is_android) {
+    sources += [
       "test/fake_security_domains_server.cc",
       "test/fake_security_domains_server.h",
     ]
 
-    public_deps = [
-      "//base",
+    public_deps += [
       "//components/trusted_vault/proto",
       "//net:test_support",
       "//url",
     ]
+  }
 
-    deps = [ ":trusted_vault" ]
+  if (is_chromeos_lacros) {
+    sources += [
+      "test/fake_crosapi_trusted_vault_backend.cc",
+      "test/fake_crosapi_trusted_vault_backend.h",
+    ]
+
+    public_deps += [
+      "//chromeos/crosapi/mojom",
+      "//mojo/public/cpp/bindings",
+    ]
+
+    deps += [ "//components/account_manager_core" ]
   }
 }

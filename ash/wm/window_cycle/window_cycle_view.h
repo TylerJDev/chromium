@@ -11,7 +11,6 @@
 #include "ash/ash_export.h"
 #include "ash/wm/gestures/wm_fling_handler.h"
 #include "base/memory/raw_ptr.h"
-#include "ui/aura/window_occlusion_tracker.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/compositor/layer_animation_observer.h"
 #include "ui/views/widget/widget_delegate.h"
@@ -26,6 +25,7 @@ class Rect;
 
 namespace views {
 class Label;
+class View;
 }  // namespace views
 
 namespace ash {
@@ -47,7 +47,9 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
   // previews.
   static constexpr int kInsideBorderHorizontalPaddingDp = 64;
 
-  WindowCycleView(aura::Window* root_window, const WindowList& windows);
+  WindowCycleView(aura::Window* root_window,
+                  const WindowList& windows,
+                  const bool same_app_only);
   WindowCycleView(const WindowCycleView&) = delete;
   WindowCycleView& operator=(const WindowCycleView&) = delete;
   ~WindowCycleView() override;
@@ -66,7 +68,7 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
   // the root window's bounds.
   gfx::Rect GetTargetBounds() const;
 
-  // Recreates the `WindowCycleView` with the provided `windows`.
+  // Recreates the `WindowCycleView` with the given `windows`.
   void UpdateWindows(const WindowList& windows);
 
   // Fades the `WindowCycleView` in.
@@ -75,9 +77,12 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
   // Scrolls the `WindowCycleView` to `target`.
   void ScrollToWindow(aura::Window* target);
 
-  // Makes `target` the new `target_window_`, moving the focus ring to its
-  // respective `WindowCycleItemView`.
-  void SetTargetWindow(aura::Window* target);
+  // Refreshes the `target_window_` with the `new_target`. Updates the focus
+  // state of the focus ring by hiding the focus ring on the previously
+  // focused item and painting the focus ring on the currently focused item.
+  // The focus target will be a single `WindowCycleItemView` for free-form
+  // window and a `GroupContainerCycleView` for snap group.
+  void SetTargetWindow(aura::Window* new_target);
 
   // Removes the `destroying_window`'s respective `WindowCycleItemView` and sets
   // `new_target` as the new `target_window_`.
@@ -115,6 +120,13 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
   // `tab_slider_container_` of the change.
   void OnModePrefsChanged();
 
+  // Returns whether or not the given `screen_point` is located in tab slider
+  // container.
+  bool IsEventInTabSliderContainer(const gfx::Point& screen_point) const;
+
+  // Returns the maximum width of the cycle view.
+  int CalculateMaxWidth() const;
+
   // views::WidgetDelegateView:
   gfx::Size CalculatePreferredSize() const override;
   void Layout() override;
@@ -122,12 +134,13 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
   // ui::ImplicitAnimationObserver:
   void OnImplicitAnimationsCompleted() override;
 
-  // Returns whether or not the given `screen_point` is located in tab slider
-  // container.
-  bool IsEventInTabSliderContainer(const gfx::Point& screen_point);
+  const views::View* mirror_container_for_testing() const {
+    return mirror_container_;
+  }
 
-  // Returns the maximum width of the cycle view.
-  int CalculateMaxWidth() const;
+  const std::vector<WindowMiniViewBase*>& cycle_views_for_testing() const {
+    return cycle_views_;
+  }
 
  private:
   friend class WindowCycleListTestApi;
@@ -143,6 +156,9 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
 
   // The root window that `this` resides on.
   const raw_ptr<aura::Window, ExperimentalAsh> root_window_;
+
+  // True if the `this` is built for same app cycling.
+  const bool same_app_only_;
 
   // Constructed as the child views of `mirror_container` and used for window
   // cycling.
@@ -184,11 +200,6 @@ class ASH_EXPORT WindowCycleView : public views::WidgetDelegateView,
   // performance heavy elements not created yet. These elements will be created
   // once onscreen to improve fade in performance, then removed from this set.
   std::vector<WindowMiniViewBase*> no_previews_list_;
-
-  // Used for preventng occlusion state computations for the duration of the
-  // fade in animation.
-  std::unique_ptr<aura::WindowOcclusionTracker::ScopedPause>
-      occlusion_tracker_pauser_;
 
   // Tracks the distance that a user has dragged, offsetting the
   // |mirror_container_|. This should be reset only when a user cycles the

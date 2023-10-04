@@ -8,6 +8,8 @@
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/path_service.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -21,11 +23,14 @@
 #include "sql/database.h"
 #include "sql/statement.h"
 #include "sql/test/test_helpers.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace content {
 
 namespace {
+
+using ::testing::ElementsAre;
 
 // Normalize schema strings to compare them reliabily. Notably, applies the
 // following transformations:
@@ -65,10 +70,8 @@ class AttributionStorageSqlMigrationsTest : public testing::Test {
   }
 
   static base::FilePath GetVersionFilePath(int version_id) {
-    // Should be safe cross platform because StringPrintf has overloads for wide
-    // strings.
-    return base::FilePath(
-        base::StringPrintf(FILE_PATH_LITERAL("version_%d.sql"), version_id));
+    return base::FilePath::FromASCII(
+        base::StrCat({"version_", base::NumberToString(version_id), ".sql"}));
   }
 
   std::string GetCurrentSchema() {
@@ -360,7 +363,17 @@ TEST_F(AttributionStorageSqlMigrationsTest, MigrateVersion55ToCurrent) {
     ASSERT_TRUE(s.Step());
     proto::AttributionReadOnlySourceData msg;
     ASSERT_TRUE(msg.ParseFromString(s.ColumnString(0)));
-    ASSERT_EQ(3, msg.max_event_level_reports());
+    EXPECT_EQ(3, msg.max_event_level_reports());
+    EXPECT_FALSE(msg.has_randomized_response_rate());
+    EXPECT_EQ(0, msg.event_level_report_window_start_time());
+    // Note: The test's SQL file uses 5 (microseconds) as the value of the
+    // source_time column and 7 (microseconds) as the value of the
+    // event_report_window_time column, so the default windows of 2 days and 7
+    // days are truncated and the only end time is 7 - 5 = 2 microseconds. This
+    // is not possible in production, because the minimum report window is 1
+    // hour, but the migration code and `EventReportWindows` class do not
+    // currently enforce this.
+    EXPECT_THAT(msg.event_level_report_window_end_times(), ElementsAre(2));
     ASSERT_FALSE(s.Step());
   }
 

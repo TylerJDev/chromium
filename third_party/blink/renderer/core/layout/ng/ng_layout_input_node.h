@@ -97,7 +97,7 @@ class CORE_EXPORT NGLayoutInputNode {
     return box_->CanContainFixedPositionObjects();
   }
   bool IsBody() const { return IsBlock() && box_->IsBody(); }
-  bool IsView() const { return IsBlock() && box_->IsLayoutNGView(); }
+  bool IsView() const { return IsBlock() && box_->IsLayoutView(); }
   bool IsDocumentElement() const { return box_->IsDocumentElement(); }
   bool IsFlexItem() const { return IsBlock() && box_->IsFlexItemIncludingNG(); }
   bool IsFlexibleBox() const {
@@ -122,7 +122,7 @@ class CORE_EXPORT NGLayoutInputNode {
   bool IsFieldsetContainer() const { return IsBlock() && box_->IsFieldset(); }
   bool IsInitialLetterBox() const { return box_->IsInitialLetterBox(); }
   bool IsMedia() const { return box_->IsMedia(); }
-  bool IsRubyRun() const { return IsBlock() && box_->IsRubyRun(); }
+  bool IsRubyColumn() const { return IsBlock() && box_->IsRubyColumn(); }
   bool IsRubyText() const { return box_->IsRubyText(); }
 
   // Return true if this is the legend child of a fieldset that gets special
@@ -136,7 +136,7 @@ class CORE_EXPORT NGLayoutInputNode {
   bool IsSliderThumb() const;
   bool IsSvgText() const;
   bool IsTable() const { return IsBlock() && box_->IsTable(); }
-  bool IsTextCombine() const { return box_->IsLayoutNGTextCombine(); }
+  bool IsTextCombine() const { return box_->IsLayoutTextCombine(); }
 
   bool IsTableCaption() const { return IsBlock() && box_->IsTableCaption(); }
   bool IsTableSection() const { return IsBlock() && box_->IsTableSection(); }

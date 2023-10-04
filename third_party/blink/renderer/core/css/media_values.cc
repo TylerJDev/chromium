@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/core/css/media_values.h"
 
+#include "third_party/blink/public/common/css/scripting.h"
 #include "third_party/blink/public/platform/web_theme_engine.h"
 #include "third_party/blink/renderer/core/css/css_resolution_units.h"
 #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
@@ -16,10 +17,12 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/layout/adjust_for_absolute_zoom.h"
+#include "third_party/blink/renderer/core/media_type_names.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/platform/graphics/color_space_gamut.h"
@@ -298,6 +301,45 @@ mojom::blink::DisplayMode MediaValues::CalculateDisplayMode(LocalFrame* frame) {
   return widget->DisplayMode();
 }
 
+ui::WindowShowState MediaValues::CalculateWindowShowState(LocalFrame* frame) {
+  DCHECK(frame);
+
+  ui::WindowShowState show_state =
+      frame->GetPage()->GetSettings().GetWindowShowState();
+  // Initial state set in /third_party/blink/renderer/core/frame/settings.json5
+  // should match with this.
+  if (show_state != ui::WindowShowState::SHOW_STATE_DEFAULT) {
+    return show_state;
+  }
+
+  FrameWidget* widget = frame->GetWidgetForLocalRoot();
+  if (!widget) {  // Is null in non-ordinary Pages.
+    return ui::SHOW_STATE_DEFAULT;
+  }
+
+  return widget->WindowShowState();
+}
+
+bool MediaValues::CalculateResizable(LocalFrame* frame) {
+  DCHECK(frame);
+
+  bool resizable = frame->GetPage()->GetSettings().GetResizable();
+  // Initial state set in /third_party/blink/renderer/core/frame/settings.json5
+  // should match with this.
+  if (!resizable) {
+    // Only non-default value should be returned "early" from the settings
+    // without checking from widget. Settings are only used for testing.
+    return resizable;
+  }
+
+  FrameWidget* widget = frame->GetWidgetForLocalRoot();
+  if (!widget) {
+    return true;
+  }
+
+  return widget->Resizable();
+}
+
 bool MediaValues::CalculateThreeDEnabled(LocalFrame* frame) {
   return frame->GetPage()->GetSettings().GetAcceleratedCompositingEnabled();
 }
@@ -456,6 +498,17 @@ int MediaValues::CalculateVerticalViewportSegments(LocalFrame* frame) {
 device::mojom::blink::DevicePostureType MediaValues::CalculateDevicePosture(
     LocalFrame* frame) {
   return frame->GetDevicePosture();
+}
+
+Scripting MediaValues::CalculateScripting(LocalFrame* frame) {
+  DCHECK(frame);
+  DCHECK(frame->GetDocument());
+  if (!frame->GetDocument()->GetExecutionContext()->CanExecuteScripts(
+          kNotAboutToExecuteScript)) {
+    return Scripting::kNone;
+  }
+
+  return Scripting::kEnabled;
 }
 
 bool MediaValues::ComputeLengthImpl(double value,

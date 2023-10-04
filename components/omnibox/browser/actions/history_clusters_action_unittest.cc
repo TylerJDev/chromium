@@ -9,10 +9,12 @@
 #include "base/files/scoped_temp_dir.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/ranges/algorithm.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/test/history_service_test_util.h"
 #include "components/history_clusters/core/config.h"
+#include "components/history_clusters/core/features.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/history_clusters/core/history_clusters_service.h"
 #include "components/history_clusters/core/history_clusters_service_test_api.h"
@@ -60,6 +62,9 @@ class HistoryClustersActionTest : public testing::Test {
 
   // `history_dir_` needs to be initialized once only.
   void SetUp() override {
+    scoped_feature_list_.InitAndDisableFeature(
+        history_clusters::kRenameJourneys);
+
     CHECK(history_dir_.CreateUniqueTempDir());
     history_service_ =
         history::CreateHistoryService(history_dir_.GetPath(), true);
@@ -70,6 +75,9 @@ class HistoryClustersActionTest : public testing::Test {
     search_actions_config_.is_journeys_enabled_no_locale_check = true;
     search_actions_config_.omnibox_action = true;
     search_actions_config_.omnibox_action_on_navigation_intents = false;
+    // Setting this to false even though users see true behavior so that we do
+    // not need to register history clusters specific prefs in this test.
+    search_actions_config_.persist_caches_to_prefs = false;
     SetConfigForTesting(search_actions_config_);
   }
 
@@ -125,6 +133,8 @@ class HistoryClustersActionTest : public testing::Test {
   }
 
   base::test::TaskEnvironment task_environment_;
+
+  base::test::ScopedFeatureList scoped_feature_list_;
 
   base::ScopedTempDir history_dir_;
   std::unique_ptr<history::HistoryService> history_service_;

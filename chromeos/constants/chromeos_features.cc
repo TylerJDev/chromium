@@ -32,17 +32,24 @@ BASE_FEATURE(kCloudGamingDevice,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables ChromeOS Apps APIs.
-BASE_FEATURE(kCrosAppsApis, "CrosAppsApis", base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kBlinkExtension,
+             "BlinkExtension",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables the ChromeOS Diagnostics API.
-BASE_FEATURE(kCrosDiagnosticsApi,
-             "CrosDiagnosticsApi",
+BASE_FEATURE(kBlinkExtensionDiagnostics,
+             "BlinkExtensionDiagnostics",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables the use of cros-component UI elements. Contact:
 // cros-jellybean-team@google.com.
 BASE_FEATURE(kCrosComponents,
              "CrosComponents",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables the more detailed, OS-level dialog for web app installs.
+BASE_FEATURE(kCrosWebAppInstallDialog,
+             "CrosWebAppInstallDialog",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Disable idle sockets closing on memory pressure for NetworkContexts that
@@ -79,7 +86,7 @@ BASE_FEATURE(kExperimentalWebAppStoragePartitionIsolation,
 // Enable IWA support for Telemetry Extension API.
 BASE_FEATURE(kIWAForTelemetryExtensionAPI,
              "IWAForTelemetryExtensionAPI",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables Jelly features. go/jelly-flags
 BASE_FEATURE(kJelly, "Jelly", base::FEATURE_ENABLED_BY_DEFAULT);
@@ -90,6 +97,9 @@ BASE_FEATURE(kJellyroll, "Jellyroll", base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Controls enabling / disabling the orca feature.
 BASE_FEATURE(kOrca, "Orca", base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Controls enabling / disabling the orca feature for dogfood population.
+BASE_FEATURE(kOrcaDogfood, "OrcaDogfood", base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Controls whether to enable quick answers V2 settings sub-toggles.
 BASE_FEATURE(kQuickAnswersV2SettingsSubToggle,
@@ -104,6 +114,12 @@ BASE_FEATURE(kQuickAnswersRichCard,
 // Enables the Office files upload workflow to improve Office files support.
 BASE_FEATURE(kUploadOfficeToCloud,
              "UploadOfficeToCloud",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables the Office files upload workflow for enterprise users to improve
+// Office files support.
+BASE_FEATURE(kUploadOfficeToCloudForEnterprise,
+             "UploadOfficeToCloudForEnterprise",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsClipboardHistoryRefreshEnabled() {
@@ -129,13 +145,13 @@ bool IsCloudGamingDeviceEnabled() {
 #endif
 }
 
-bool IsCrosAppsApisEnabled() {
-  return base::FeatureList::IsEnabled(kCrosAppsApis);
+bool IsBlinkExtensionEnabled() {
+  return base::FeatureList::IsEnabled(kBlinkExtension);
 }
 
-bool IsCrosDiagnosticsApiEnabled() {
-  return base::FeatureList::IsEnabled(kCrosDiagnosticsApi) &&
-         IsCrosAppsApisEnabled();
+bool IsBlinkExtensionDiagnosticsEnabled() {
+  return IsBlinkExtensionEnabled() &&
+         base::FeatureList::IsEnabled(kBlinkExtensionDiagnostics);
 }
 
 bool IsCrosComponentsEnabled() {
@@ -157,7 +173,8 @@ bool IsJellyrollEnabled() {
 }
 
 bool IsOrcaEnabled() {
-  return base::FeatureList::IsEnabled(kOrca);
+  return base::FeatureList::IsEnabled(kOrca) ||
+         base::FeatureList::IsEnabled(kOrcaDogfood);
 }
 
 bool IsQuickAnswersV2TranslationDisabled() {
@@ -177,6 +194,16 @@ bool IsUploadOfficeToCloudEnabled() {
   return chromeos::BrowserParamsProxy::Get()->IsUploadOfficeToCloudEnabled();
 #else
   return base::FeatureList::IsEnabled(kUploadOfficeToCloud);
+#endif
+}
+
+bool IsUploadOfficeToCloudForEnterpriseEnabled() {
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  // TODO(b/296282654): Implement propagation if necessary.
+  return false;
+#else
+  return base::FeatureList::IsEnabled(kUploadOfficeToCloud) &&
+         base::FeatureList::IsEnabled(kUploadOfficeToCloudForEnterprise);
 #endif
 }
 

@@ -31,10 +31,6 @@ export function isScreenSaverDurationEnabled() {
   return loadTimeData.getBoolean('isScreenSaverDurationEnabled');
 }
 
-export function isScreenSaverPreviewEnabled() {
-  return loadTimeData.getBoolean('isScreenSaverPreviewEnabled');
-}
-
 export function isPersonalizationJellyEnabled() {
   return loadTimeData.getBoolean('isPersonalizationJellyEnabled');
 }
@@ -53,4 +49,12 @@ export function isTimeOfDayScreenSaverEnabled() {
 
 export function isTimeOfDayWallpaperEnabled() {
   return loadTimeData.getBoolean('isTimeOfDayWallpaperEnabled');
+}
+
+export function isSeaPenEnabled() {
+  return loadTimeData.getBoolean('isSeaPenEnabled');
+}
+
+export function isSeaPenTextInputEnabled() {
+  return loadTimeData.getBoolean('isSeaPenTextInputEnabled');
 }

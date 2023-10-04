@@ -53,7 +53,9 @@ class ASH_EXPORT TrayBubbleView : public views::BubbleDialogDelegateView,
     kShelfPodBubble = 0,
     // Bubble used for accessibility.
     kAccessibilityBubble = 1,
-    // This contains slider bubbles and toast bubbles.
+    // Used for slider bubbles.
+    // TODO(b/297201925): Autozoom and e-privacy screen toast bubbles also use
+    // this type, but these toasts are planned to migrate to regular toasts.
     kSecondaryBubble = 2,
     kMaxValue = kSecondaryBubble
   };
@@ -88,7 +90,7 @@ class ASH_EXPORT TrayBubbleView : public views::BubbleDialogDelegateView,
 
     // Called when a bubble wants to hide/destroy itself (e.g. last visible
     // child view was closed).
-    virtual void HideBubble(const TrayBubbleView* bubble_view);
+    virtual void HideBubble(const TrayBubbleView* bubble_view) = 0;
 
     // Returns the accelerator action associated with the delegate's bubble
     // view.
@@ -268,6 +270,8 @@ class ASH_EXPORT TrayBubbleView : public views::BubbleDialogDelegateView,
   // this method.
   void NotifyTrayBubbleClosed();
 
+  void CloseBubbleView();
+
  protected:
   // views::View:
   void ChildPreferredSizeChanged(View* child) override;
@@ -299,8 +303,6 @@ class ASH_EXPORT TrayBubbleView : public views::BubbleDialogDelegateView,
     // TrayBubbleView to which key events are going to be rerouted. Not owned.
     raw_ptr<TrayBubbleView, ExperimentalAsh> tray_bubble_view_;
   };
-
-  void CloseBubbleView();
 
   InitParams params_;
   raw_ptr<views::BoxLayout, DanglingUntriaged | ExperimentalAsh> layout_;

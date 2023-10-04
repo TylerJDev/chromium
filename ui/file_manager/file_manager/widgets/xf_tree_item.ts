@@ -7,7 +7,7 @@ import './xf_icon.js';
 
 import {addCSSPrefixSelector} from '../common/js/dom_utils.js';
 
-import {css, customElement, html, ifDefined, property, PropertyValues, query, state, styleMap, XfBase} from './xf_base.js';
+import {css, customElement, html, ifDefined, property, type PropertyValues, query, state, styleMap, XfBase} from './xf_base.js';
 import type {XfTree} from './xf_tree.js';
 import {isTree, isTreeItem} from './xf_tree_util.js';
 
@@ -281,7 +281,8 @@ export class XfTreeItem extends XfBase {
 
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
-    this.setAttribute('has-children', this.hasChildren().toString());
+    // For browser test use only.
+    this.setAttribute('has-children', String(this.items_.length > 0));
     if (changedProperties.has('expanded')) {
       this.onExpandChanged_();
     }

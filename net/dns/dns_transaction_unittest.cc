@@ -1026,8 +1026,8 @@ TEST_F(DnsTransactionTest, LookupWithLog) {
   helper0.StartTransaction(transaction_factory_.get(), kT0HostName, kT0Qtype,
                            false /* secure */, resolve_context_.get());
   helper0.RunUntilComplete();
-  EXPECT_EQ(observer.count(), 6);
-  EXPECT_EQ(observer.dict_count(), 4);
+  EXPECT_EQ(observer.count(), 7);
+  EXPECT_EQ(observer.dict_count(), 5);
 }
 
 TEST_F(DnsTransactionTest, LookupWithEDNSOption) {
@@ -2656,8 +2656,8 @@ TEST_F(DnsTransactionTest, HttpsPostLookupWithLog) {
                            true /* secure */, resolve_context_.get());
   helper0.RunUntilComplete();
   base::RunLoop().RunUntilIdle();
-  EXPECT_EQ(observer.count(), 18);
-  EXPECT_EQ(observer.dict_count(), 9);
+  EXPECT_EQ(observer.count(), 19);
+  EXPECT_EQ(observer.dict_count(), 10);
 }
 
 // Test for when a slow DoH response is delayed until after the initial fallback
@@ -3121,8 +3121,8 @@ TEST_F(DnsTransactionTest, TcpLookup_UdpRetry_WithLog) {
   helper0.StartTransaction(transaction_factory_.get(), kT0HostName, kT0Qtype,
                            false /* secure */, resolve_context_.get());
   helper0.RunUntilComplete();
-  EXPECT_EQ(observer.count(), 8);
-  EXPECT_EQ(observer.dict_count(), 6);
+  EXPECT_EQ(observer.count(), 9);
+  EXPECT_EQ(observer.dict_count(), 7);
 }
 
 TEST_F(DnsTransactionTest, TcpLookup_LowEntropy) {
@@ -3475,6 +3475,38 @@ TEST_F(DnsTransactionTestWithMockTime, ProbeUntilSuccess) {
   FastForwardBy(runner->GetDelayUntilNextProbeForTest(0));
   ASSERT_TRUE(doh_itr->AttemptAvailable());
   EXPECT_EQ(doh_itr->GetNextAttemptIndex(), 0u);
+}
+
+TEST_F(DnsTransactionTestWithMockTime, ProbeCreationTriggersSuccessMetric) {
+  ConfigureDohServers(/*use_post=*/true, /*num_doh_servers=*/1,
+                      /*make_available=*/false);
+  AddQueryAndResponse(/*id=*/0, kT4HostName, kT4Qtype, kT4ResponseDatagram,
+                      std::size(kT4ResponseDatagram), ASYNC, Transport::HTTPS,
+                      /*opt_rdata=*/nullptr,
+                      DnsQuery::PaddingStrategy::BLOCK_LENGTH_128,
+                      /*enqueue_transaction_id=*/false);
+
+  // The metric timer should not have started yet.
+  EXPECT_FALSE(
+      resolve_context_->doh_autoupgrade_metrics_timer_is_running_for_testing());
+
+  std::unique_ptr<DnsProbeRunner> runner =
+      transaction_factory_->CreateDohProbeRunner(resolve_context_.get());
+  runner->Start(/*network_change=*/false);
+
+  // Ensure that calling `CreateDohProbeRunner()` causes metrics to be emitted
+  // after the timeout.
+  EXPECT_TRUE(
+      resolve_context_->doh_autoupgrade_metrics_timer_is_running_for_testing());
+
+  // Fast-forward by enough time for the timer to trigger. Add one millisecond
+  // just to make it clear that afterwards the timeout should definitely have
+  // occurred (although this may not be strictly necessary).
+  FastForwardBy(ResolveContext::kDohAutoupgradeSuccessMetricTimeout +
+                base::Milliseconds(1));
+
+  EXPECT_FALSE(
+      resolve_context_->doh_autoupgrade_metrics_timer_is_running_for_testing());
 }
 
 // Test that if a probe attempt hangs, additional probes will still run on

@@ -207,7 +207,8 @@ void LensSidePanelCoordinator::RegisterEntryAndShow(
           "LensUnifiedSidePanel.LensQuery_SidePanelOpenNonLens"));
     }
 
-    side_panel_coordinator->Show(SidePanelEntry::Id::kLens);
+    side_panel_coordinator->Show(SidePanelEntry::Id::kLens,
+                                 SidePanelOpenTrigger::kLensContextMenu);
   } else {
     base::RecordAction(base::UserMetricsAction(
         "LensUnifiedSidePanel.LensQuery_SidePanelOpenLens"));
@@ -253,4 +254,4 @@ void LensSidePanelCoordinator::UpdateNewTabButtonState() {
   }
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(LensSidePanelCoordinator);
+BROWSER_USER_DATA_KEY_IMPL(LensSidePanelCoordinator);

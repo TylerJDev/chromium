@@ -4,36 +4,14 @@
 
 #import "ios/chrome/browser/ui/content_suggestions/safety_check/safety_check_view.h"
 
-#import "ios/chrome/browser/safety_check/ios_chrome_safety_check_manager_constants.h"
+#import "ios/chrome/browser/safety_check/model/ios_chrome_safety_check_manager_constants.h"
 #import "ios/chrome/browser/ui/content_suggestions/cells/multi_row_container_view.h"
 #import "ios/chrome/browser/ui/content_suggestions/safety_check/constants.h"
 #import "ios/chrome/browser/ui/content_suggestions/safety_check/safety_check_item_view.h"
 #import "ios/chrome/browser/ui/content_suggestions/safety_check/safety_check_state.h"
 #import "ios/chrome/browser/ui/content_suggestions/safety_check/types.h"
+#import "ios/chrome/browser/ui/content_suggestions/safety_check/utils.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
-
-namespace {
-
-// Returns the number of check issue types found given `state`.
-int CheckIssuesCount(SafetyCheckState* state) {
-  int count = 0;
-
-  if (state.updateChromeState != UpdateChromeSafetyCheckState::kUpToDate) {
-    count++;
-  }
-
-  if (state.safeBrowsingState != SafeBrowsingSafetyCheckState::kSafe) {
-    count++;
-  }
-
-  if (state.passwordState != PasswordSafetyCheckState::kSafe) {
-    count++;
-  }
-
-  return count;
-}
-
-}  // namespace
 
 @interface SafetyCheckView () <SafetyCheckItemViewTapDelegate>
 @end
@@ -68,6 +46,7 @@ int CheckIssuesCount(SafetyCheckState* state) {
 
 #pragma mark - Private methods
 
+// Creates all views for the Safety Check (Magic Stack) module.
 - (void)createSubviews {
   // Return if the subviews have already been created and added.
   if (!(self.subviews.count == 0)) {
@@ -137,7 +116,7 @@ int CheckIssuesCount(SafetyCheckState* state) {
         [[NSMutableArray alloc] init];
 
     // Update Chrome check
-    if (_state.updateChromeState != UpdateChromeSafetyCheckState::kUpToDate) {
+    if (InvalidUpdateChromeState(_state.updateChromeState)) {
       SafetyCheckItemView* updateChromeView = [[SafetyCheckItemView alloc]
           initWithItemType:SafetyCheckItemType::kUpdateChrome
                 layoutType:SafetyCheckItemLayoutType::kCompact];
@@ -148,10 +127,13 @@ int CheckIssuesCount(SafetyCheckState* state) {
     }
 
     // Password check
-    if (_state.passwordState != PasswordSafetyCheckState::kSafe) {
+    if (InvalidPasswordState(_state.passwordState)) {
       SafetyCheckItemView* passwordView = [[SafetyCheckItemView alloc]
-          initWithItemType:SafetyCheckItemType::kPassword
-                layoutType:SafetyCheckItemLayoutType::kCompact];
+                   initWithItemType:SafetyCheckItemType::kPassword
+                         layoutType:SafetyCheckItemLayoutType::kCompact
+                 weakPasswordsCount:_state.weakPasswordsCount
+               reusedPasswordsCount:_state.reusedPasswordsCount
+          compromisedPasswordsCount:_state.compromisedPasswordsCount];
 
       passwordView.tapDelegate = self;
 
@@ -163,7 +145,7 @@ int CheckIssuesCount(SafetyCheckState* state) {
     // NOTE: Don't add the Safe Browsing check if two items already exist in
     // `safetyCheckItems`. At most, the compact view displays two rows of items.
     if ([safetyCheckItems count] < 2 &&
-        _state.safeBrowsingState != SafeBrowsingSafetyCheckState::kSafe) {
+        InvalidSafeBrowsingState(_state.safeBrowsingState)) {
       SafetyCheckItemView* safeBrowsingView = [[SafetyCheckItemView alloc]
           initWithItemType:SafetyCheckItemType::kSafeBrowsing
                 layoutType:SafetyCheckItemLayoutType::kCompact];
@@ -176,6 +158,8 @@ int CheckIssuesCount(SafetyCheckState* state) {
     MultiRowContainerView* multiRowContainer =
         [[MultiRowContainerView alloc] initWithViews:safetyCheckItems];
 
+    multiRowContainer.translatesAutoresizingMaskIntoConstraints = NO;
+
     [self addSubview:multiRowContainer];
 
     AddSameConstraints(multiRowContainer, self);
@@ -186,19 +170,18 @@ int CheckIssuesCount(SafetyCheckState* state) {
   // Show hero-cell view for single check issue.
   SafetyCheckItemView* view;
 
-  if (_state.updateChromeState != UpdateChromeSafetyCheckState::kUpToDate) {
+  if (InvalidUpdateChromeState(_state.updateChromeState)) {
     view = [[SafetyCheckItemView alloc]
         initWithItemType:SafetyCheckItemType::kUpdateChrome
               layoutType:SafetyCheckItemLayoutType::kHero];
-  }
-
-  if (_state.passwordState != PasswordSafetyCheckState::kSafe) {
+  } else if (InvalidPasswordState(_state.passwordState)) {
     view = [[SafetyCheckItemView alloc]
-        initWithItemType:SafetyCheckItemType::kPassword
-              layoutType:SafetyCheckItemLayoutType::kHero];
-  }
-
-  if (_state.safeBrowsingState != SafeBrowsingSafetyCheckState::kSafe) {
+                 initWithItemType:SafetyCheckItemType::kPassword
+                       layoutType:SafetyCheckItemLayoutType::kHero
+               weakPasswordsCount:_state.weakPasswordsCount
+             reusedPasswordsCount:_state.reusedPasswordsCount
+        compromisedPasswordsCount:_state.compromisedPasswordsCount];
+  } else if (InvalidSafeBrowsingState(_state.safeBrowsingState)) {
     view = [[SafetyCheckItemView alloc]
         initWithItemType:SafetyCheckItemType::kSafeBrowsing
               layoutType:SafetyCheckItemLayoutType::kHero];

@@ -5,8 +5,11 @@
 #include "chrome/browser/ash/app_list/search/local_image_search/image_annotation_worker.h"
 
 #include <algorithm>
+#include <fstream>
+#include <iostream>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "ash/public/cpp/image_util.h"
@@ -17,6 +20,7 @@
 #include "base/files/memory_mapped_file.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/platform_thread.h"
@@ -24,6 +28,7 @@
 #include "chrome/browser/ash/app_list/search/local_image_search/annotation_storage.h"
 #include "chrome/browser/ash/app_list/search/local_image_search/search_utils.h"
 #include "chrome/browser/screen_ai/screen_ai_install_state.h"
+#include "chromeos/ash/components/string_matching/tokenized_string.h"
 #include "chromeos/services/machine_learning/public/cpp/service_connection.h"
 #include "chromeos/services/machine_learning/public/mojom/image_content_annotation.mojom.h"
 #include "chromeos/services/machine_learning/public/mojom/machine_learning_service.mojom.h"
@@ -32,19 +37,106 @@
 namespace app_list {
 namespace {
 
+using TokenizedString = ::ash::string_matching::TokenizedString;
+using Mode = ::ash::string_matching::TokenizedString::Mode;
+
 // ~ 20MiB
 constexpr int kMaxFileSizeBytes = 2e+7;
 constexpr int kConfidenceThreshold = 128;  // 50% of 255 (max of ICA)
 constexpr base::TimeDelta kInitialIndexingDelay = base::Seconds(1);
 
+// Exclude animated WebPs.
+bool IsStaticWebp(const base::FilePath& path) {
+  std::ifstream file(path.value(), std::ios::binary);
+  if (!file) {
+    LOG(ERROR) << "Unable to open file: " << path;
+    return false;
+  }
+
+  char buffer[30];
+  file.read(buffer, sizeof(buffer));
+  file.close();
+
+  // Checking for RIFF header and WebP identifier as in the
+  // https://developers.google.com/speed/webp/docs/riff_container
+  if (std::string(buffer, 4) == "RIFF" &&
+      std::string(buffer + 8, 4) == "WEBP") {
+    // Checking the VP8X chunk for animation
+    if (std::string(buffer + 12, 4) == "VP8X") {
+      // VP8X header is 8 bytes then the flags byte.
+      const char flags = buffer[20];
+      // The second bit indicates if it's animated.
+      return !static_cast<bool>(flags & 0x02);
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+bool IsJpeg(const base::FilePath& path) {
+  std::ifstream file(path.value(), std::ios::binary);
+  if (!file) {
+    LOG(ERROR) << "Unable to open file: " << path;
+    return false;
+  }
+
+  char buffer[4];
+  file.read(buffer, sizeof(buffer));
+  file.close();
+
+  // Check for JPEG magic numbers
+  return (buffer[0] == (char)0xFF && buffer[1] == (char)0xD8 &&
+          buffer[2] == (char)0xFF &&
+          (buffer[3] == (char)0xE0 || buffer[3] == (char)0xE1));
+}
+
+bool IsPng(const base::FilePath& path) {
+  std::ifstream file(path.value(), std::ios::binary);
+  if (!file) {
+    LOG(ERROR) << "Unable to open file: " << path;
+    return false;
+  }
+
+  uint8_t buffer[8];
+  file.read(reinterpret_cast<char*>(buffer), sizeof(buffer));
+  file.close();
+
+  const uint8_t pngSignature[8] = {0x89, 0x50, 0x4E, 0x47,
+                                   0x0D, 0x0A, 0x1A, 0x0A};
+  for (int i = 0; i < 8; ++i) {
+    if (buffer[i] != pngSignature[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Checks for supported extensions.
 bool IsImage(const base::FilePath& path) {
   DVLOG(1) << "IsImage? " << path.Extension();
-  const std::string extension = path.Extension();
+  const std::string extension = base::ToLowerASCII(path.Extension());
   // Note: The UI design stipulates jpg, png, gif, and svg, but we use
-  // the subset that ICA can handle.
+  // the subset that ICA can handle
   return extension == ".jpeg" || extension == ".jpg" || extension == ".png" ||
-         extension == ".webp" || extension == ".JPEG" || extension == ".JPG" ||
-         extension == ".PNG" || extension == ".WEBP";
+         extension == ".webp";
+}
+
+// Check headers for correctness.
+bool IsSupportedImage(const base::FilePath& path) {
+  DVLOG(1) << "IsSupportedImage? " << path.Extension();
+  const std::string extension = base::ToLowerASCII(path.Extension());
+  if (extension == ".jpeg" || extension == ".jpg") {
+    return IsJpeg(path);
+  } else if (extension == ".png") {
+    return IsPng(path);
+  } else if (extension == ".webp") {
+    return IsStaticWebp(path);
+  } else {
+    return false;
+  }
 }
 
 bool IsPathExcluded(const base::FilePath& path,
@@ -100,7 +192,7 @@ void ImageAnnotationWorker::Initialize(AnnotationStorage* annotation_storage) {
   on_file_change_callback_ = base::BindRepeating(
       &ImageAnnotationWorker::OnFileChange, weak_ptr_factory_.GetWeakPtr());
 
-  VLOG(1) << "Initializing DLCs.";
+  LOG(INFO) << "Initializing DLCs.";
   if (use_ocr_) {
     DVLOG(1) << "Initializing OCR DLC.";
     if (IsOcrServiceReady()) {
@@ -133,9 +225,9 @@ void ImageAnnotationWorker::Initialize(AnnotationStorage* annotation_storage) {
 void ImageAnnotationWorker::OnDlcInstalled() {
   bool ocr_dlc_installed = IsOcrServiceReady();
   if ((use_ocr_ && !ocr_dlc_installed) || (use_ica_ && !ica_dlc_initialized_)) {
-    DVLOG(1) << "DLC is not ready. OCR: " << ocr_dlc_installed << "/"
-             << use_ocr_ << " ICA: " << ica_dlc_initialized_ << "/" << use_ica_
-             << " Waiting.";
+    LOG(INFO) << "DLC is not ready. OCR: " << ocr_dlc_installed << "/"
+              << use_ocr_ << " ICA: " << ica_dlc_initialized_ << "/" << use_ica_
+              << " Waiting.";
     // It is expected to be ready on a first try. Also, it is not a time
     // sensitive task, so we do not need to implement a full-fledged observer.
     base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
@@ -147,7 +239,7 @@ void ImageAnnotationWorker::OnDlcInstalled() {
   }
 
   if (use_ica_ || use_ocr_) {
-    VLOG(1) << "DLCs are ready. Watching for file changes.";
+    LOG(INFO) << "DLCs are ready. Watching for file changes.";
     file_watcher_ = std::make_unique<base::FilePathWatcher>();
 
     DVLOG(1) << "Start WatchWithOptions " << root_path_;
@@ -272,7 +364,7 @@ void ImageAnnotationWorker::ProcessNextImage() {
 
   auto file_info = std::make_unique<base::File::Info>();
   if (!base::GetFileInfo(image_path, file_info.get()) || file_info->size == 0 ||
-      file_info->size > kMaxFileSizeBytes) {
+      file_info->size > kMaxFileSizeBytes || !IsSupportedImage(image_path)) {
     annotation_storage_->Remove(image_path);
     images_being_processed_.pop();
     return ProcessNextImage();
@@ -284,13 +376,11 @@ void ImageAnnotationWorker::ProcessNextImage() {
     DVLOG(1) << "CompareModifiedTime: " << stored_annotations.size()
              << " same? "
              << (file_info->last_modified ==
-                 stored_annotations.front().last_modified)
-             << " is_ignored: " << stored_annotations.front().is_ignored;
+                 stored_annotations.front().last_modified);
     // Annotations are updated on a file change and have the file's last
     // modified time. So skip inserting the image annotations if the file
     // has not changed since the last update.
-    if (stored_annotations.front().is_ignored ||
-        file_info->last_modified == stored_annotations.front().last_modified) {
+    if (file_info->last_modified == stored_annotations.front().last_modified) {
       images_being_processed_.pop();
       return ProcessNextImage();
     }
@@ -300,7 +390,7 @@ void ImageAnnotationWorker::ProcessNextImage() {
            << file_info->last_modified;
   annotation_storage_->Remove(image_path);
   ImageInfo image_info({}, image_path, file_info->last_modified,
-                       /*is_ignored=*/0);
+                       file_info->size);
 
   if (use_ocr_ || use_ica_) {
     ash::image_util::DecodeImageFile(
@@ -349,10 +439,11 @@ void ImageAnnotationWorker::OnPerformOcr(
     screen_ai::mojom::VisualAnnotationPtr visual_annotation) {
   DVLOG(1) << "OnPerformOcr";
   for (const auto& text_line : visual_annotation->lines) {
-    for (const auto& word : text_line->words) {
-      DVLOG(1) << word->word;
-      auto lower_case_word = base::ToLowerASCII(word->word);
-      if (lower_case_word.size() > 3 && !IsStopWord(lower_case_word) &&
+    TokenizedString tokens(base::UTF8ToUTF16(text_line->text_line),
+                           Mode::kWords);
+    for (const auto& word : tokens.tokens()) {
+      std::string lower_case_word = base::UTF16ToUTF8(word);
+      if (word.size() > 3 && !IsStopWord(lower_case_word) &&
           base::IsAsciiAlpha(lower_case_word[0])) {
         image_info.annotations.insert(std::move(lower_case_word));
       }
@@ -395,14 +486,16 @@ void ImageAnnotationWorker::OnPerformIca(
   DVLOG(1) << "OnPerformIca. Status: " << ptr->status
            << " Size: " << ptr->annotations.size();
   for (const auto& a : ptr->annotations) {
-    if (a->confidence < kConfidenceThreshold) {
-      break;
+    if (a->confidence < kConfidenceThreshold || !a->name.has_value() ||
+        a->name->empty()) {
+      continue;
     }
-    DVLOG(1) << "Id: " << a->id << " MId: " << a->mid
-             << " Confidence: " << (int)a->confidence
-             << " Name: " << a->name.value_or("null");
-    if (a->name.has_value() && !a->name->empty()) {
-      image_info.annotations.insert(a->name.value());
+
+    TokenizedString tokens(base::UTF8ToUTF16(a->name.value()), Mode::kWords);
+    for (const auto& word : tokens.tokens()) {
+      DVLOG(1) << "Id: " << a->id << " MId: " << a->mid
+               << " Confidence: " << (int)a->confidence << " Name: " << word;
+      image_info.annotations.insert(base::UTF16ToUTF8(word));
     }
   }
   if (!image_info.annotations.empty()) {

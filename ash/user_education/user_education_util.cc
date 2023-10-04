@@ -19,6 +19,7 @@
 #include "base/unguessable_token.h"
 #include "components/account_id/account_id.h"
 #include "components/session_manager/session_manager_types.h"
+#include "components/user_education/common/events.h"
 #include "components/user_education/common/help_bubble.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/aura/window.h"
@@ -120,10 +121,6 @@ const AccountId& GetAccountId(const UserSession* user_session) {
   return user_session ? user_session->user_info.account_id : EmptyAccountId();
 }
 
-ui::CustomElementEventType GetHelpBubbleAnchorBoundsChangedEventType() {
-  return user_education::kHelpBubbleAnchorBoundsChangedEvent;
-}
-
 absl::optional<std::reference_wrapper<const gfx::VectorIcon>>
 GetHelpBubbleBodyIcon(
     const user_education::HelpBubbleParams::ExtendedProperties&
@@ -185,6 +182,16 @@ views::View* GetMatchingViewInRootWindow(int64_t display_id,
   return nullptr;
 }
 
+absl::optional<user_manager::UserType> GetUserType(
+    const AccountId& account_id) {
+  if (const auto* ctrlr = Shell::Get()->session_controller()) {
+    if (const auto* session = ctrlr->GetUserSessionByAccountId(account_id)) {
+      return session->user_info.type;
+    }
+  }
+  return absl::nullopt;
+}
+
 bool IsPrimaryAccountActive() {
   const auto* session_controller = Shell::Get()->session_controller();
   return IsPrimaryAccountId(GetActiveAccountId(session_controller)) &&
@@ -198,18 +205,12 @@ bool IsPrimaryAccountId(const AccountId& account_id) {
 
 std::string ToString(TutorialId tutorial_id) {
   switch (tutorial_id) {
-    case TutorialId::kCaptureModeTourPrototype1:
-      return "AshCaptureModeTourPrototype1";
-    case TutorialId::kCaptureModeTourPrototype2:
-      return "AshCaptureModeTourPrototype2";
-    case TutorialId::kHoldingSpaceTourPrototype1:
-      return "AshHoldingSpaceTourPrototype1";
-    case TutorialId::kHoldingSpaceTourPrototype2:
-      return "AshHoldingSpaceTourPrototype2";
-    case TutorialId::kTest:
-      return "AshTest";
-    case TutorialId::kWelcomeTourPrototype1:
-      return "AshWelcomeTourPrototype1";
+    case TutorialId::kTest1:
+      return "AshTest1";
+    case TutorialId::kTest2:
+      return "AshTest2";
+    case TutorialId::kWelcomeTour:
+      return "AshWelcomeTour";
   }
 }
 

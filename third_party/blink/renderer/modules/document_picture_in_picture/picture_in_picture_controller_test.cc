@@ -6,6 +6,8 @@
 
 #include <memory>
 
+#include "base/containers/contains.h"
+#include "base/memory/raw_ptr.h"
 #include "media/mojo/mojom/media_player.mojom-blink.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -78,7 +80,7 @@ LocalDOMWindow* OpenDocumentPictureInPictureWindow(
   // Create the DocumentPictureInPictureOptions.
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "DocumentPictureInPicture", "requestWindow");
 
   v8::Local<v8::Object> v8_object = v8::Object::New(v8_scope.GetIsolate());
@@ -301,7 +303,7 @@ class PictureInPictureControllerTestWithWidget : public RenderingTest {
 
     std::string test_name =
         testing::UnitTest::GetInstance()->current_test_info()->name();
-    if (test_name.find("MediaSource") != std::string::npos) {
+    if (base::Contains(test_name, "MediaSource")) {
       MediaStreamComponentVector dummy_tracks;
       auto* descriptor = MakeGarbageCollected<MediaStreamDescriptor>(
           dummy_tracks, dummy_tracks);
@@ -692,7 +694,7 @@ class PictureInPictureControllerChromeClient
   MOCK_METHOD(void, SetWindowRect, (const gfx::Rect&, LocalFrame&));
 
  private:
-  DummyPageHolder* dummy_page_holder_;
+  raw_ptr<DummyPageHolder, ExperimentalRenderer> dummy_page_holder_;
 };
 
 // Tests for Picture in Picture with a mockable chrome client.  This makes it
@@ -798,7 +800,7 @@ TEST_F(PictureInPictureControllerTestWithChromeClient,
   // Create the DocumentPictureInPictureOptions.
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "DocumentPictureInPicture", "requestWindow");
 
   v8::Local<v8::Object> v8_object = v8::Object::New(v8_scope.GetIsolate());
@@ -850,6 +852,23 @@ TEST_F(PictureInPictureControllerTestWithChromeClient,
   // This should properly return two windows.
   EXPECT_NE(nullptr, pictureInPictureWindow1);
   EXPECT_NE(nullptr, pictureInPictureWindow2);
+}
+
+TEST_F(PictureInPictureControllerTestWithChromeClient, CopiesAutoplayFlags) {
+  V8TestingScope v8_scope;
+  LocalFrame::NotifyUserActivation(
+      &GetFrame(), mojom::UserActivationNotificationType::kTest);
+
+  // Set the autoplay flags to something recognizable.
+  auto* page = GetDocument().GetPage();
+  page->ClearAutoplayFlags();
+  const int flags = 0x1234;  // Spoiler alert: this is made up.
+  page->AddAutoplayFlags(flags);
+
+  auto* pictureInPictureWindow =
+      OpenDocumentPictureInPictureWindow(v8_scope, GetDocument());
+  EXPECT_EQ(pictureInPictureWindow->document()->GetPage()->AutoplayFlags(),
+            flags);
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 

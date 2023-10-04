@@ -35,23 +35,6 @@ const char kIgnoreUrlFetcherCertRequests[] = "ignore-urlfetcher-cert-requests";
 const char kIgnoreCertificateErrorsSPKIList[] =
     "ignore-certificate-errors-spki-list";
 
-// Specifies a proxy server for origins specified in
-// kIPAnonymizationProxyAllowList. This proxy will be used on a best-effort
-// basis when normal proxy resolution would result in trying direct connections
-// (possibly after trying some other proxy server).
-const char kIPAnonymizationProxyServer[] = "ip-anonymization-proxy-server";
-
-// Specifies a list of origins on which to use the server specified by
-// `kIPAnonymizationProxyServer`. if `kIPAnonymizationProxyServer` is empty this
-// list will be ignored. This is intended as a reverse bypass rules list.
-const char kIPAnonymizationProxyAllowList[] =
-    "ip-anonymization-proxy-allow-list";
-
-// Specifies a value for the "password" header to be passed to the proxy
-// specified by `kIPAnonymizationProxyServer`. if `kIPAnonymizationProxyServer`
-// is empty this list will be ignored.
-const char kIPAnonymizationProxyPassword[] = "ip-anonymization-proxy-password";
-
 // Enables saving net log events to a file. If a value is given, it used as the
 // path the the file, otherwise the file is named netlog.json and placed in the
 // user data directory.
@@ -109,7 +92,15 @@ const char kAdditionalTrustTokenKeyCommitments[] =
 // Allows the manual specification of a First-Party Set, as a comma-separated
 // list of origins. The first origin in the list is treated as the owner of the
 // set.
+// DEPRECATED(crbug.com/1486689): This switch is under deprecation due to
+// renaming "First-Party Set" to "Related Website Set". Please use
+// `kUseRelatedWebsiteSet` instead.
 const char kUseFirstPartySet[] = "use-first-party-set";
+
+// Allows the manual specification of a Related Website Set, as a
+// comma-separated list of origins. The first origin in the list is treated as
+// the primary site of the set.
+const char kUseRelatedWebsiteSet[] = "use-related-website-set";
 
 // Specifies manual overrides to the IP endpoint -> IP address space mapping.
 // This allows running local tests against "public" and "private" IP addresses.
@@ -134,12 +125,5 @@ const char kUseFirstPartySet[] = "use-first-party-set";
 // And the Web Platform Test RFC #72 behind it:
 // https://github.com/web-platform-tests/rfcs/blob/master/rfcs/address_space_overrides.md
 const char kIpAddressSpaceOverrides[] = "ip-address-space-overrides";
-
-// Enables running high priority tasks in the network services using
-// ThreadDelegate::GetHighPriorityTaskRunner().
-const char kNetworkServiceScheduler[] = "network-service-scheduler";
-
-// Enables register the empty network service in utility process.
-const char kRegisterEmptyNetworkService[] = "register-empty-network-service";
 
 }  // namespace network::switches

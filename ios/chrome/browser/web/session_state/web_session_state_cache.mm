@@ -22,15 +22,13 @@
 #import "base/task/sequenced_task_runner.h"
 #import "base/task/thread_pool.h"
 #import "base/threading/scoped_blocking_call.h"
+#import "ios/chrome/browser/sessions/session_constants.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/browser/browser_list.h"
 #import "ios/chrome/browser/shared/model/browser/browser_list_factory.h"
 #import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/web/session_state/web_session_state_tab_helper.h"
-
-const base::FilePath::CharType kWebSessionCacheDirectoryName[] =
-    FILE_PATH_LITERAL("Web_Sessions");
 
 namespace {
 
@@ -41,12 +39,13 @@ const int kRemoveSessionStateDataDelay = 10;
 
 // Returns the session identifier for `web_state` as a string.
 std::string SessionIdentifierForWebState(const web::WebState* web_state) {
-  DCHECK(web_state->GetUniqueIdentifier().is_valid());
-  DCHECK_GT(web_state->GetUniqueIdentifier().id(), 0);
+  DCHECK(web_state->GetUniqueIdentifier().valid());
+  DCHECK_GT(web_state->GetUniqueIdentifier().identifier(), 0);
 
-  static_assert(sizeof(SessionID::id_type) == sizeof(int32_t));
+  static_assert(sizeof(decltype(web::WebStateID().identifier())) ==
+                sizeof(int32_t));
   const uint32_t identifier =
-      static_cast<uint32_t>(web_state->GetUniqueIdentifier().id());
+      static_cast<uint32_t>(web_state->GetUniqueIdentifier().identifier());
 
   return base::StringPrintf("%08u", identifier);
 }
@@ -132,7 +131,7 @@ void PurgeCacheOnBackgroundSequenceExcept(
   if ((self = [super init])) {
     _browserState = browserState;
     _cacheDirectory =
-        browserState->GetStatePath().Append(kWebSessionCacheDirectoryName);
+        browserState->GetStatePath().Append(kLegacyWebSessionsDirname);
     _taskRunner = base::ThreadPool::CreateSequencedTaskRunner(
         {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
          base::TaskShutdownBehavior::BLOCK_SHUTDOWN});

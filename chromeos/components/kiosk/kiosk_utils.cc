@@ -8,7 +8,7 @@
 #include "build/chromeos_buildflags.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-#include "chromeos/ash/components/login/login_state/login_state.h"
+#include "components/user_manager/user_manager.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
@@ -20,13 +20,26 @@ namespace chromeos {
 
 bool IsKioskSession() {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-  return ash::LoginState::IsInitialized() &&
-         ash::LoginState::Get()->IsKioskSession();
+  return user_manager::UserManager::IsInitialized() &&
+         user_manager::UserManager::Get()->IsLoggedInAsAnyKioskApp();
 #elif BUILDFLAG(IS_CHROMEOS_LACROS)
   crosapi::mojom::SessionType session_type =
       chromeos::BrowserParamsProxy::Get()->SessionType();
   return session_type == crosapi::mojom::SessionType::kWebKioskSession ||
          session_type == crosapi::mojom::SessionType::kAppKioskSession;
+#else
+  return false;
+#endif
+}
+
+bool IsWebKioskSession() {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  return user_manager::UserManager::IsInitialized() &&
+         user_manager::UserManager::Get()->IsLoggedInAsWebKioskApp();
+#elif BUILDFLAG(IS_CHROMEOS_LACROS)
+  crosapi::mojom::SessionType session_type =
+      chromeos::BrowserParamsProxy::Get()->SessionType();
+  return session_type == crosapi::mojom::SessionType::kWebKioskSession;
 #else
   return false;
 #endif

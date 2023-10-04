@@ -58,16 +58,6 @@ public class TestMediaRouterClient extends MediaRouterClient {
         deferredTask.run();
     }
 
-    @Override
-    public boolean isCafMrpDeferredDiscoveryEnabled() {
-        return true;
-    }
-
-    @Override
-    public boolean isCastAnotherContentWhileCastingEnabled() {
-        return true;
-    }
-
     @CalledByNative
     public static void initialize() {
         if (MediaRouterClient.getInstance() != null) return;

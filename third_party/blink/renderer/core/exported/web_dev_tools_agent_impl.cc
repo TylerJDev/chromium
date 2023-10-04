@@ -35,6 +35,7 @@
 #include <utility>
 
 #include "base/auto_reset.h"
+#include "base/unguessable_token.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_scoped_page_pauser.h"
 #include "third_party/blink/public/platform/web_string.h"
@@ -109,14 +110,15 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
     instance_ = nullptr;
   }
 
-  static void EnsureMainThreadDebuggerCreated() {
+  static void EnsureMainThreadDebuggerCreated(v8::Isolate* isolate) {
     if (instance_)
       return;
     std::unique_ptr<ClientMessageLoopAdapter> instance(
         new ClientMessageLoopAdapter(
             Platform::Current()->CreateNestedMessageLoopRunner()));
     instance_ = instance.get();
-    MainThreadDebugger::Instance()->SetClientMessageLoop(std::move(instance));
+    MainThreadDebugger::Instance(isolate)->SetClientMessageLoop(
+        std::move(instance));
   }
 
   static void ContinueProgram() {
@@ -131,7 +133,29 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
   }
 
  private:
-  ClientMessageLoopAdapter(
+  // A RAII class that disables input events for frames that belong to the
+  // same browsing context group. Note that this does not support nesting, as
+  // DevTools doesn't require nested pauses.
+  class ScopedInputEventsDisabler {
+   public:
+    explicit ScopedInputEventsDisabler(WebLocalFrameImpl& frame)
+        : browsing_context_group_token_(WebFrame::ToCoreFrame(frame)
+                                            ->GetPage()
+                                            ->BrowsingContextGroupToken()) {
+      WebFrameWidgetImpl::SetIgnoreInputEvents(browsing_context_group_token_,
+                                               true);
+    }
+
+    ~ScopedInputEventsDisabler() {
+      WebFrameWidgetImpl::SetIgnoreInputEvents(browsing_context_group_token_,
+                                               false);
+    }
+
+   private:
+    const base::UnguessableToken browsing_context_group_token_;
+  };
+
+  explicit ClientMessageLoopAdapter(
       std::unique_ptr<Platform::NestedMessageLoopRunner> message_loop)
       : message_loop_(std::move(message_loop)) {
     DCHECK(message_loop_.get());
@@ -214,12 +238,14 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
     agent->FlushProtocolNotifications();
 
     // 1. Disable input events.
-    WebFrameWidgetImpl::SetIgnoreInputEvents(true);
+    CHECK(!input_events_disabler_);
+    input_events_disabler_ =
+        std::make_unique<ScopedInputEventsDisabler>(*frame);
     for (auto* const view : WebViewImpl::AllInstances())
       view->GetChromeClient().NotifyPopupOpeningObservers();
 
     // 2. Disable active objects
-    page_pauser_ = WebScopedPagePauser::Create();
+    page_pauser_ = std::make_unique<WebScopedPagePauser>(*frame);
 
     // 3. Process messages until quitNow is called.
     message_loop_->Run();
@@ -242,12 +268,13 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
            *running_for_debug_break_kind_ == kNormalPause);
     message_loop_->QuitNow();
     page_pauser_.reset();
-    WebFrameWidgetImpl::SetIgnoreInputEvents(false);
+    input_events_disabler_.reset();
   }
 
   absl::optional<MessageLoopKind> running_for_debug_break_kind_;
   bool running_for_page_wait_ = false;
   std::unique_ptr<Platform::NestedMessageLoopRunner> message_loop_;
+  std::unique_ptr<ScopedInputEventsDisabler> input_events_disabler_;
   std::unique_ptr<WebScopedPagePauser> page_pauser_;
   scoped_refptr<InspectorTaskRunner>
       inspector_task_runner_for_instrumentation_pause_;
@@ -261,10 +288,12 @@ void WebDevToolsAgentImpl::AttachSession(DevToolsSession* session,
   if (!network_agents_.size())
     Thread::Current()->AddTaskObserver(this);
 
-  ClientMessageLoopAdapter::EnsureMainThreadDebuggerCreated();
-  MainThreadDebugger* main_thread_debugger = MainThreadDebugger::Instance();
-  v8::Isolate* isolate = V8PerIsolateData::MainThreadIsolate();
   InspectedFrames* inspected_frames = inspected_frames_.Get();
+  v8::Isolate* isolate =
+      inspected_frames->Root()->GetPage()->GetAgentGroupScheduler().Isolate();
+  ClientMessageLoopAdapter::EnsureMainThreadDebuggerCreated(isolate);
+  MainThreadDebugger* main_thread_debugger =
+      MainThreadDebugger::Instance(isolate);
 
   int context_group_id =
       main_thread_debugger->ContextGroupId(inspected_frames->Root());
@@ -563,14 +592,18 @@ void WebDevToolsAgentImpl::WillProcessTask(
     bool was_blocked_or_low_priority) {
   if (network_agents_.empty())
     return;
-  ThreadDebugger::IdleFinished(V8PerIsolateData::MainThreadIsolate());
+  v8::Isolate* isolate =
+      inspected_frames_->Root()->GetPage()->GetAgentGroupScheduler().Isolate();
+  ThreadDebugger::IdleFinished(isolate);
 }
 
 void WebDevToolsAgentImpl::DidProcessTask(
     const base::PendingTask& pending_task) {
   if (network_agents_.empty())
     return;
-  ThreadDebugger::IdleStarted(V8PerIsolateData::MainThreadIsolate());
+  v8::Isolate* isolate =
+      inspected_frames_->Root()->GetPage()->GetAgentGroupScheduler().Isolate();
+  ThreadDebugger::IdleStarted(isolate);
   FlushProtocolNotifications();
 }
 

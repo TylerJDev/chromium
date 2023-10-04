@@ -11,6 +11,7 @@
 #include "chrome/browser/chromeos/extensions/telemetry/api/common/base_telemetry_extension_api_guard_function.h"
 #include "chrome/browser/chromeos/extensions/telemetry/api/diagnostics/remote_diagnostics_service_strategy.h"
 #include "chromeos/crosapi/mojom/diagnostics_service.mojom.h"
+#include "chromeos/crosapi/mojom/telemetry_extension_exception.mojom.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_function_histogram_value.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -18,8 +19,19 @@
 
 namespace chromeos {
 
-class DiagnosticsApiFunctionBase
+class DiagnosticsApiFunctionV1AndV2Base
     : public BaseTelemetryExtensionApiGuardFunction {
+ protected:
+  ~DiagnosticsApiFunctionV1AndV2Base() override = default;
+
+  // Gets the parameters passed to the JavaScript call and tries to convert it
+  // to the `Params` type. If the `Params` can't be created, this resolves the
+  // corresponding JavaScript call with an error and returns `nullptr`.
+  template <class Params>
+  absl::optional<Params> GetParams();
+};
+
+class DiagnosticsApiFunctionBase : public DiagnosticsApiFunctionV1AndV2Base {
  public:
   DiagnosticsApiFunctionBase();
 
@@ -27,12 +39,6 @@ class DiagnosticsApiFunctionBase
   ~DiagnosticsApiFunctionBase() override;
 
   mojo::Remote<crosapi::mojom::DiagnosticsService>& GetRemoteService();
-
-  // Gets the parameters passed to the JavaScript call and tries to convert it
-  // to the `Params` type. If the `Params` can't be created, this resolves the
-  // corresponding JavaScript call with an error and returns `nullptr`.
-  template <class Params>
-  absl::optional<Params> GetParams();
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   bool IsCrosApiAvailable() override;
@@ -42,6 +48,20 @@ class DiagnosticsApiFunctionBase
   std::unique_ptr<RemoteDiagnosticsServiceStrategy>
       remote_diagnostics_service_strategy_;
 };
+
+class DiagnosticsApiFunctionBaseV2 : public DiagnosticsApiFunctionV1AndV2Base {
+ public:
+  DiagnosticsApiFunctionBaseV2() = default;
+
+ protected:
+  ~DiagnosticsApiFunctionBaseV2() override = default;
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  bool IsCrosApiAvailable() override;
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+};
+
+/****************** DIAGNOSTICS API V1 ******************/
 
 class OsDiagnosticsGetAvailableRoutinesFunction
     : public DiagnosticsApiFunctionBase {
@@ -401,6 +421,52 @@ class OsDiagnosticsRunAudioDriverRoutineFunction
 
   // BaseTelemetryExtensionApiGuardFunction:
   void RunIfAllowed() override;
+};
+
+/****************** DIAGNOSTICS API V2 ******************/
+
+class OsDiagnosticsCreateMemoryRoutineFunction
+    : public DiagnosticsApiFunctionBaseV2 {
+  DECLARE_EXTENSION_FUNCTION("os.diagnostics.createMemoryRoutine",
+                             OS_DIAGNOSTICS_CREATEMEMORYROUTINE)
+ private:
+  ~OsDiagnosticsCreateMemoryRoutineFunction() override = default;
+
+  // BaseTelemetryExtensionApiGuardFunction:
+  void RunIfAllowed() override;
+};
+
+class OsDiagnosticsStartRoutineFunction : public DiagnosticsApiFunctionBaseV2 {
+  DECLARE_EXTENSION_FUNCTION("os.diagnostics.startRoutine",
+                             OS_DIAGNOSTICS_STARTROUTINE)
+ private:
+  ~OsDiagnosticsStartRoutineFunction() override = default;
+
+  // BaseTelemetryExtensionApiGuardFunction:
+  void RunIfAllowed() override;
+};
+
+class OsDiagnosticsCancelRoutineFunction : public DiagnosticsApiFunctionBaseV2 {
+  DECLARE_EXTENSION_FUNCTION("os.diagnostics.cancelRoutine",
+                             OS_DIAGNOSTICS_CANCELROUTINE)
+ private:
+  ~OsDiagnosticsCancelRoutineFunction() override = default;
+
+  // BaseTelemetryExtensionApiGuardFunction:
+  void RunIfAllowed() override;
+};
+
+class OsDiagnosticsIsMemoryRoutineArgumentSupportedFunction
+    : public DiagnosticsApiFunctionBaseV2 {
+  DECLARE_EXTENSION_FUNCTION("os.diagnostics.isMemoryRoutineArgumentSupported",
+                             OS_DIAGNOSTICS_ISMEMORYROUTINEARGUMENTSUPPORTED)
+ private:
+  ~OsDiagnosticsIsMemoryRoutineArgumentSupportedFunction() override = default;
+
+  // BaseTelemetryExtensionApiGuardFunction:
+  void RunIfAllowed() override;
+
+  void OnResult(crosapi::mojom::TelemetryExtensionSupportStatusPtr result);
 };
 
 }  // namespace chromeos

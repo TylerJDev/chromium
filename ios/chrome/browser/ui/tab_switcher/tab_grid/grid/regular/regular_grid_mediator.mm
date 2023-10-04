@@ -8,17 +8,25 @@
 #import "base/metrics/user_metrics.h"
 #import "base/metrics/user_metrics_action.h"
 #import "components/sessions/core/tab_restore_service.h"
+#import "ios/chrome/browser/policy/policy_util.h"
 #import "ios/chrome/browser/sessions/session_restoration_browser_agent.h"
 #import "ios/chrome/browser/sessions/session_window_ios.h"
+#import "ios/chrome/browser/sessions/web_state_list_serialization.h"
+#import "ios/chrome/browser/shared/model/browser_state/chrome_browser_state.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
-#import "ios/chrome/browser/snapshots/snapshot_browser_agent.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_browser_agent.h"
 #import "ios/chrome/browser/tabs/features.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_collection_consumer.h"
+#import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/grid_consumer.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/grid_toolbars_configuration_provider.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/grid/grid_toolbars_mutator.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/tab_grid_metrics.h"
+#import "ios/chrome/browser/ui/tab_switcher/tab_grid/tab_grid_paging.h"
 #import "ios/chrome/browser/ui/tab_switcher/tab_grid/toolbars/tab_grid_toolbars_configuration.h"
-#import "ios/chrome/browser/web_state_list/web_state_list_serialization.h"
+
+// TODO(crbug.com/1457146): Needed for `TabPresentationDelegate`, should be
+// refactored.
+#import "ios/chrome/browser/ui/tab_switcher/tab_grid/tab_grid_view_controller.h"
 
 @implementation RegularGridMediator {
   // The saved session window just before close all tabs is called.
@@ -50,8 +58,7 @@
 
   if (IsPinnedTabsEnabled()) {
     BOOL hasPinnedWebStatesOnly =
-        self.webStateList->GetIndexOfFirstNonPinnedWebState() ==
-        self.webStateList->count();
+        self.webStateList->pinned_tabs_count() == self.webStateList->count();
 
     if (hasPinnedWebStatesOnly) {
       return;
@@ -140,20 +147,49 @@
   [self configureToolbarsButtons];
 }
 
+- (void)newTabButtonTapped:(id)sender {
+  // Ignore the tap if the current page is disabled for some reason, by policy
+  // for instance. This is to avoid situations where the tap action from an
+  // enabled page can make it to a disabled page by releasing the
+  // button press after switching to the disabled page (b/273416844 is an
+  // example).
+  if (IsIncognitoModeForced(self.browser->GetBrowserState()->GetPrefs())) {
+    return;
+  }
+
+  [self.gridConsumer setPageIdleStatus:NO];
+  base::RecordAction(base::UserMetricsAction("MobileTabNewTab"));
+  [self.gridConsumer prepareForDismissal];
+  [self addNewItem];
+  [self.gridConsumer setActivePageFromPage:TabGridPageRegularTabs];
+  [self.tabPresentationDelegate showActiveTabInPage:TabGridPageRegularTabs
+                                       focusOmnibox:NO];
+  base::RecordAction(base::UserMetricsAction("MobileTabGridCreateRegularTab"));
+}
+
 #pragma mark - Parent's function
 
+- (void)disconnect {
+  _closedSessionWindow = nil;
+  _syncedClosedTabsCount = 0;
+  [super disconnect];
+}
+
 - (void)configureToolbarsButtons {
+  // Start to configure the delegate, so configured buttons will depend on the
+  // correct delegate.
+  [self.toolbarsMutator setToolbarsButtonsDelegate:self];
+
   TabGridToolbarsConfiguration* toolbarsConfiguration =
       [[TabGridToolbarsConfiguration alloc] init];
-
   toolbarsConfiguration.closeAllButton = [self canCloseAll];
   toolbarsConfiguration.doneButton = YES;
+  toolbarsConfiguration.newTabButton = IsAddNewTabAllowedByPolicy(
+      self.browser->GetBrowserState()->GetPrefs(), NO);
   toolbarsConfiguration.searchButton = YES;
   toolbarsConfiguration.selectTabsButton = [self isTabsInGrid];
   toolbarsConfiguration.undoButton = [self canUndo];
-
   [self.toolbarsMutator setToolbarConfiguration:toolbarsConfiguration];
-  [self.toolbarsMutator setToolbarsButtonsDelegate:self];
 }
 
 #pragma mark - Private
@@ -194,8 +230,8 @@
 // YES if there are tabs in regular grid only (not pinned, not in inactive tabs,
 // etc.).
 - (BOOL)isTabsInGrid {
-  BOOL onlyPinnedTabs = self.webStateList->GetIndexOfFirstNonPinnedWebState() ==
-                        self.webStateList->count();
+  BOOL onlyPinnedTabs =
+      self.webStateList->pinned_tabs_count() == self.webStateList->count();
   return !self.webStateList->empty() && !onlyPinnedTabs;
 }
 

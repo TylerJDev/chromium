@@ -12,6 +12,7 @@
 #include "base/barrier_closure.h"
 #include "base/base64.h"
 #include "base/build_time.h"
+#include "base/check.h"
 #include "base/command_line.h"
 #include "base/containers/unique_ptr_adapters.h"
 #include "base/dcheck_is_on.h"
@@ -96,7 +97,7 @@
 #include "services/network/http_auth_cache_copier.h"
 #include "services/network/http_server_properties_pref_delegate.h"
 #include "services/network/ignore_errors_cert_verifier.h"
-#include "services/network/ip_protection_auth_token_cache_impl.h"
+#include "services/network/ip_protection_config_cache_impl.h"
 #include "services/network/is_browser_initiated.h"
 #include "services/network/net_log_exporter.h"
 #include "services/network/network_service.h"
@@ -113,9 +114,7 @@
 #include "services/network/public/cpp/network_switches.h"
 #include "services/network/public/cpp/parsed_headers.h"
 #include "services/network/public/cpp/simple_host_resolver.h"
-#include "services/network/public/cpp/thread_delegate.h"
 #include "services/network/public/mojom/clear_data_filter.mojom.h"
-#include "services/network/public/mojom/network_context.mojom-forward.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/reporting_service.mojom.h"
 #include "services/network/public/mojom/trust_tokens.mojom-forward.h"
@@ -440,6 +439,23 @@ bool GetFullDataFilePath(
 
 constexpr uint32_t NetworkContext::kMaxOutstandingRequestsPerProcess;
 
+NetworkContext::NetworkContextHttpAuthPreferences::
+    NetworkContextHttpAuthPreferences(NetworkService* network_service)
+    : network_service_(network_service) {}
+
+NetworkContext::NetworkContextHttpAuthPreferences::
+    ~NetworkContextHttpAuthPreferences() = default;
+
+#if BUILDFLAG(IS_LINUX)
+bool NetworkContext::NetworkContextHttpAuthPreferences::AllowGssapiLibraryLoad()
+    const {
+  if (network_service_) {
+    network_service_->OnBeforeGssapiLibraryLoad();
+  }
+  return net::HttpAuthPreferences::AllowGssapiLibraryLoad();
+}
+#endif  // BUILDFLAG(IS_LINUX)
+
 NetworkContext::PendingCertVerify::PendingCertVerify() = default;
 NetworkContext::PendingCertVerify::~PendingCertVerify() = default;
 
@@ -477,6 +493,7 @@ NetworkContext::NetworkContext(
           std::move(params_->first_party_sets_access_delegate_params),
           network_service_->first_party_sets_manager()),
       cors_preflight_controller_(network_service),
+      http_auth_merged_preferences_(network_service),
       ohttp_handler_(this),
       cors_non_wildcard_request_headers_support_(base::FeatureList::IsEnabled(
           features::kCorsNonWildcardRequestHeadersSupport)) {
@@ -636,6 +653,7 @@ NetworkContext::NetworkContext(
           std::make_unique<SocketFactory>(url_request_context_->net_log(),
                                           url_request_context)),
       cors_preflight_controller_(network_service),
+      http_auth_merged_preferences_(network_service),
       ohttp_handler_(this) {
   // May be nullptr in tests.
   if (network_service_)
@@ -654,9 +672,33 @@ NetworkContext::~NetworkContext() {
   is_destructing_ = true;
 
   // May be nullptr in tests.
-  if (network_service_)
-    network_service_->DeregisterNetworkContext(this);
+  if (network_service_) {
+#if BUILDFLAG(IS_ANDROID)
+    if (params_ && params_->file_paths) {
+      base::FilePath path_to_invalidate;
+      if (GetFullDataFilePath(params_->file_paths,
+                              &network::mojom::NetworkContextFilePaths::
+                                  trust_token_database_name,
+                              path_to_invalidate)) {
+        network_service_->InvalidateNetworkContextPath(path_to_invalidate);
+      }
+      if (GetFullDataFilePath(params_->file_paths,
+                              &network::mojom::NetworkContextFilePaths::
+                                  reporting_and_nel_store_database_name,
+                              path_to_invalidate)) {
+        network_service_->InvalidateNetworkContextPath(path_to_invalidate);
+      }
+      if (GetFullDataFilePath(
+              params_->file_paths,
+              &network::mojom::NetworkContextFilePaths::cookie_database_name,
+              path_to_invalidate)) {
+        network_service_->InvalidateNetworkContextPath(path_to_invalidate);
+      }
+    }
 
+#endif
+    network_service_->DeregisterNetworkContext(this);
+  }
   if (domain_reliability_monitor_)
     domain_reliability_monitor_->Shutdown();
   // Because of the order of declaration in the class,
@@ -751,7 +793,9 @@ void NetworkContext::CreateURLLoaderFactory(
     scoped_refptr<ResourceSchedulerClient> resource_scheduler_client) {
   url_loader_factories_.emplace(std::make_unique<cors::CorsURLLoaderFactory>(
       this, std::move(params), std::move(resource_scheduler_client),
-      std::move(receiver), &cors_origin_access_list_));
+      std::move(receiver), &cors_origin_access_list_,
+      network_service_ ? network_service_->network_service_resource_block_list()
+                       : nullptr));
 }
 
 void NetworkContext::CreateURLLoaderFactoryForCertNetFetcher(
@@ -859,9 +903,7 @@ void NetworkContext::OnComputedFirstPartySetMetadata(
 
   auto callback = base::BindOnce(&NetworkContext::OnRCMDisconnect,
                                  base::Unretained(this), ptr.get());
-  ptr->InstallReceiver(std::move(receiver),
-                       ThreadDelegate::GetHighPriorityTaskRunner(),
-                       std::move(callback));
+  ptr->InstallReceiver(std::move(receiver), std::move(callback));
   restricted_cookie_managers_.insert(std::move(ptr));
 }
 
@@ -1449,9 +1491,9 @@ void NetworkContext::SetCTPolicy(mojom::CTPolicyPtr ct_policy) {
   if (!require_ct_delegate_)
     return;
 
-  require_ct_delegate_->UpdateCTPolicies(
-      ct_policy->required_hosts, ct_policy->excluded_hosts,
-      ct_policy->excluded_spkis, ct_policy->excluded_legacy_spkis);
+  require_ct_delegate_->UpdateCTPolicies(ct_policy->excluded_hosts,
+                                         ct_policy->excluded_spkis,
+                                         ct_policy->excluded_legacy_spkis);
 }
 
 int NetworkContext::CheckCTComplianceForSignedExchange(
@@ -1983,30 +2025,96 @@ void NetworkContext::VerifyCertificateForTesting(
       request, net::NetLogWithSource());
 }
 
-void NetworkContext::VerifyIpProtectionAuthTokenGetterForTesting(
-    VerifyIpProtectionAuthTokenGetterForTestingCallback callback) {
+void NetworkContext::VerifyIpProtectionConfigGetterForTesting(
+    VerifyIpProtectionConfigGetterForTestingCallback callback) {
   // This method assumes that the proxy delegate and auth token cache have been
   // initialized.
   CHECK(proxy_delegate_);
 
-  auto* auth_token_cache_impl = static_cast<IpProtectionAuthTokenCacheImpl*>(
-      proxy_delegate_->GetAuthTokenCacheForTesting());  // IN-TEST
-  CHECK(auth_token_cache_impl);
+  auto* ipp_config_cache_impl = static_cast<IpProtectionConfigCacheImpl*>(
+      proxy_delegate_->GetIpProtectionConfigCache());
+  CHECK(ipp_config_cache_impl);
 
-  auth_token_cache_impl->FillCacheForTesting(base::BindOnce(  // IN-TEST
-      &NetworkContext::OnIpProtectionAuthTokenAvailableForTesting,
-      weak_factory_.GetWeakPtr(), std::move(callback)));
+  // If active cache management is enabled (the default), disable it and do a
+  // one-time reset of the state. Since the browser process will be driving this
+  // test, this makes it easier to reason about the state of
+  // `ipp_config_cache_impl` (for instance, if the browser process sends less
+  // than the requested number of tokens, the network service won't immediately
+  // request more).
+  if (ipp_config_cache_impl->IsCacheManagementEnabledForTesting()) {
+    ipp_config_cache_impl->DisableCacheManagementForTesting(  // IN-TEST
+        base::BindOnce(
+            [](base::WeakPtr<NetworkContext> weak_ptr,
+               VerifyIpProtectionConfigGetterForTestingCallback callback) {
+              // If this callback is called then `ipp_config_cache_impl` is
+              // still alive, which means that this `NetworkContext` is alive as
+              // well.
+              CHECK(weak_ptr);
+              auto* ipp_config_cache_impl =
+                  static_cast<IpProtectionConfigCacheImpl*>(
+                      weak_ptr->proxy_delegate_->GetIpProtectionConfigCache());
+              ipp_config_cache_impl->InvalidateTryAgainAfterTime();
+              while (ipp_config_cache_impl->IsAuthTokenAvailable()) {
+                ipp_config_cache_impl->GetAuthToken();
+              }
+              // Call `PostTask()` instead of invoking the Verify method again
+              // directly so that if `DisableCacheManagementForTesting()` needed
+              // to wait for a `TryGetAuthTokens()` call to finish, then we
+              // ensure that the stored callback has been cleared before the
+              // Verify method tries to call `TryGetAuthTokens()` again.
+              base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+                  FROM_HERE,
+                  base::BindOnce(
+                      &NetworkContext::VerifyIpProtectionConfigGetterForTesting,
+                      weak_ptr, std::move(callback)));
+            },
+            weak_factory_.GetWeakPtr(), std::move(callback)));
+    return;
+  }
+
+  // If there is a cooldown in effect, then don't send any tokens and instead
+  // send back the try again after time.
+  // TODO(awillia): This will actually be used in a follow-up CL.
+  base::Time try_auth_tokens_after =
+      ipp_config_cache_impl
+          ->try_get_auth_tokens_after_for_testing();  // IN-TEST
+  if (!try_auth_tokens_after.is_null()) {
+    std::move(callback).Run(nullptr, try_auth_tokens_after);
+    return;
+  }
+
+  ipp_config_cache_impl->SetOnTryGetAuthTokensCompletedForTesting(  // IN-TEST
+      base::BindOnce(&NetworkContext::OnIpProtectionConfigAvailableForTesting,
+                     weak_factory_.GetWeakPtr(), std::move(callback)));
+  ipp_config_cache_impl->CallTryGetAuthTokensForTesting();  // IN-TEST
 }
 
-void NetworkContext::OnIpProtectionAuthTokenAvailableForTesting(
-    VerifyIpProtectionAuthTokenGetterForTestingCallback callback) {
-  auto* auth_token_cache =
-      proxy_delegate_->GetAuthTokenCacheForTesting();  // IN-TEST
+void NetworkContext::OnIpProtectionConfigAvailableForTesting(
+    VerifyIpProtectionConfigGetterForTestingCallback callback) {
+  auto* ipp_config_cache_impl = static_cast<IpProtectionConfigCacheImpl*>(
+      proxy_delegate_->GetIpProtectionConfigCache());
 
   absl::optional<network::mojom::BlindSignedAuthTokenPtr> result =
-      auth_token_cache->GetAuthToken();
-  CHECK(result.has_value());
-  std::move(callback).Run(std::move(result).value());
+      ipp_config_cache_impl->GetAuthToken();
+  if (result.has_value()) {
+    std::move(callback).Run(std::move(result).value(), absl::nullopt);
+    return;
+  }
+  base::Time try_auth_tokens_after =
+      ipp_config_cache_impl
+          ->try_get_auth_tokens_after_for_testing();  // IN-TEST
+  std::move(callback).Run(nullptr, try_auth_tokens_after);
+}
+
+void NetworkContext::InvalidateIpProtectionConfigCacheTryAgainAfterTime() {
+  if (!proxy_delegate_) {
+    return;
+  }
+  auto* ipp_config_cache = proxy_delegate_->GetIpProtectionConfigCache();
+  if (!ipp_config_cache) {
+    return;
+  }
+  ipp_config_cache->InvalidateTryAgainAfterTime();
 }
 
 void NetworkContext::PreconnectSockets(
@@ -2256,10 +2364,10 @@ void NetworkContext::OnHttpAuthDynamicParamsChanged(
       http_auth_dynamic_network_service_params->android_negotiate_account_type);
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
   http_auth_merged_preferences_.set_allow_gssapi_library_load(
       http_auth_dynamic_network_service_params->allow_gssapi_library_load);
-#endif  // BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
   if (http_auth_dynamic_network_service_params->allowed_schemes.has_value()) {
     http_auth_merged_preferences_.set_allowed_schemes(std::set<std::string>(
         http_auth_dynamic_network_service_params->allowed_schemes->begin(),
@@ -2642,11 +2750,13 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
   builder.set_host_mapping_rules(
       command_line->GetSwitchValueASCII(switches::kHostResolverRules));
 
+#if BUILDFLAG(IS_WIN)
   if (params_->socket_broker) {
     builder.set_client_socket_factory(
         std::make_unique<BrokeredClientSocketFactory>(
             std::move(params_->socket_broker)));
   }
+#endif
 
   // If `require_network_anonymization_key_` is true, but the features that can
   // trigger another URLRequest are not set to respect NetworkAnonymizationKeys,
@@ -2664,6 +2774,10 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
 #if BUILDFLAG(IS_ANDROID)
   builder.set_check_cleartext_permitted(params_->check_clear_text_permitted);
 #endif  // BUILDFLAG(IS_ANDROID)
+
+  if (params_->cookie_deprecation_label.has_value()) {
+    builder.set_cookie_deprecation_label(*params_->cookie_deprecation_label);
+  }
 
   if (on_url_request_context_builder_configured) {
     std::move(on_url_request_context_builder_configured).Run(&builder);
@@ -2750,10 +2864,10 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
     proxy_delegate_->SetProxyResolutionService(
         result.url_request_context->proxy_resolution_service());
 
-    if (params_->ip_protection_auth_token_getter) {
-      proxy_delegate_->SetIpProtectionAuthTokenCache(
-          std::make_unique<IpProtectionAuthTokenCacheImpl>(
-              std::move(params_->ip_protection_auth_token_getter)));
+    if (params_->ip_protection_config_getter) {
+      proxy_delegate_->SetIpProtectionConfigCache(
+          std::make_unique<IpProtectionConfigCacheImpl>(
+              std::move(params_->ip_protection_config_getter)));
     }
   }
 
@@ -2963,6 +3077,10 @@ bool NetworkContext::IsAllowedToUseAllHttpAuthSchemes(
   return !url_matcher_->MatchURL(scheme_host_port.GetURL()).empty();
 }
 
+bool NetworkContext::AfpBlockListExperimentEnabled() const {
+  return params_ && params_->afp_block_list_experiment_enabled;
+}
+
 void NetworkContext::CreateTrustedUrlLoaderFactoryForNetworkService(
     mojo::PendingReceiver<mojom::URLLoaderFactory>
         url_loader_factory_pending_receiver) {
@@ -3048,6 +3166,24 @@ void NetworkContext::ResourceSchedulerClientVisibilityChanged(
     const base::UnguessableToken& client_token,
     bool visible) {
   resource_scheduler_->OnClientVisibilityChanged(client_token, visible);
+}
+
+void NetworkContext::FlushCachedClientCertIfNeeded(
+    const net::HostPortPair& host,
+    const scoped_refptr<net::X509Certificate>& certificate) {
+  net::HttpNetworkSession* http_session =
+      url_request_context_->http_transaction_factory()->GetSession();
+  DCHECK(http_session);
+  if (http_session->ssl_client_context()) {
+    http_session->ssl_client_context()->ClearClientCertificateIfNeeded(
+        host, certificate);
+  }
+}
+
+void NetworkContext::SetCookieDeprecationLabel(
+    const absl::optional<std::string>& label) {
+  CHECK(url_request_context_);
+  url_request_context_->set_cookie_deprecation_label(label);
 }
 
 }  // namespace network

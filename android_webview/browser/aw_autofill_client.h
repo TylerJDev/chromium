@@ -14,7 +14,7 @@
 #include "base/dcheck_is_on.h"
 #include "base/memory/raw_ptr.h"
 #include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/autofill/core/browser/autofill_trigger_source.h"
+#include "components/autofill/core/browser/autofill_trigger_details.h"
 #include "components/autofill/core/browser/payments/legal_message_line.h"
 #include "components/autofill/core/browser/ui/popup_item_ids.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -22,10 +22,8 @@
 
 namespace autofill {
 class AutocompleteHistoryManager;
-class AutofillDriver;
 class AutofillPopupDelegate;
 class CreditCard;
-class FormStructure;
 class PersonalDataManager;
 class StrikeDatabase;
 struct CardUnmaskPromptOptions;
@@ -133,7 +131,12 @@ class AwAutofillClient : public autofill::ContentAutofillClient {
       const autofill::AutofillProfile* original_profile,
       SaveAddressProfilePromptOptions options,
       AddressProfileSavePromptCallback callback) override;
-  void ShowDeleteAddressProfileDialog() override;
+  void ShowEditAddressProfileDialog(
+      const autofill::AutofillProfile& profile,
+      AddressProfileSavePromptCallback on_user_decision_callback) override;
+  void ShowDeleteAddressProfileDialog(
+      const autofill::AutofillProfile& profile,
+      AddressProfileDeleteDialogCallback delete_dialog_callback) override;
   bool HasCreditCardScanFeature() override;
   void ScanCreditCard(CreditCardScanCallback callback) override;
   bool IsTouchToFillCreditCardSupported() override;
@@ -158,9 +161,6 @@ class AwAutofillClient : public autofill::ContentAutofillClient {
   void HideAutofillPopup(autofill::PopupHidingReason reason) override;
   bool IsAutocompleteEnabled() const override;
   bool IsPasswordManagerEnabled() override;
-  void PropagateAutofillPredictionsDeprecated(
-      autofill::AutofillDriver* driver,
-      const std::vector<autofill::FormStructure*>& forms) override;
   void DidFillOrPreviewForm(
       autofill::mojom::AutofillActionPersistence action_persistence,
       autofill::AutofillTriggerSource trigger_source,

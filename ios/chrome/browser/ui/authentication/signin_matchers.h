@@ -7,6 +7,7 @@
 
 #import <Foundation/Foundation.h>
 
+@protocol GREYAction;
 @protocol GREYMatcher;
 
 namespace chrome_test_util {
@@ -35,10 +36,25 @@ id<GREYMatcher> GoogleSyncSettingsButton();
 // Matcher for the upgrade sign-in promo.
 id<GREYMatcher> UpgradeSigninPromoMatcher();
 
+// Matcher for the upgrade sign-in promo.
+id<GREYMatcher> SigninScreenPromoMatcher();
+
+// Matcher for the secondary button ("No Thanks") in the history opt-in screen.
+id<GREYMatcher> SigninScreenPromoSecondaryButtonMatcher();
+
 // Matcher for the Settings row which, upon tap, leads the user to sign-in. If
 // kReplaceSyncPromosWithSignInPromos is disabled, it also leads the user to
 // enable sync. The row is only shown to signed-out users.
 id<GREYMatcher> SettingsSignInRowMatcher();
+
+// Matcher for the history opt-in screen.
+id<GREYMatcher> HistoryOptInPromoMatcher();
+
+// Matcher for the primary button ("Yes, I'm In") in the history opt-in screen.
+id<GREYMatcher> HistoryOptInPrimaryButtonMatcher();
+
+// Action for searching an UI element in the history opt-in screen..
+id<GREYAction> HistoryOptInScrollDown();
 
 }  // namespace chrome_test_util
 

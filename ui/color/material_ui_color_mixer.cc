@@ -49,7 +49,7 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorButtonBackgroundProminentFocused] = {GetResultingPaintColor(
       {kColorSysStateFocus}, {kColorButtonBackgroundProminent})};
   mixer[kColorButtonBorder] = {kColorSysTonalOutline};
-  mixer[kColorButtonBorderDisabled] = {kColorSysStateDisabled};
+  mixer[kColorButtonBorderDisabled] = {kColorSysStateDisabledContainer};
   mixer[kColorButtonFeatureAttentionHighlight] =
       SetAlpha({kColorSysPrimary}, kAttentionHighlightAlpha);
   mixer[kColorButtonForeground] = {kColorSysPrimary};
@@ -61,6 +61,13 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorCheckboxContainerDisabled] = {kColorSysStateDisabledContainer};
   mixer[kColorCheckboxOutline] = {kColorSysOutline};
   mixer[kColorCheckboxOutlineDisabled] = {kColorSysStateDisabledContainer};
+  mixer[kColorChipBackgroundHover] = {kColorSysStateHoverOnSubtle};
+  mixer[kColorChipBackgroundSelected] = {kColorSysTonalContainer};
+  mixer[kColorChipBorder] = {kColorSysTonalOutline};
+  mixer[kColorChipForeground] = {kColorSysOnSurface};
+  mixer[kColorChipForegroundSelected] = {kColorSysOnTonalContainer};
+  mixer[kColorChipIcon] = {kColorSysPrimary};
+  mixer[kColorChipIconSelected] = {kColorSysOnTonalContainer};
   mixer[kColorComboboxBackground] = {kColorSysSurface};
   mixer[kColorComboboxBackgroundDisabled] = {GetResultingPaintColor(
       {kColorSysStateDisabledContainer}, {kColorComboboxBackground})};
@@ -110,11 +117,11 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorRadioButtonForegroundUnchecked] = {kColorSysOutline};
   mixer[kColorSecondaryForeground] = {ui::kColorSysOnSurfaceSubtle};
   mixer[kColorSegmentedButtonBorder] = {kColorSysTonalOutline};
-  mixer[kColorSegmentedButtonForegroundChecked] = {kColorSysOnTonalContainer};
+  mixer[kColorSegmentedButtonForegroundChecked] = {kColorSysOnPrimary};
   mixer[kColorSegmentedButtonForegroundUnchecked] = {kColorSysOnSurfaceSubtle};
   mixer[kColorSegmentedButtonHover] = {kColorSysStateHoverOnSubtle};
   mixer[kColorSegmentedButtonRipple] = {kColorSysStateRippleNeutralOnSubtle};
-  mixer[kColorSegmentedButtonChecked] = {kColorSysTonalContainer};
+  mixer[kColorSegmentedButtonChecked] = {kColorSysPrimary};
   mixer[kColorSeparator] = {kColorSysDivider};
   mixer[kColorSidePanelComboboxBackground] = {kColorSysBaseContainer};
   mixer[kColorSliderThumb] = {kColorSysPrimary};
@@ -123,6 +130,8 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorSliderTrackMinimal] = {kColorSysOnSecondary};
   mixer[kColorSuggestionChipBorder] = {kColorSysTonalOutline};
   mixer[kColorSuggestionChipIcon] = {kColorSysPrimary};
+  mixer[kColorTabOrganizationGradient1] = {kColorSysGradientPrimary};
+  mixer[kColorTabOrganizationGradient2] = {kColorSysGradientTertiary};
   // TODO(colehorvitz): Rename textfield color IDs to specify which
   // textfield variation they are used for ('filled' or 'stroked').
   mixer[kColorTextfieldBackground] = {kColorSysSurface};
@@ -156,6 +165,7 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorThemeColorPickerHueSliderDialogIcon] = {kColorSysOnSurfaceSubtle};
   mixer[kColorThemeColorPickerHueSliderHandle] = {kColorSysWhite};
   mixer[kColorThemeColorPickerOptionBackground] = {kColorSysNeutralContainer};
+  mixer[kColorThrobber] = {kColorSysPrimary};
   mixer[kColorToastBackground] = {kColorSysInverseSurface};
   mixer[kColorToastButton] = {kColorSysInversePrimary};
   mixer[kColorToastForeground] = {kColorSysInverseOnSurface};

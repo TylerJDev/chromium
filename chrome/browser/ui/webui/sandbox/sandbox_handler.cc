@@ -91,6 +91,10 @@ base::Value::List FetchSandboxFeatures() {
       sandbox::policy::features::kWinSboxDisableExtensionPoints));
   features.Append(
       FeatureToValue(sandbox::policy::features::kWinSboxWarmupProcessPrng));
+  features.Append(
+      FeatureToValue(sandbox::policy::features::kWinSboxZeroAppShim));
+  features.Append(
+      FeatureToValue(sandbox::policy::features::kWinSboxFsctlLockdown));
   return features;
 }
 

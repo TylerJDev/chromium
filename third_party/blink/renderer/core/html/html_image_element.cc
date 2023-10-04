@@ -390,13 +390,17 @@ void HTMLImageElement::ParseAttribute(
     }
   } else if (name == html_names::kSharedstoragewritableAttr &&
              RuntimeEnabledFeatures::SharedStorageAPIM118Enabled(
-                 GetExecutionContext()) &&
-             !GetExecutionContext()->IsSecureContext()) {
-    GetDocument().AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
-        mojom::blink::ConsoleMessageSource::kOther,
-        mojom::blink::ConsoleMessageLevel::kError,
-        WebString::FromUTF8("sharedStorageWritable: sharedStorage operations "
-                            "are only available in secure contexts.")));
+                 GetExecutionContext())) {
+    if (!GetExecutionContext()->IsSecureContext()) {
+      GetDocument().AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
+          mojom::blink::ConsoleMessageSource::kOther,
+          mojom::blink::ConsoleMessageLevel::kError,
+          WebString::FromUTF8("sharedStorageWritable: sharedStorage operations "
+                              "are only available in secure contexts.")));
+    } else if (!params.new_value.IsNull()) {
+      UseCounter::Count(GetDocument(),
+                        WebFeature::kSharedStorageAPI_Image_Attribute);
+    }
   } else {
     HTMLElement::ParseAttribute(params);
   }
@@ -564,7 +568,7 @@ void HTMLImageElement::RemovedFrom(ContainerNode& insertion_point) {
   if (InActiveDocument() && !last_reported_ad_rect_.IsEmpty()) {
     gfx::Rect empty_rect;
     GetDocument().GetFrame()->Client()->OnMainFrameImageAdRectangleChanged(
-        DOMNodeIds::IdForNode(this), empty_rect);
+        this->GetDomNodeId(), empty_rect);
     last_reported_ad_rect_ = empty_rect;
   }
 
@@ -707,10 +711,6 @@ bool HTMLImageElement::HasLegalLinkAttribute(const QualifiedName& name) const {
          HTMLElement::HasLegalLinkAttribute(name);
 }
 
-const QualifiedName& HTMLImageElement::SubResourceAttributeName() const {
-  return html_names::kSrcAttr;
-}
-
 void HTMLImageElement::SetIsAdRelated() {
   if (!is_ad_related_ && GetDocument().View()) {
     GetDocument().View()->RegisterForLifecycleNotifications(this);
@@ -747,8 +747,8 @@ void HTMLImageElement::DidFinishLifecycleUpdate(
   }
 
   if (last_reported_ad_rect_ != rect_to_report) {
-    frame->Client()->OnMainFrameImageAdRectangleChanged(
-        DOMNodeIds::IdForNode(this), rect_to_report);
+    frame->Client()->OnMainFrameImageAdRectangleChanged(this->GetDomNodeId(),
+                                                        rect_to_report);
     last_reported_ad_rect_ = rect_to_report;
   }
 }

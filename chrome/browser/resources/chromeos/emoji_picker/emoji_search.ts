@@ -43,6 +43,7 @@ export class EmojiSearch extends PolymerElement {
       searchResults: {type: Array},
       needIndexing: {type: Boolean, value: false},
       gifSupport: {type: Boolean, value: false},
+      jellySupport: {type: Boolean, value: false},
       status: {type: Status, value: null},
       searchQuery: {type: String, value: ''},
       nextGifPos: {type: String, value: ''},
@@ -107,6 +108,12 @@ export class EmojiSearch extends PolymerElement {
         this.set('searchResults', [...localSearchResults, ...searchResults]);
       });
     }
+
+    // If the user is searching, to ensure emoji tooltip or variants popup can
+    // be full displayed, we need to specify the minimum height as 100%.
+    this.updateStyles({
+      '--min-height': (newSearch.length > 0 ? '100%' : 'unset'),
+    });
   }
 
   // TODO(b/281609806): Remove this compatibility logic once gif support is
@@ -426,6 +433,10 @@ export class EmojiSearch extends PolymerElement {
    */
   setSearchQuery(value: string): void {
     this.$.search.setValue(value);
+  }
+
+  computeCrSearchFieldClass(jellySupport: boolean): string {
+    return jellySupport ? 'jelly' : '';
   }
 }
 

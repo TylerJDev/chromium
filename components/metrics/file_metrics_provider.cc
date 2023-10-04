@@ -100,7 +100,7 @@ void DeleteFileWhenPossible(const base::FilePath& path) {
 // This structure stores all the information about the sources being monitored
 // and their current reporting state.
 struct FileMetricsProvider::SourceInfo {
-  SourceInfo(const Params& params)
+  explicit SourceInfo(const Params& params)
       : type(params.type),
         association(params.association),
         prefs_key(params.prefs_key),
@@ -524,7 +524,9 @@ FileMetricsProvider::AccessResult FileMetricsProvider::CheckAndMapMetricSource(
   // Map the file and validate it.
   std::unique_ptr<base::FilePersistentMemoryAllocator> memory_allocator =
       std::make_unique<base::FilePersistentMemoryAllocator>(
-          std::move(mapped), 0, 0, base::StringPiece(), read_only);
+          std::move(mapped), 0, 0, base::StringPiece(),
+          read_only ? base::FilePersistentMemoryAllocator::kReadOnly
+                    : base::FilePersistentMemoryAllocator::kReadWriteExisting);
   if (memory_allocator->GetMemoryState() ==
       base::PersistentMemoryAllocator::MEMORY_DELETED) {
     return ACCESS_RESULT_MEMORY_DELETED;
@@ -544,6 +546,14 @@ FileMetricsProvider::AccessResult FileMetricsProvider::CheckAndMapMetricSource(
   // Create an allocator for the mapped file. Ownership passes to the allocator.
   source->allocator = std::make_unique<base::PersistentHistogramAllocator>(
       std::move(memory_allocator));
+  // Pass a custom RangesManager so that we do not register the BucketRanges
+  // with the global StatisticsRecorder when creating histogram objects using
+  // the allocator's underlying data. This avoids unnecessary contention on the
+  // global StatisticsRecorder lock.
+  // Note: Since RangesManager is not thread safe, this means that |allocator|
+  // must be iterated over one thread at a time (i.e., not concurrently). This
+  // is the case.
+  source->allocator->SetRangesManager(new base::RangesManager());
 
   // Check that an "independent" file has the necessary information present.
   if (source->association == ASSOCIATE_INTERNAL_PROFILE &&
@@ -694,10 +704,6 @@ bool FileMetricsProvider::ProvideIndependentMetricsOnTaskRunner(
 
   if (PersistentSystemProfile::GetSystemProfile(
           *source->allocator->memory_allocator(), system_profile_proto)) {
-    // Pass a custom RangesManager so that we do not register the BucketRanges
-    // with the global statistics recorder. Otherwise, it could add unnecessary
-    // contention, and a low amount of extra memory that will never be released.
-    source->allocator->SetRangesManager(new base::RangesManager());
     system_profile_proto->mutable_stability()->set_from_previous_run(true);
     RecordHistogramSnapshotsFromSource(
         snapshot_manager, source,

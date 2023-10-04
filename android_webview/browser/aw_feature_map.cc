@@ -8,6 +8,7 @@
 #include "android_webview/common/aw_features.h"
 #include "base/android/feature_map.h"
 #include "base/feature_list.h"
+#include "base/features.h"
 #include "base/no_destructor.h"
 #include "components/embedder_support/android/metrics/features.h"
 #include "components/safe_browsing/core/common/features.h"
@@ -23,6 +24,7 @@ const base::Feature* const kFeaturesExposedToJava[] = {
     &features::kWebViewConnectionlessSafeBrowsing,
     &features::kWebViewMetricsFiltering,
     &features::kWebViewDisplayCutout,
+    &features::kWebViewExitReasonMetric,
     &features::kWebViewMixedContentAutoupgrades,
     &features::kWebViewTestFeature,
     &features::kWebViewJavaJsBridgeMojo,
@@ -34,7 +36,10 @@ const base::Feature* const kFeaturesExposedToJava[] = {
     &metrics::kAndroidMetricsAsyncMetricLogging,
     &features::kWebViewZoomKeyboardShortcuts,
     &features::kWebViewClearFunctorInBackground,
-    &features::kWebViewReportFrameMetrics,
+    &safe_browsing::kHashPrefixRealTimeLookups,
+    &features::kWebViewSupervisedUserSiteDetection,
+    &features::kWebViewSupervisedUserSiteBlock,
+    &base::features::kCollectAndroidFrameTimelineMetrics,
 };
 
 // static

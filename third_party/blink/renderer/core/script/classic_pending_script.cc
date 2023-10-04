@@ -17,10 +17,12 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
+#include "third_party/blink/renderer/core/lcp_critical_path_predictor/lcp_critical_path_predictor.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/loader/resource/script_resource.h"
 #include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
 #include "third_party/blink/renderer/core/loader/url_matcher.h"
+#include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/script/document_write_intervention.h"
 #include "third_party/blink/renderer/core/script/script_loader.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
@@ -62,7 +64,8 @@ ClassicPendingScript* ClassicPendingScript::Fetch(
     CrossOriginAttributeValue cross_origin,
     const WTF::TextEncoding& encoding,
     ScriptElementBase* element,
-    FetchParameters::DeferOption defer) {
+    FetchParameters::DeferOption defer,
+    scheduler::TaskAttributionInfo* parent_task) {
   ExecutionContext* context = element_document.GetExecutionContext();
   FetchParameters params(options.CreateFetchParameters(
       url, context->GetSecurityOrigin(), context->GetCurrentWorld(),
@@ -80,7 +83,7 @@ ClassicPendingScript* ClassicPendingScript::Fetch(
       MakeGarbageCollected<ClassicPendingScript>(
           element, TextPosition::MinimumPosition(), KURL(), KURL(), String(),
           ScriptSourceLocationType::kExternalFile, options,
-          true /* is_external */);
+          /*is_external=*/true, parent_task);
 
   // [Intervention]
   // For users on slow connections, we want to avoid blocking the parser in
@@ -97,8 +100,20 @@ ClassicPendingScript* ClassicPendingScript::Fetch(
   // We allow streaming, as WatchForLoad() is always called when the script
   // needs to execute and the ScriptResource is not finished, so
   // SetClientIsWaitingForFinished is always set on the resource.
+
+  Page* page = element_document.GetPage();
+  v8_compile_hints::V8CrowdsourcedCompileHintsProducer* compile_hints_producer =
+      nullptr;
+  v8_compile_hints::V8CrowdsourcedCompileHintsConsumer* compile_hints_consumer =
+      nullptr;
+  if (page->MainFrame()->IsLocalFrame()) {
+    compile_hints_producer = &page->GetV8CrowdsourcedCompileHintsProducer();
+    compile_hints_consumer = &page->GetV8CrowdsourcedCompileHintsConsumer();
+  }
+
   ScriptResource::Fetch(params, element_document.Fetcher(), pending_script,
-                        ScriptResource::kAllowStreaming);
+                        ScriptResource::kAllowStreaming, compile_hints_producer,
+                        compile_hints_consumer);
   pending_script->CheckState();
   return pending_script;
 }
@@ -110,11 +125,12 @@ ClassicPendingScript* ClassicPendingScript::CreateInline(
     const KURL& base_url,
     const String& source_text,
     ScriptSourceLocationType source_location_type,
-    const ScriptFetchOptions& options) {
+    const ScriptFetchOptions& options,
+    scheduler::TaskAttributionInfo* parent_task) {
   ClassicPendingScript* pending_script =
       MakeGarbageCollected<ClassicPendingScript>(
           element, starting_position, source_url, base_url, source_text,
-          source_location_type, options, false /* is_external */);
+          source_location_type, options, /*is_external=*/false, parent_task);
   pending_script->CheckState();
   return pending_script;
 }
@@ -127,8 +143,9 @@ ClassicPendingScript::ClassicPendingScript(
     const String& source_text_for_inline_script,
     ScriptSourceLocationType source_location_type,
     const ScriptFetchOptions& options,
-    bool is_external)
-    : PendingScript(element, starting_position),
+    bool is_external,
+    scheduler::TaskAttributionInfo* parent_task)
+    : PendingScript(element, starting_position, parent_task),
       options_(options),
       source_url_for_inline_script_(source_url_for_inline_script),
       base_url_for_inline_script_(base_url_for_inline_script),
@@ -260,6 +277,20 @@ bool ClassicPendingScript::IsEligibleForLowPriorityAsyncScriptExecution()
   if (top_document.Loader() &&
       top_document.Loader()->IsReloadedOrFormSubmitted()) {
     return false;
+  }
+
+  // Check if LCP influencing scripts are to be excluded.
+  static const bool exclude_lcp_influencers =
+      features::kLowPriorityAsyncScriptExecutionExcludeLcpInfluencersParam
+          .Get();
+  if (exclude_lcp_influencers &&
+      base::FeatureList::IsEnabled(features::kLCPCriticalPathPredictor) &&
+      base::FeatureList::IsEnabled(features::kLCPScriptObserver)) {
+    if (LCPCriticalPathPredictor* lcpp = top_document.GetFrame()->GetLCPP()) {
+      if (lcpp->IsLcpInfluencerScript(GetResource()->Url())) {
+        return false;
+      }
+    }
   }
 
   static const bool cross_site_only =

@@ -16,13 +16,15 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/download/bubble/download_bubble_prefs.h"
 #include "chrome/browser/download/download_commands.h"
+#include "chrome/browser/download/download_ui_safe_browsing_util.h"
 #include "chrome/browser/download/offline_item_utils.h"
+#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/common/url_constants.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/enterprise/common/proto/connectors.pb.h"
@@ -44,10 +46,6 @@
 #include "chrome/browser/ui/browser.h"
 #include "components/url_formatter/elide_url.h"
 #include "ui/views/vector_icons.h"
-#endif
-
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/download_protection/download_protection_service.h"
 #endif
 
 using download::DownloadItem;
@@ -152,37 +150,6 @@ std::u16string FailStateDescription(FailState fail_state) {
   status_text = l10n_util::GetStringUTF16(string_id);
 
   return status_text;
-}
-
-// Returns whether the download item had a download protection verdict. If it
-// did not, we should call it "unverified" rather than "suspicious".
-bool WasSafeBrowsingVerdictObtained(const download::DownloadItem* item) {
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  return item &&
-         safe_browsing::DownloadProtectionService::HasDownloadProtectionVerdict(
-             item);
-#else
-  return false;
-#endif
-}
-
-// If this returns true, the warning should say "unverified" instead of
-// "suspicious".
-bool ShouldShowWarningForNoSafeBrowsing(Profile* profile) {
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  return safe_browsing::GetSafeBrowsingState(*profile->GetPrefs()) ==
-         safe_browsing::SafeBrowsingState::NO_SAFE_BROWSING;
-#else
-  return true;
-#endif
-}
-
-bool CanUserTurnOnSafeBrowsing(Profile* profile) {
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  return !safe_browsing::IsSafeBrowsingPolicyManaged(*profile->GetPrefs());
-#else
-  return false;
-#endif
 }
 
 }  // namespace
@@ -892,6 +859,14 @@ DownloadUIModel::BubbleUIInfo& DownloadUIModel::BubbleUIInfo::AddLearnMoreLink(
   return *this;
 }
 
+DownloadUIModel::BubbleUIInfo& DownloadUIModel::BubbleUIInfo::AddLearnMoreLink(
+    const std::u16string& link_text,
+    DownloadCommands::Command command) {
+  learn_more_link = LabelWithLink{
+      link_text, LabelWithLink::LinkedRange{0u, link_text.length(), command}};
+  return *this;
+}
+
 DownloadUIModel::BubbleUIInfo&
 DownloadUIModel::BubbleUIInfo::DisableMainButton() {
   main_button_enabled = false;
@@ -904,8 +879,8 @@ DownloadUIModel::BubbleUIInfo DownloadUIModel::BubbleUIInfo::DangerousUiPattern(
   return DownloadUIModel::BubbleUIInfo()
       .AddSubpageSummary(subpage_summary)
       .AddLearnMoreLink(
-          IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LABEL,
-          IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LINK,
+          l10n_util::GetStringUTF16(
+              IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LINK),
           DownloadCommands::Command::LEARN_MORE_DOWNLOAD_BLOCKED)
       .AddIconAndColor(features::IsChromeRefresh2023()
                            ? vector_icons::kDangerousChromeRefreshIcon
@@ -924,14 +899,14 @@ DownloadUIModel::BubbleUIInfo::SuspiciousUiPattern(
     const std::u16string& secondary_subpage_button_label) {
   return DownloadUIModel::BubbleUIInfo()
       .AddSubpageSummary(subpage_summary)
+      .AddLearnMoreLink(
+          l10n_util::GetStringUTF16(
+              IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LINK),
+          DownloadCommands::Command::LEARN_MORE_DOWNLOAD_BLOCKED)
       .AddIconAndColor(features::IsChromeRefresh2023()
                            ? kDownloadWarningIcon
                            : vector_icons::kNotSecureWarningIcon,
                        kColorDownloadItemIconWarning)
-      .AddLearnMoreLink(
-          IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LABEL,
-          IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LINK,
-          DownloadCommands::Command::LEARN_MORE_DOWNLOAD_BLOCKED)
       .AddSecondaryTextColor(kColorDownloadItemTextWarning)
       .AddPrimarySubpageButton(
           l10n_util::GetStringUTF16(IDS_DOWNLOAD_BUBBLE_DELETE_FROM_HISTORY),
@@ -1391,17 +1366,18 @@ DownloadUIModel::GetBubbleUIInfoForInProgressOrComplete(
                                      kColorDownloadItemIconWarning)
                     .AddSecondaryTextColor(kColorDownloadItemTextWarning);
       if (base::FeatureList::IsEnabled(safe_browsing::kDeepScanningUpdatedUX)) {
-        ui_info
-            .AddSubpageSummary(l10n_util::GetStringFUTF16(
-                IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_DEEP_SCANNING_PROMPT_UPDATED,
-                u"\n\n"))
+        std::u16string subpage_text = l10n_util::GetStringFUTF16(
+            IsEncryptedArchive()
+                ? IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_DEEP_SCANNING_PROMPT_ENCRYPTED_ARCHIVE
+                : IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_DEEP_SCANNING_PROMPT_UPDATED,
+            u"\n\n");
+        ui_info.AddSubpageSummary(subpage_text)
             .AddPrimarySubpageButton(
                 l10n_util::GetStringUTF16(IDS_DOWNLOAD_BUBBLE_SCAN_UPDATED),
                 DownloadCommands::Command::DEEP_SCAN)
             .AddSecondarySubpageButton(
                 l10n_util::GetStringUTF16(IDS_DOWNLOAD_BUBBLE_OPEN_UPDATED),
-                DownloadCommands::Command::BYPASS_DEEP_SCANNING,
-                kColorDownloadItemTextWarning);
+                DownloadCommands::Command::BYPASS_DEEP_SCANNING);
       } else {
         ui_info.AddPrimaryButton(DownloadCommands::Command::DEEP_SCAN)
             .AddSubpageSummary(l10n_util::GetStringUTF16(
@@ -2192,4 +2168,8 @@ std::u16string DownloadUIModel::GetInProgressAccessibleAlertText() const {
       IDS_DOWNLOAD_STATUS_IN_PROGRESS_ACCESSIBLE_ALERT,
       ui::FormatBytes(GetTotalBytes()),
       GetFileNameToReportUser().LossyDisplayName());
+}
+
+bool DownloadUIModel::IsEncryptedArchive() const {
+  return false;
 }

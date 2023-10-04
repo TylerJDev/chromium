@@ -69,6 +69,9 @@ const char kArcAvailability[] = "arc-availability";
 // Signals the availability of the ARC instance on this device.
 const char kArcAvailable[] = "arc-available";
 
+// Switch that blocks KeyMint. When KeyMint is blocked, Keymaster is enabled.
+const char kArcBlockKeyMint[] = "arc-block-keymint";
+
 // Flag that forces ARC data be cleaned on each start.
 const char kArcDataCleanupOnStart[] = "arc-data-cleanup-on-start";
 
@@ -186,6 +189,11 @@ const char kArcVmUreadaheadMode[] = "arcvm-ureadahead-mode";
 // Madvises the kernel to use Huge Pages for guest memory.
 const char kArcVmUseHugePages[] = "arcvm-use-hugepages";
 
+// Allows bypassing the GlanceablesEnabled pref. This requires that the
+// kGlanceablesV2 feature is enabled as well. Intended to force enable
+// glanceables for testing.
+const char kAshBypassGlanceablesPref[] = "ash-bypass-glanceables-pref";
+
 // Clear the fast ink buffer upon creation. This is needed on some devices that
 // do not zero out new buffers.
 const char kAshClearFastInkBuffer[] = "ash-clear-fast-ink-buffer";
@@ -241,6 +249,10 @@ const char kAshForceEnableStylusTools[] = "force-enable-stylus-tools";
 // Forces the status area to allow collapse/expand regardless of the current
 // state.
 const char kAshForceStatusAreaCollapsible[] = "force-status-area-collapsible";
+
+// Path for which to load growth campaigns file for testing (instead of
+// downloading from Omaha).
+const char kGrowthCampaignsPath[] = "growth-campaigns-path";
 
 // Hides notifications that are irrelevant to Chrome OS device factory testing,
 // such as battery level updates.
@@ -337,6 +349,10 @@ const char kDefaultWallpaperLarge[] = "default-wallpaper-large";
 // file).
 const char kDefaultWallpaperSmall[] = "default-wallpaper-small";
 
+// Interval in seconds to wait for a display to reconnect while unlocking or
+// logging in with a closed lid.
+const char kDeferExternalDisplayTimeout[] = "defer-external-display-timeout";
+
 // Test Organization Unit (OU) user to use for demo mode. Only pass the part
 // before "@cros-demo-mode.com".
 const char kDemoModeEnrollingUsername[] = "demo-mode-enrolling-username";
@@ -388,6 +404,9 @@ const char kDisableGaiaServices[] = "disable-gaia-services";
 // Disables HID-detection OOBE screen.
 const char kDisableHIDDetectionOnOOBEForTesting[] =
     "disable-hid-detection-on-oobe";
+
+// Skip multidevice setup screen during tast tests.
+const char kSkipMultideviceScreenForTesting[] = "skip-multidevice-screen";
 
 // Disables the Lacros keep alive for testing.
 const char kDisableLacrosKeepAliveForTesting[] = "disable-lacros-keep-alive";
@@ -801,6 +820,11 @@ const char kLoginUser[] = "login-user";
 // there are more than two signed in users i.e. inside multi-user session.
 const char kDisallowLacros[] = "disallow-lacros";
 
+// This flag disables "disallow-lacros" above, if both are set together.
+// I.e., if user flips feature flag, or policy is set, lacros can be
+// used, event if --disallow-lacros is set.
+const char kDisableDisallowLacros[] = "disable-disallow-lacros";
+
 // Specifies the user that the browser data migration should happen for.
 const char kBrowserDataMigrationForUser[] = "browser-data-migration-for-user";
 
@@ -876,6 +900,9 @@ const char kOobeTimezoneOverrideForTests[] = "oobe-timezone-override-for-tests";
 // Trigger sync engine initialization timeout in OOBE for testing.
 const char kOobeTriggerSyncTimeoutForTests[] =
     "oobe-trigger-sync-timeout-for-tests";
+
+// Supply secret key for Orca feature
+const char kOrcaKey[] = "orca-key";
 
 // Controls how often the HiddenNetworkHandler class checks for wrongly hidden
 // networks. The interval should be provided in seconds, should follow the
@@ -990,6 +1017,12 @@ const char kSuppressMessageCenterPopups[] = "suppress-message-center-popups";
 
 // Specifies directory for the Telemetry System Web Extension.
 const char kTelemetryExtensionDirectory[] = "telemetry-extension-dir";
+
+// TODO(b/299642185): Remove this flag by the end of 2023.
+// ChromeOS does not support empty passwords for users, but some legacy test
+// setups might use empty password for users.
+const char kTemporaryAllowEmptyPasswordsInTests[] =
+    "allow-empty-passwords-in-tests";
 
 // Enables testing for encryption migration UI.
 const char kTestEncryptionMigrationUI[] = "test-encryption-migration-ui";
@@ -1106,6 +1139,11 @@ bool IsTabletFormFactor() {
       kEnableTabletFormFactor);
 }
 
+bool ShouldMultideviceScreenBeSkippedForTesting() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      kSkipMultideviceScreenForTesting);
+}
+
 bool IsGaiaServicesDisabled() {
   return base::CommandLine::ForCurrentProcess()->HasSwitch(
       kDisableGaiaServices);
@@ -1138,6 +1176,11 @@ bool ShouldScaleOobe() {
 bool IsAueReachedForUpdateRequiredForTest() {
   return base::CommandLine::ForCurrentProcess()->HasSwitch(
       kUpdateRequiredAueForTest);
+}
+
+bool AreEmptyPasswordsAllowedForForTesting() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      kTemporaryAllowEmptyPasswordsInTests);
 }
 
 bool IsOOBEChromeVoxHintTimerDisabledForTesting() {

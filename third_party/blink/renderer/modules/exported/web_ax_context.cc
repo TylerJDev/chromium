@@ -50,11 +50,11 @@ int WebAXContext::GenerateAXID() const {
   return private_->GetAXObjectCache().GenerateAXID();
 }
 
-void WebAXContext::SerializeLocationChanges() const {
+void WebAXContext::SerializeLocationChanges(uint32_t reset_token) const {
   if (!HasActiveDocument()) {
     return;
   }
-  private_->GetAXObjectCache().SerializeLocationChanges();
+  private_->GetAXObjectCache().SerializeLocationChanges(reset_token);
 }
 
 WebAXObject WebAXContext::GetPluginRoot() {
@@ -92,13 +92,6 @@ bool WebAXContext::SerializeEntireTree(size_t max_node_count,
 
   return private_->GetAXObjectCache().SerializeEntireTree(max_node_count,
                                                           timeout, response);
-}
-
-void WebAXContext::MarkAllImageAXObjectsDirty() {
-  if (!HasActiveDocument()) {
-    return;
-  }
-  private_->GetAXObjectCache().MarkAllImageAXObjectsDirty();
 }
 
 void WebAXContext::SerializeDirtyObjectsAndEvents(

@@ -25,12 +25,12 @@
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #include "components/autofill/core/browser/webdata/contact_info_model_type_controller.h"
 #include "components/autofill/core/browser/webdata/contact_info_sync_bridge.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/browser_sync/active_devices_provider_impl.h"
 #include "components/browser_sync/browser_sync_client.h"
 #include "components/history/core/browser/sync/history_delete_directives_model_type_controller.h"
 #include "components/history/core/browser/sync/history_model_type_controller.h"
 #include "components/password_manager/core/browser/password_store_interface.h"
+#include "components/password_manager/core/browser/sharing/incoming_password_sharing_invitation_model_type_controller.h"
 #include "components/password_manager/core/browser/sharing/password_receiver_service.h"
 #include "components/password_manager/core/browser/sharing/password_sender_service.h"
 #include "components/password_manager/core/browser/sync/credential_model_type_controller.h"
@@ -53,7 +53,6 @@
 #include "components/sync/service/glue/sync_engine_impl.h"
 #include "components/sync/service/glue/sync_transport_data_prefs.h"
 #include "components/sync/service/model_type_controller.h"
-#include "components/sync/service/sync_prefs.h"
 #include "components/sync/service/syncable_service_based_model_type_controller.h"
 #include "components/sync_bookmarks/bookmark_model_type_controller.h"
 #include "components/sync_bookmarks/bookmark_sync_service.h"
@@ -65,13 +64,9 @@
 #include "components/sync_user_events/user_event_model_type_controller.h"
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
+#include "components/supervised_user/core/browser/supervised_user_settings_model_type_controller.h"
 #include "components/supervised_user/core/browser/supervised_user_settings_service.h"
-#include "components/supervised_user/core/browser/supervised_user_sync_model_type_controller.h"
 #endif  // BUILDFLAG(ENABLE_SUPERVISED_USER)
-
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-#include "ash/constants/ash_features.h"
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 using syncer::DataTypeController;
 using syncer::DataTypeManager;
@@ -356,18 +351,9 @@ SyncApiComponentFactoryImpl::CreateCommonDataTypeControllers(
     }
   }
 
-  if (!disabled_types.Has(syncer::TYPED_URLS)) {
-    // HistoryModelTypeController uses a proxy delegate internally, as
-    // provided by HistoryService.
+  if (!disabled_types.Has(syncer::HISTORY)) {
     controllers.push_back(std::make_unique<history::HistoryModelTypeController>(
-        syncer::TYPED_URLS, sync_service, sync_client_->GetIdentityManager(),
-        sync_client_->GetHistoryService(), sync_client_->GetPrefService()));
-  }
-
-  if (!disabled_types.Has(syncer::HISTORY) &&
-      base::FeatureList::IsEnabled(syncer::kSyncEnableHistoryDataType)) {
-    controllers.push_back(std::make_unique<history::HistoryModelTypeController>(
-        syncer::HISTORY, sync_service, sync_client_->GetIdentityManager(),
+        sync_service, sync_client_->GetIdentityManager(),
         sync_client_->GetHistoryService(), sync_client_->GetPrefService()));
   }
 
@@ -420,16 +406,11 @@ SyncApiComponentFactoryImpl::CreateCommonDataTypeControllers(
       // Couple password sharing invitations with password data type.
       if (!disabled_types.Has(syncer::INCOMING_PASSWORD_SHARING_INVITATION) &&
           sync_client_->GetPasswordReceiverService()) {
-        syncer::ModelTypeControllerDelegate* delegate =
-            sync_client_->GetPasswordReceiverService()
-                ->GetControllerDelegate()
-                .get();
-        controllers.push_back(std::make_unique<syncer::ModelTypeController>(
-            syncer::INCOMING_PASSWORD_SHARING_INVITATION,
-            std::make_unique<syncer::ForwardingModelTypeControllerDelegate>(
-                delegate),
-            std::make_unique<syncer::ForwardingModelTypeControllerDelegate>(
-                delegate)));
+        controllers.push_back(
+            std::make_unique<
+                password_manager::
+                    IncomingPasswordSharingInvitationModelTypeController>(
+                sync_service, sync_client_->GetPasswordReceiverService()));
       }
 
       if (!disabled_types.Has(syncer::OUTGOING_PASSWORD_SHARING_INVITATION) &&
@@ -566,8 +547,8 @@ SyncApiComponentFactoryImpl::CreateCommonDataTypeControllers(
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
   if (supervised_user_settings_service_) {
     controllers.push_back(
-        std::make_unique<SupervisedUserSyncModelTypeController>(
-            syncer::SUPERVISED_USER_SETTINGS, dump_stack,
+        std::make_unique<SupervisedUserSettingsModelTypeController>(
+            dump_stack,
             sync_client_->GetModelTypeStoreService()->GetStoreFactory(),
             supervised_user_settings_service_->AsWeakPtr(),
             sync_client_->GetPrefService()));
@@ -602,6 +583,14 @@ SyncApiComponentFactoryImpl::CreateSyncEngine(
       engines_and_directory_deletion_thread_,
       base::BindRepeating(&syncer::SyncClient::OnLocalSyncTransportDataCleared,
                           base::Unretained(sync_client_)));
+}
+
+bool SyncApiComponentFactoryImpl::HasTransportDataIncludingFirstSync() {
+  syncer::SyncTransportDataPrefs sync_transport_data_prefs(
+      sync_client_->GetPrefService());
+  // NOTE: Keep this logic consistent with how SyncEngineImpl reports
+  // is-first-sync.
+  return !sync_transport_data_prefs.GetLastSyncedTime().is_null();
 }
 
 void SyncApiComponentFactoryImpl::ClearAllTransportData() {

@@ -13,6 +13,7 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/run_loop.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
@@ -215,6 +216,10 @@ TEST_F(GlanceablesTasksClientImplTest, GetTaskLists) {
   histogram_tester()->ExpectUniqueSample(
       "Ash.Glanceables.Api.Tasks.GetTaskLists.PagesCount",
       /*sample=*/1,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.TaskListsCount",
+      /*sample=*/2,
       /*expected_bucket_count=*/1);
 }
 
@@ -464,6 +469,10 @@ TEST_F(GlanceablesTasksClientImplTest, GetTaskListsFetchesAllPages) {
       "Ash.Glanceables.Api.Tasks.GetTaskLists.PagesCount",
       /*sample=*/3,
       /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.TaskListsCount",
+      /*sample=*/3,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesTasksClientImplTest,
@@ -599,6 +608,14 @@ TEST_F(GlanceablesTasksClientImplTest, GetTasks) {
   histogram_tester()->ExpectUniqueSample(
       "Ash.Glanceables.Api.Tasks.GetTasks.PagesCount",
       /*sample=*/1,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.RawTasksCount",
+      /*sample=*/3,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.ProcessedTasksCount",
+      /*sample=*/2,
       /*expected_bucket_count=*/1);
 }
 
@@ -936,6 +953,14 @@ TEST_F(GlanceablesTasksClientImplTest, GetTasksFetchesAllPages) {
       "Ash.Glanceables.Api.Tasks.GetTasks.PagesCount",
       /*sample=*/3,
       /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.RawTasksCount",
+      /*sample=*/3,
+      /*expected_bucket_count=*/1);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.ProcessedTasksCount",
+      /*sample=*/2,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_F(GlanceablesTasksClientImplTest,
@@ -1083,8 +1108,10 @@ TEST_F(GlanceablesTasksClientImplTest, MarkAsCompleted) {
   EXPECT_CALL(
       request_handler(),
       HandleRequest(Field(&HttpRequest::method, Eq(HttpMethod::METHOD_PATCH))))
-      .WillOnce(
-          Return(ByMove(TestRequestHandler::CreateSuccessfulResponse(""))));
+      .Times(2)
+      .WillRepeatedly(Invoke([](const HttpRequest&) {
+        return TestRequestHandler::CreateSuccessfulResponse("");
+      }));
 
   TestFuture<ui::ListModel<GlanceablesTask>*> get_tasks_future;
   client()->GetTasks("test-task-list-id", get_tasks_future.GetCallback());
@@ -1093,23 +1120,23 @@ TEST_F(GlanceablesTasksClientImplTest, MarkAsCompleted) {
   auto* const tasks = get_tasks_future.Get();
   EXPECT_EQ(tasks->item_count(), 2u);
 
-  testing::StrictMock<TestListModelObserver> observer;
-  tasks->AddObserver(&observer);
-
-  EXPECT_CALL(observer, ListItemsRemoved(/*start=*/1, /*count=*/1));
   TestFuture<bool> mark_as_completed_future;
-  client()->MarkAsCompleted("test-task-list-id", "task-2",
-                            mark_as_completed_future.GetCallback());
-  ASSERT_TRUE(mark_as_completed_future.Wait());
+  client()->MarkAsCompleted("test-task-list-id", "task-1", true);
+  client()->MarkAsCompleted("test-task-list-id", "task-2", true);
 
-  EXPECT_TRUE(mark_as_completed_future.Get());
-  EXPECT_EQ(tasks->item_count(), 1u);
-  EXPECT_EQ(tasks->GetItemAt(0)->id, "task-1");
+  TestFuture<void> glanceables_bubble_closed_future;
+  client()->OnGlanceablesBubbleClosed(
+      glanceables_bubble_closed_future.GetCallback());
+  ASSERT_TRUE(glanceables_bubble_closed_future.Wait());
 
   histogram_tester()->ExpectTotalCount(
-      "Ash.Glanceables.Api.Tasks.PatchTask.Latency", /*expected_count=*/1);
+      "Ash.Glanceables.Api.Tasks.PatchTask.Latency", /*expected_count=*/2);
   histogram_tester()->ExpectUniqueSample(
       "Ash.Glanceables.Api.Tasks.PatchTask.Status", ApiErrorCode::HTTP_SUCCESS,
+      /*expected_bucket_count=*/2);
+  histogram_tester()->ExpectUniqueSample(
+      "Ash.Glanceables.Api.Tasks.SimultaneousMarkAsCompletedRequestsCount",
+      /*sample=*/2,
       /*expected_bucket_count=*/1);
 }
 
@@ -1144,19 +1171,112 @@ TEST_F(GlanceablesTasksClientImplTest, MarkAsCompletedOnHttpError) {
   const auto* const tasks = get_tasks_future.Get();
   EXPECT_EQ(tasks->item_count(), 2u);
 
-  TestFuture<bool> mark_as_completed_future;
-  client()->MarkAsCompleted("test-task-list-id", "task-2",
-                            mark_as_completed_future.GetCallback());
-  ASSERT_TRUE(mark_as_completed_future.Wait());
-
-  EXPECT_FALSE(mark_as_completed_future.Get());
+  client()->MarkAsCompleted("test-task-list-id", "task-2", true);
   EXPECT_EQ(tasks->item_count(), 2u);
+
+  TestFuture<void> glanceables_bubble_closed_future;
+  client()->OnGlanceablesBubbleClosed(
+      glanceables_bubble_closed_future.GetCallback());
+  ASSERT_TRUE(glanceables_bubble_closed_future.Wait());
 
   histogram_tester()->ExpectTotalCount(
       "Ash.Glanceables.Api.Tasks.PatchTask.Latency", /*expected_count=*/1);
   histogram_tester()->ExpectUniqueSample(
       "Ash.Glanceables.Api.Tasks.PatchTask.Status",
       ApiErrorCode::HTTP_INTERNAL_SERVER_ERROR, /*expected_bucket_count=*/1);
+}
+
+// ----------------------------------------------------------------------------
+// Add a new task:
+
+TEST_F(GlanceablesTasksClientImplTest, AddsNewTask) {
+  EXPECT_CALL(
+      request_handler(),
+      HandleRequest(Field(&HttpRequest::method, Eq(HttpMethod::METHOD_GET))))
+      .WillOnce(Return(ByMove(TestRequestHandler::CreateSuccessfulResponse(R"(
+          {
+            "kind": "tasks#tasks",
+            "items": [
+              {
+                "id": "task-id",
+                "title": "Task 1",
+                "status": "needsAction"
+              }
+            ]
+          }
+        )"))));
+  EXPECT_CALL(
+      request_handler(),
+      HandleRequest(Field(&HttpRequest::method, Eq(HttpMethod::METHOD_POST))))
+      .WillOnce(Return(ByMove(TestRequestHandler::CreateSuccessfulResponse(R"(
+          {
+            "kind": "tasks#task",
+            "id": "new-task-id",
+            "title": "New task"
+          }
+        )"))));
+
+  TestFuture<ui::ListModel<GlanceablesTask>*> get_tasks_future;
+  client()->GetTasks("test-task-list-id", get_tasks_future.GetCallback());
+  ASSERT_TRUE(get_tasks_future.Wait());
+
+  auto* const tasks = get_tasks_future.Get();
+  EXPECT_EQ(tasks->item_count(), 1u);
+  EXPECT_EQ(tasks->GetItemAt(0)->id, "task-id");
+  EXPECT_EQ(tasks->GetItemAt(0)->title, "Task 1");
+
+  testing::StrictMock<TestListModelObserver> observer;
+  tasks->AddObserver(&observer);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(observer, ListItemsAdded(/*start=*/0, /*count=*/1))
+      .WillOnce([&]() {
+        run_loop.Quit();
+
+        EXPECT_EQ(tasks->item_count(), 2u);
+        EXPECT_EQ(tasks->GetItemAt(0)->id, "new-task-id");
+        EXPECT_EQ(tasks->GetItemAt(0)->title, "New task");
+      });
+  client()->AddTask("test-task-list-id", "New task");
+  run_loop.Run();
+}
+
+// ----------------------------------------------------------------------------
+// Update a task:
+
+TEST_F(GlanceablesTasksClientImplTest, UpdatesTask) {
+  EXPECT_CALL(
+      request_handler(),
+      HandleRequest(Field(&HttpRequest::method, Eq(HttpMethod::METHOD_PATCH))))
+      .WillOnce(Return(ByMove(TestRequestHandler::CreateSuccessfulResponse(R"(
+          {
+            "kind": "tasks#tasks",
+            "id": "task-id",
+            "title": "Task 1",
+            "status": "needsAction"
+          }
+        )"))));
+
+  TestFuture<bool> update_task_future;
+  client()->UpdateTask("task-list-id", "task-id", "Updated title",
+                       update_task_future.GetCallback());
+
+  ASSERT_TRUE(update_task_future.Wait());
+  EXPECT_TRUE(update_task_future.Get());
+}
+
+TEST_F(GlanceablesTasksClientImplTest, UpdatesTaskOnHttpError) {
+  EXPECT_CALL(
+      request_handler(),
+      HandleRequest(Field(&HttpRequest::method, Eq(HttpMethod::METHOD_PATCH))))
+      .WillOnce(Return(ByMove(TestRequestHandler::CreateFailedResponse())));
+
+  TestFuture<bool> update_task_future;
+  client()->UpdateTask("task-list-id", "task-id", "Updated title",
+                       update_task_future.GetCallback());
+
+  ASSERT_TRUE(update_task_future.Wait());
+  EXPECT_FALSE(update_task_future.Get());
 }
 
 }  // namespace ash

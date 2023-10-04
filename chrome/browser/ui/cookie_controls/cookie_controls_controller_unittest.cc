@@ -23,6 +23,7 @@
 #include "components/site_engagement/content/site_engagement_service.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/ukm/test_ukm_recorder.h"
+#include "content/public/browser/cookie_access_details.h"
 #include "content/public/test/web_contents_tester.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -31,6 +32,15 @@ namespace {
 
 using StorageType =
     content_settings::mojom::ContentSettingsManager::StorageType;
+
+constexpr char kCookieControlsActivatedSaaHistogram[] =
+    "Privacy.CookieControlsActivated.SaaRequested";
+constexpr char kCookieControlsActivatedRefreshCountHistogram[] =
+    "Privacy.CookieControlsActivated.PageRefreshCount";
+constexpr char kCookieControlsActivatedSiteEngagementHistogram[] =
+    "Privacy.CookieControlsActivated.SiteEngagementScore";
+constexpr char kCookieControlsActivatedSiteDataAccessHistogram[] =
+    "Privacy.CookieControlsActivated.SiteDataAccessType";
 
 class MockOldCookieControlsObserver
     : public content_settings::OldCookieControlsObserver {
@@ -334,6 +344,22 @@ TEST_F(CookieControlsTest, Incognito) {
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
   testing::Mock::VerifyAndClearExpectations(mock());
   testing::Mock::VerifyAndClearExpectations(&incognito_mock_);
+
+  // This should be enforced regardless of the default cookie setting in the
+  // default profile.
+  EXPECT_CALL(*mock(),
+              OnStatusChanged(CookieControlsStatus::kDisabled,
+                              CookieControlsEnforcement::kNoEnforcement, 0, 0));
+  EXPECT_CALL(incognito_mock_,
+              OnStatusChanged(
+                  CookieControlsStatus::kDisabledForSite,
+                  CookieControlsEnforcement::kEnforcedByCookieSetting, 0, 0));
+  profile()->GetPrefs()->SetInteger(
+      prefs::kCookieControlsMode,
+      static_cast<int>(content_settings::CookieControlsMode::kIncognitoOnly));
+  incognito_cookie_controls.Update(incognito_web_contents.get());
+  testing::Mock::VerifyAndClearExpectations(mock());
+  testing::Mock::VerifyAndClearExpectations(&incognito_mock_);
 }
 
 TEST_F(CookieControlsTest, CookieBlockingChanged) {
@@ -537,11 +563,11 @@ TEST_P(CookieControlsUserBypassTest, SiteCounts) {
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kMedium));
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
-  t.ExpectUniqueSample("CookieControlsActivated.SaaRequested", false, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.PageRefreshCount", 0, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.SiteEngagementScore", 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSaaHistogram, false, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedRefreshCountHistogram, 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSiteEngagementHistogram, 0, 1);
   t.ExpectUniqueSample(
-      "CookieControlsActivated.SiteDataAccessType",
+      kCookieControlsActivatedSiteDataAccessHistogram,
       ThirdPartySiteDataAccessType::kAnyBlockedThirdPartySiteAccesses, 1);
 
   // Navigating somewhere else should reset the sites count.
@@ -628,10 +654,10 @@ TEST_P(CookieControlsUserBypassTest, AllCookiesBlocked) {
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kMedium));
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
-  t.ExpectUniqueSample("CookieControlsActivated.SaaRequested", false, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.PageRefreshCount", 0, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.SiteEngagementScore", 0, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.SiteDataAccessType",
+  t.ExpectUniqueSample(kCookieControlsActivatedSaaHistogram, false, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedRefreshCountHistogram, 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSiteEngagementHistogram, 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSiteDataAccessHistogram,
                        ThirdPartySiteDataAccessType::kNoThirdPartySiteAccesses,
                        1);
   testing::Mock::VerifyAndClearExpectations(mock());
@@ -761,6 +787,27 @@ TEST_P(CookieControlsUserBypassTest, Incognito) {
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
   testing::Mock::VerifyAndClearExpectations(mock());
   testing::Mock::VerifyAndClearExpectations(&incognito_mock_);
+
+  // This should be enforced regardless of the default cookie setting in the
+  // default profile.
+  EXPECT_CALL(*mock(),
+              OnStatusChanged(CookieControlsStatus::kDisabled,
+                              CookieControlsEnforcement::kNoEnforcement,
+                              // Although there is an allow exception with an
+                              // expiration, because the default allow never
+                              // expires, zero_expiration is correct.
+                              zero_expiration()));
+  EXPECT_CALL(
+      incognito_mock_,
+      OnStatusChanged(CookieControlsStatus::kDisabledForSite,
+                      CookieControlsEnforcement::kEnforcedByCookieSetting,
+                      expiration()));
+  profile()->GetPrefs()->SetInteger(
+      prefs::kCookieControlsMode,
+      static_cast<int>(content_settings::CookieControlsMode::kIncognitoOnly));
+  incognito_cookie_controls.Update(incognito_web_contents.get());
+  testing::Mock::VerifyAndClearExpectations(mock());
+  testing::Mock::VerifyAndClearExpectations(&incognito_mock_);
 }
 
 TEST_P(CookieControlsUserBypassTest, ThirdPartyCookiesException) {
@@ -830,18 +877,8 @@ TEST_P(CookieControlsUserBypassTest, FrequentPageReloads) {
       /*blocked_by_policy=*/false);
   testing::Mock::VerifyAndClearExpectations(mock());
 
-  // ...and again.
-  EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0));
-  EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
-                           CookieControlsBreakageConfidenceLevel::kMedium));
-  NavigateAndCommit(GURL("https://example.com"));
-  page_specific_content_settings()->OnStorageAccessed(
-      StorageType::DATABASE,
-      CreateUnpartitionedStorageKey(GURL("https://thirdparty.com")),
-      /*blocked_by_policy=*/false);
-  testing::Mock::VerifyAndClearExpectations(mock());
-
-  // After the third reload and accessing storage, the confidence level is high.
+  // After the second reload and accessing storage, the confidence level is
+  // high.
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kLow));
   EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0));
@@ -857,9 +894,9 @@ TEST_P(CookieControlsUserBypassTest, FrequentPageReloads) {
 
   // After the entry point was animated (due to high confidence signal), a
   // setting is recorded.
-  base::Value stored_value = hcsm->GetWebsiteSetting(
-      GURL("https://example.com"), GURL(),
-      ContentSettingsType::COOKIE_CONTROLS_METADATA, nullptr);
+  base::Value stored_value =
+      hcsm->GetWebsiteSetting(GURL("https://example.com"), GURL(),
+                              ContentSettingsType::COOKIE_CONTROLS_METADATA);
   EXPECT_TRUE(stored_value.is_dict());
   EXPECT_TRUE(stored_value.GetDict().FindBool("entry_point_animated").value());
 
@@ -876,7 +913,7 @@ TEST_P(CookieControlsUserBypassTest, FrequentPageReloads) {
   testing::Mock::VerifyAndClearExpectations(mock());
 }
 
-TEST_P(CookieControlsUserBypassTest, FrequestPageReloadsMetrics) {
+TEST_P(CookieControlsUserBypassTest, FrequentPageReloadsMetrics) {
   base::HistogramTester t;
   cookie_controls()->Update(web_contents());
 
@@ -912,18 +949,8 @@ TEST_P(CookieControlsUserBypassTest, FrequestPageReloadsMetrics) {
       /*blocked_by_policy=*/false);
   testing::Mock::VerifyAndClearExpectations(mock());
 
-  // ...and again.
-  EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0));
-  EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
-                           CookieControlsBreakageConfidenceLevel::kMedium));
-  NavigateAndCommit(GURL("https://example.com"));
-  page_specific_content_settings()->OnStorageAccessed(
-      StorageType::DATABASE,
-      CreateUnpartitionedStorageKey(GURL("https://thirdparty.com")),
-      /*blocked_by_policy=*/false);
-  testing::Mock::VerifyAndClearExpectations(mock());
-
-  // After the third reload and accessing storage, the confidence level is high.
+  // After the second reload and accessing storage, the confidence level is
+  // high.
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kLow));
   EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0));
@@ -945,16 +972,16 @@ TEST_P(CookieControlsUserBypassTest, FrequestPageReloadsMetrics) {
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kMedium));
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
-  t.ExpectUniqueSample("CookieControlsActivated.SaaRequested", false, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.PageRefreshCount", 3, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.SiteEngagementScore", 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSaaHistogram, false, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedRefreshCountHistogram, 2, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSiteEngagementHistogram, 0, 1);
   t.ExpectUniqueSample(
-      "CookieControlsActivated.SiteDataAccessType",
+      kCookieControlsActivatedSiteDataAccessHistogram,
       ThirdPartySiteDataAccessType::kAnyAllowedThirdPartySiteAccesses, 1);
   ValidateCookieControlsActivatedUKM(
       /*fed_cm_initiated=*/false,
       /*storage_access_api_requested=*/false,
-      /*page_refresh_count=*/3,  // Count was reset to 0 after timeout.
+      /*page_refresh_count=*/2,  // Count was reset to 0 after timeout.
       /*repeated_activation=*/false, blink::mojom::EngagementLevel::NONE,
       ThirdPartySiteDataAccessType::kAnyAllowedThirdPartySiteAccesses);
   testing::Mock::VerifyAndClearExpectations(mock());
@@ -994,21 +1021,10 @@ TEST_P(CookieControlsUserBypassTest, InfrequentPageReloads) {
       /*blocked_by_policy=*/false);
   testing::Mock::VerifyAndClearExpectations(mock());
 
-  // ...and again.
-  EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0));
-  EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
-                           CookieControlsBreakageConfidenceLevel::kMedium));
-  NavigateAndCommit(GURL("https://example.com"));
-  page_specific_content_settings()->OnStorageAccessed(
-      StorageType::DATABASE,
-      CreateUnpartitionedStorageKey(GURL("https://thirdparty.com")),
-      /*blocked_by_policy=*/false);
-  testing::Mock::VerifyAndClearExpectations(mock());
-
   // Wait for 30 seconds.
   FastForwardBy(base::Seconds(30));
 
-  // The third reload happens with a delay and doesn't trigger the confidence
+  // The second reload happens with a delay and doesn't trigger the confidence
   // level change.
   EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0));
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
@@ -1029,11 +1045,11 @@ TEST_P(CookieControlsUserBypassTest, InfrequentPageReloads) {
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kMedium));
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
-  t.ExpectUniqueSample("CookieControlsActivated.SaaRequested", false, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.PageRefreshCount", 1, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.SiteEngagementScore", 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSaaHistogram, false, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedRefreshCountHistogram, 1, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSiteEngagementHistogram, 0, 1);
   t.ExpectUniqueSample(
-      "CookieControlsActivated.SiteDataAccessType",
+      kCookieControlsActivatedSiteDataAccessHistogram,
       ThirdPartySiteDataAccessType::kAnyAllowedThirdPartySiteAccesses, 1);
   ValidateCookieControlsActivatedUKM(
       /*fed_cm_initiated=*/false,
@@ -1081,9 +1097,9 @@ TEST_P(CookieControlsUserBypassTest, HighSiteEngagement) {
 
   // After the entry point was animated (due to high confidence signal), a
   // setting is recorded.
-  base::Value stored_value = hcsm->GetWebsiteSetting(
-      GURL("https://highengagement.com"), GURL(),
-      ContentSettingsType::COOKIE_CONTROLS_METADATA, nullptr);
+  base::Value stored_value =
+      hcsm->GetWebsiteSetting(GURL("https://highengagement.com"), GURL(),
+                              ContentSettingsType::COOKIE_CONTROLS_METADATA);
   EXPECT_TRUE(stored_value.is_dict());
   EXPECT_TRUE(stored_value.GetDict().FindBool("entry_point_animated").value());
 
@@ -1170,12 +1186,12 @@ TEST_P(CookieControlsUserBypassTest, StorageAccessApiHighSiteEngagement) {
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kMedium));
   cookie_controls()->OnCookieBlockingEnabledForSite(false);
-  t.ExpectUniqueSample("CookieControlsActivated.SaaRequested", true, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.PageRefreshCount", 0, 1);
-  t.ExpectUniqueSample("CookieControlsActivated.SiteEngagementScore",
+  t.ExpectUniqueSample(kCookieControlsActivatedSaaHistogram, true, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedRefreshCountHistogram, 0, 1);
+  t.ExpectUniqueSample(kCookieControlsActivatedSiteEngagementHistogram,
                        kHighEngagement, 1);
   t.ExpectUniqueSample(
-      "CookieControlsActivated.SiteDataAccessType",
+      kCookieControlsActivatedSiteDataAccessHistogram,
       ThirdPartySiteDataAccessType::kAnyAllowedThirdPartySiteAccesses, 1);
   ValidateCookieControlsActivatedUKM(
       /*fed_cm_initiated=*/false,
@@ -1416,7 +1432,9 @@ TEST_P(CookieControlsUserBypassTest, HighConfidenceAfterExpiration) {
   cookie_controls()->Update(web_contents());
   testing::Mock::VerifyAndClearExpectations(mock());
 
-  // Revisiting the site again doesn't report high confidence signal.
+  // Revisiting the site again after 30 seconds doesn't report high confidence
+  // signal.
+  FastForwardBy(base::Seconds(30));
   NavigateAndCommit(GURL("https://example.com"));
   page_specific_content_settings()->OnStorageAccessed(
       StorageType::DATABASE,
@@ -1449,6 +1467,76 @@ TEST_P(CookieControlsUserBypassTest, MediumConfidenceStatefulBounce) {
   EXPECT_CALL(*mock(), OnBreakageConfidenceLevelChanged(
                            CookieControlsBreakageConfidenceLevel::kMedium));
   cookie_controls()->Update(web_contents());
+}
+
+TEST_P(CookieControlsUserBypassTest, CachedCookieAccessReports) {
+  if (!GetParam()) {
+    return;
+  }
+
+  NavigateAndCommit(GURL("https://example.com"));
+  cookie_controls()->Update(web_contents());
+
+  GURL origin1("http://google.com");
+  std::unique_ptr<net::CanonicalCookie> cookie1(net::CanonicalCookie::Create(
+      origin1, "A=B", base::Time::Now(), absl::nullopt /* server_time */,
+      absl::nullopt /* cookie_partition_key */));
+  ASSERT_TRUE(cookie1);
+
+  // Regardless of how many times a cookie access is reported, it should only
+  // fire one update.
+  EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0)).Times(1);
+
+  for (int i = 0; i < 3; i++) {
+    page_specific_content_settings()->OnCookiesAccessed(
+        {content::CookieAccessDetails::Type::kChange,
+         origin1,
+         origin1,
+         {*cookie1},
+         false});
+  }
+
+  // Accessing a cookie for a different origin should however trigger an update.
+  GURL origin2("http://another-google.com");
+  std::unique_ptr<net::CanonicalCookie> cookie2(net::CanonicalCookie::Create(
+      origin2, "A=B", base::Time::Now(), absl::nullopt /* server_time */,
+      absl::nullopt /* cookie_partition_key */));
+  ASSERT_TRUE(cookie2);
+
+  testing::Mock::VerifyAndClearExpectations(mock());
+  EXPECT_CALL(*mock(), OnSitesCountChanged(2, 0)).Times(1);
+  page_specific_content_settings()->OnCookiesAccessed(
+      {content::CookieAccessDetails::Type::kChange,
+       origin2,
+       origin2,
+       {*cookie2},
+       false});
+
+  // Accessing non cookie storage twice should result in the same site access
+  // count being fired twice (no caching).
+  testing::Mock::VerifyAndClearExpectations(mock());
+  EXPECT_CALL(*mock(), OnSitesCountChanged(3, 0)).Times(2);
+  page_specific_content_settings()->OnStorageAccessed(
+      StorageType::DATABASE,
+      CreateUnpartitionedStorageKey(GURL("https://another-example.com")),
+      /*blocked_by_policy=*/false);
+  page_specific_content_settings()->OnStorageAccessed(
+      StorageType::DATABASE,
+      CreateUnpartitionedStorageKey(GURL("https://another-example.com")),
+      /*blocked_by_policy=*/false);
+
+  // Re-navigating to the page should result in the cache being cleared, and
+  // cookie access being re-reported.
+  testing::Mock::VerifyAndClearExpectations(mock());
+  EXPECT_CALL(*mock(), OnSitesCountChanged(1, 0)).Times(1);
+
+  NavigateAndCommit(GURL("https://example.com"));
+  page_specific_content_settings()->OnCookiesAccessed(
+      {content::CookieAccessDetails::Type::kChange,
+       origin1,
+       origin1,
+       {*cookie1},
+       false});
 }
 
 INSTANTIATE_TEST_SUITE_P(All, CookieControlsUserBypassTest, testing::Bool());

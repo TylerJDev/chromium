@@ -13,25 +13,20 @@
 #include "components/autofill/core/common/aliases.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 
-namespace password_manager {
-class PasswordManagerDriver;
-}
-
 namespace autofill {
-
-class AutofillDriver;
 
 // An interface for interaction with AutofillPopupController. Will be notified
 // of events by the controller.
 class AutofillPopupDelegate {
  public:
-  // Called when the Autofill popup is shown.
+  // Called when the Autofill popup is shown. If the popup supports sub-popups
+  // only the root one triggers it.
   virtual void OnPopupShown() = 0;
 
-  // Called when the Autofill popup is hidden.
+  // Called when the Autofill popup is hidden. This may also get called if the
+  // popup was never shown at all, e.g. because of insufficient space.
+  // If the popup supports sub-popups only the root one triggers it.
   virtual void OnPopupHidden() = 0;
-
-  virtual void OnPopupSuppressed() = 0;
 
   // Called when the autofill `suggestion` has been temporarily selected (e.g.,
   // hovered).
@@ -66,11 +61,6 @@ class AutofillPopupDelegate {
 
   // Returns the type of the popup being shown.
   virtual PopupType GetPopupType() const = 0;
-
-  // Returns the associated AutofillDriver.
-  virtual absl::variant<AutofillDriver*,
-                        password_manager::PasswordManagerDriver*>
-  GetDriver() = 0;
 
   // Returns the ax node id associated with the current web contents' element
   // who has a controller relation to the current autofill popup.

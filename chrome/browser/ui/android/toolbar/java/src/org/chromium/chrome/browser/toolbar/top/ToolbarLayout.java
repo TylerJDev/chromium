@@ -41,7 +41,6 @@ import org.chromium.chrome.browser.omnibox.LocationBarCoordinator;
 import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.OmniboxFocusReason;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
-import org.chromium.chrome.browser.omnibox.suggestions.OmniboxSuggestionsDropdownScrollListener;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
@@ -75,8 +74,7 @@ import java.util.function.BooleanSupplier;
  * through {@link Toolbar} rather than using this class directly.
  */
 public abstract class ToolbarLayout
-        extends FrameLayout implements Destroyable, TintObserver, ThemeColorObserver,
-                                       OmniboxSuggestionsDropdownScrollListener {
+        extends FrameLayout implements Destroyable, TintObserver, ThemeColorObserver {
     private Callback<Runnable> mInvalidator;
     private @Nullable ToolbarColorObserver mToolbarColorObserver;
 
@@ -650,9 +648,10 @@ public abstract class ToolbarLayout
      * @param isShowingStartSurfaceHomepage Whether start surface homepage is showing.
      * @param isShowingStartSurfaceTabSwitcher Whether the StartSurface-controlled TabSwitcher is
      *         showing.
+     * @param isRealSearchBoxFocused Whether the real search box is focused.
      */
     void onStartSurfaceStateChanged(boolean shouldBeVisible, boolean isShowingStartSurfaceHomepage,
-            boolean isShowingStartSurfaceTabSwitcher) {}
+            boolean isShowingStartSurfaceTabSwitcher, boolean isRealSearchBoxFocused) {}
 
     /**
      * Force to hide toolbar shadow.

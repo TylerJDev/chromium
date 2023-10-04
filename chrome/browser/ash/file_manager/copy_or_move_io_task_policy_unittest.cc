@@ -8,14 +8,17 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/rand_util.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/test/mock_callback.h"
 #include "chrome/browser/ash/file_manager/io_task.h"
 #include "chrome/browser/ash/file_manager/volume_manager.h"
 #include "chrome/browser/ash/file_manager/volume_manager_factory.h"
 #include "chrome/browser/ash/login/users/fake_chrome_user_manager.h"
+#include "chrome/browser/ash/policy/dlp/dialogs/files_policy_dialog.h"
 #include "chrome/browser/ash/policy/dlp/files_policy_notification_manager.h"
 #include "chrome/browser/ash/policy/dlp/files_policy_notification_manager_factory.h"
+#include "chrome/browser/ash/policy/dlp/files_policy_warn_settings.h"
 #include "chrome/browser/ash/policy/dlp/test/mock_dlp_files_controller_ash.h"
 #include "chrome/browser/ash/policy/dlp/test/mock_files_policy_notification_manager.h"
 #include "chrome/browser/chromeos/policy/dlp/dialogs/policy_dialog_base.h"
@@ -24,6 +27,7 @@
 #include "chrome/browser/chromeos/policy/dlp/test/mock_dlp_rules_manager.h"
 #include "chrome/browser/enterprise/connectors/analysis/mock_file_transfer_analysis_delegate.h"
 #include "chrome/browser/enterprise/connectors/analysis/source_destination_test_util.h"
+#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/enterprise/connectors/connectors_service.h"
 #include "chrome/browser/enterprise/connectors/test/deep_scanning_test_utils.h"
 #include "chrome/browser/policy/dm_token_utils.h"
@@ -133,21 +137,29 @@ std::unique_ptr<KeyedService> BuildVolumeManager(
 }  // namespace
 
 class CopyOrMoveIOTaskWithScansTest
-    : public testing::TestWithParam<
-          std::tuple<OperationType, /*use_new_ui*/ bool>> {
+    : public testing::TestWithParam<std::tuple<OperationType,
+                                               /*new_policy_ux*/ bool,
+                                               /*new_file_transfer_ux*/ bool>> {
  public:
   static std::string ParamToString(
       const ::testing::TestParamInfo<ParamType>& info) {
-    auto [operation_type, use_new_ui] = info.param;
+    auto [operation_type, new_policy_ux, new_file_transfer_ux] = info.param;
     std::string name;
     name += operation_type == OperationType::kCopy ? "Copy" : "Move";
-    name += use_new_ui ? "NewUI" : "";
+    if (new_policy_ux) {
+      name += "PolicyUX";
+    }
+    if (new_file_transfer_ux) {
+      name += "ConnectorsUX";
+    }
     return name;
   }
 
  protected:
   OperationType GetOperationType() { return std::get<0>(GetParam()); }
-  bool UseNewUI() { return std::get<1>(GetParam()); }
+
+  bool UseNewPolicyUI() { return std::get<1>(GetParam()); }
+  bool UseNewConnectorsUI() { return std::get<2>(GetParam()); }
 
   void SetUp() override {
     profile_manager_ = std::make_unique<TestingProfileManager>(
@@ -155,16 +167,23 @@ class CopyOrMoveIOTaskWithScansTest
     ASSERT_TRUE(profile_manager_->SetUp());
     profile_ = profile_manager_->CreateTestingProfile("test-profile");
 
-    if (UseNewUI()) {
-      scoped_feature_list_.InitWithFeatures(
-          {features::kFileTransferEnterpriseConnector,
-           features::kFileTransferEnterpriseConnectorUI},
-          {});
+    std::vector<base::test::FeatureRef> enabled_features{
+        features::kFileTransferEnterpriseConnector};
+    std::vector<base::test::FeatureRef> disabled_features;
+
+    if (UseNewPolicyUI()) {
+      enabled_features.push_back(features::kNewFilesPolicyUX);
     } else {
-      scoped_feature_list_.InitWithFeatures(
-          {features::kFileTransferEnterpriseConnector},
-          {features::kFileTransferEnterpriseConnectorUI});
+      disabled_features.push_back(features::kNewFilesPolicyUX);
     }
+
+    if (UseNewConnectorsUI()) {
+      enabled_features.push_back(features::kFileTransferEnterpriseConnectorUI);
+    } else {
+      disabled_features.push_back(features::kFileTransferEnterpriseConnectorUI);
+    }
+
+    scoped_feature_list_.InitWithFeatures(enabled_features, disabled_features);
 
     // Set a device management token. It is required to enable scanning.
     // Without it, FileTransferAnalysisDelegate::IsEnabled() always
@@ -210,7 +229,7 @@ class CopyOrMoveIOTaskWithScansTest
             base::BindRepeating(&CopyOrMoveIOTaskWithScansTest::SetupMock,
                                 base::Unretained(this))));
 
-    if (UseNewUI()) {
+    if (UseNewConnectorsUI() || UseNewPolicyUI()) {
       // Set FilesPolicyNotificationManager.
       policy::FilesPolicyNotificationManagerFactory::GetInstance()
           ->SetTestingFactory(
@@ -253,7 +272,7 @@ class CopyOrMoveIOTaskWithScansTest
           .WillOnce(
               [](base::OnceClosure callback) { std::move(callback).Run(); });
 
-      if (UseNewUI()) {
+      if (UseNewConnectorsUI()) {
         if (warned_files_.count(source_url) != 0) {
           EXPECT_CALL(*delegate, GetWarnedFiles())
               .WillOnce(
@@ -279,7 +298,7 @@ class CopyOrMoveIOTaskWithScansTest
               [](base::OnceClosure callback) { std::move(callback).Run(); });
 
       // Setup warned files call if the new UI is used.
-      if (UseNewUI()) {
+      if (UseNewConnectorsUI()) {
         std::vector<storage::FileSystemURL> warned_files;
         for (auto&& warned_file : warned_files_) {
           // Note: We're using IsParent here, so this doesn't support recursive
@@ -508,7 +527,8 @@ class CopyOrMoveIOTaskWithScansTest
       const std::vector<absl::optional<base::File::Error>>& expected_errors,
       base::RepeatingClosure quit_closure,
       absl::optional<size_t> maybe_total_num_files = absl::nullopt,
-      absl::optional<PolicyError> maybe_policy_error = absl::nullopt) {
+      std::vector<absl::optional<PolicyError>> maybe_policy_errors = {
+          absl::nullopt}) {
     size_t total_num_files = maybe_total_num_files.value_or(file_infos.size());
     ASSERT_EQ(expected_errors.size(), file_infos.size());
     // We should get one complete callback when the copy/move finishes.
@@ -531,12 +551,14 @@ class CopyOrMoveIOTaskWithScansTest
                             GetExpectedOutputUrlsFromFileInfos(file_infos))),
                   Field(&ProgressStatus::outputs,
                         EntryStatusErrors(ElementsAreArray(expected_errors))),
-                  Field(&ProgressStatus::policy_error, maybe_policy_error),
+                  Field(&ProgressStatus::policy_error,
+                        testing::AnyOfArray(maybe_policy_errors)),
                   GetBaseMatcher(file_infos, dest, total_num_files))))
         .WillOnce(RunClosure(quit_closure));
   }
 
-  void ExpectFPNMBlockedFiles(std::vector<FileInfo> files) {
+  void ExpectFPNMBlockedFiles(std::vector<FileInfo> files,
+                              policy::FilesPolicyDialog::BlockReason reason) {
     std::vector<base::FilePath> blocked_files;
     for (auto&& file : files) {
       blocked_files.push_back(file.source_url.path());
@@ -547,10 +569,14 @@ class CopyOrMoveIOTaskWithScansTest
                             UnorderedElementsAreArray(blocked_files),
                             GetOperationType() == OperationType::kCopy
                                 ? policy::dlp::FileAction::kCopy
-                                : policy::dlp::FileAction::kMove));
+                                : policy::dlp::FileAction::kMove,
+                            reason));
   }
 
-  void ExpectFPNMFilesWarningDialogAndProceed(CopyOrMoveIOTask& task) {
+  void ExpectFPNMFilesWarningDialogAndProceed(
+      CopyOrMoveIOTask& task,
+      policy::FilesPolicyWarnSettings warn_settings =
+          policy::FilesPolicyWarnSettings()) {
     std::vector<base::FilePath> warned_files;
     for (auto&& file : warned_files_) {
       warned_files.push_back(file.path());
@@ -562,7 +588,8 @@ class CopyOrMoveIOTaskWithScansTest
                             UnorderedElementsAreArray(warned_files),
                             GetOperationType() == OperationType::kCopy
                                 ? policy::dlp::FileAction::kCopy
-                                : policy::dlp::FileAction::kMove))
+                                : policy::dlp::FileAction::kMove,
+                            warn_settings))
         .WillOnce([&](auto&&... args) {
           warning_callback_ = std::move(std::get<0>(std::tie(args...)));
 
@@ -587,7 +614,8 @@ class CopyOrMoveIOTaskWithScansTest
                             UnorderedElementsAreArray(warned_files),
                             GetOperationType() == OperationType::kCopy
                                 ? policy::dlp::FileAction::kCopy
-                                : policy::dlp::FileAction::kMove))
+                                : policy::dlp::FileAction::kMove,
+                            policy::FilesPolicyWarnSettings()))
         .WillOnce([&, cancelCallback](auto&&... args) {
           warning_callback_ = std::move(std::get<0>(std::tie(args...)));
 
@@ -603,7 +631,10 @@ class CopyOrMoveIOTaskWithScansTest
 
     EXPECT_CALL(*fpnm_, OnIOTaskResumed(
                             /*task_id=*/{kTaskId}))
-        .WillOnce([&]() { std::move(warning_callback_).Run(true); });
+        .WillOnce([&]() {
+          std::move(warning_callback_)
+              .Run(/*user_justification=*/absl::nullopt, true);
+        });
 
     task.Resume(params);
   }
@@ -671,25 +702,31 @@ class CopyOrMoveIOTaskWithScansTest
   storage::FileSystemURLSet directory_scanning_expectations_;
   std::unique_ptr<TestingProfileManager> profile_manager_;
   raw_ptr<TestingProfile, DanglingUntriaged> profile_;
-  raw_ptr<policy::MockFilesPolicyNotificationManager, ExperimentalAsh> fpnm_;
-  policy::OnDlpRestrictionCheckedCallback warning_callback_;
+  raw_ptr<policy::MockFilesPolicyNotificationManager,
+          DanglingUntriaged | ExperimentalAsh>
+      fpnm_;
+  policy::OnDlpRestrictionCheckedWithJustificationCallback warning_callback_;
 };
 
-INSTANTIATE_TEST_SUITE_P(CopyOrMove,
-                         CopyOrMoveIOTaskWithScansTest,
-                         testing::Combine(testing::Values(OperationType::kCopy,
-                                                          OperationType::kMove),
-                                          testing::Bool()),
-                         &CopyOrMoveIOTaskWithScansTest::ParamToString);
+INSTANTIATE_TEST_SUITE_P(
+    CopyOrMove,
+    CopyOrMoveIOTaskWithScansTest,
+    testing::Combine(testing::Values(OperationType::kCopy,
+                                     OperationType::kMove),
+                     /*new_policy_ux*/ testing::Bool(),
+                     /*new_file_transfer_ux*/ testing::Bool()),
+    &CopyOrMoveIOTaskWithScansTest::ParamToString);
 
 using CopyOrMoveIOTaskWithScansWarnTest = CopyOrMoveIOTaskWithScansTest;
 
-INSTANTIATE_TEST_SUITE_P(CopyOrMove,
-                         CopyOrMoveIOTaskWithScansWarnTest,
-                         testing::Combine(testing::Values(OperationType::kCopy,
-                                                          OperationType::kMove),
-                                          /*use_new_ui=*/testing::Values(true)),
-                         &CopyOrMoveIOTaskWithScansTest::ParamToString);
+INSTANTIATE_TEST_SUITE_P(
+    CopyOrMove,
+    CopyOrMoveIOTaskWithScansWarnTest,
+    testing::Combine(testing::Values(OperationType::kCopy,
+                                     OperationType::kMove),
+                     /*new_policy_ux*/ testing::Bool(),
+                     /*new_file_transfer_ux*/ testing::Values(true)),
+    &CopyOrMoveIOTaskWithScansTest::ParamToString);
 
 TEST_P(CopyOrMoveIOTaskWithScansTest, BlockSingleFileUsingResultBlocked) {
   // Create file.
@@ -698,8 +735,10 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, BlockSingleFileUsingResultBlocked) {
 
   // Block the file using RESULT_BLOCK.
   SetFileTransferAnalysisResult(
-      file,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      file, enterprise_connectors::FileTransferAnalysisDelegate::
+                FileTransferAnalysisResult::Blocked(
+                    enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+                    enterprise_connectors::kDlpTag));
 
   base::RunLoop run_loop;
 
@@ -713,11 +752,15 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, BlockSingleFileUsingResultBlocked) {
   ExpectCompletionCallbackCall(
       complete_callback, {file}, dest, {base::File::FILE_ERROR_SECURITY},
       run_loop.QuitClosure(), /*maybe_total_num_files=*/absl::nullopt,
-      /*maybe_policy_error=*/
-      PolicyError(PolicyErrorType::kEnterpriseConnectors, 1));
+      /*maybe_policy_errors=*/
+      {UseNewPolicyUI() && UseNewConnectorsUI()
+           ? absl::make_optional(PolicyError(
+                 PolicyErrorType::kEnterpriseConnectors, 1, "file.txt"))
+           : absl::nullopt});
 
-  if (UseNewUI()) {
-    ExpectFPNMBlockedFiles({file});
+  if (UseNewPolicyUI() && UseNewConnectorsUI()) {
+    ExpectFPNMBlockedFiles({file}, policy::FilesPolicyDialog::BlockReason::
+                                       kEnterpriseConnectorsSensitiveData);
   }
 
   // Start the copy/move.
@@ -738,8 +781,8 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, BlockSingleFileUsingResultUnknown) {
 
   // Block the file using RESULT_UNKNOWN.
   SetFileTransferAnalysisResult(
-      file,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_UNKNOWN);
+      file, enterprise_connectors::FileTransferAnalysisDelegate::
+                FileTransferAnalysisResult::Unknown());
 
   base::RunLoop run_loop;
 
@@ -753,11 +796,16 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, BlockSingleFileUsingResultUnknown) {
   ExpectCompletionCallbackCall(
       complete_callback, {file}, dest, {base::File::FILE_ERROR_SECURITY},
       run_loop.QuitClosure(), /*maybe_total_num_files=*/absl::nullopt,
-      /*maybe_policy_error=*/
-      PolicyError(PolicyErrorType::kEnterpriseConnectors, 1));
+      /*maybe_policy_errors=*/
+      {UseNewPolicyUI() && UseNewConnectorsUI()
+           ? absl::make_optional(PolicyError(
+                 PolicyErrorType::kEnterpriseConnectors, 1, "file.txt"))
+           : absl::nullopt});
 
-  if (UseNewUI()) {
-    ExpectFPNMBlockedFiles({file});
+  if (UseNewPolicyUI() && UseNewConnectorsUI()) {
+    ExpectFPNMBlockedFiles(
+        {file},
+        policy::FilesPolicyDialog::BlockReason::kEnterpriseConnectorsUnknown);
   }
 
   // Start the copy/move.
@@ -781,8 +829,8 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest, WarnSingleFileProceed) {
 
   // After proceeding the scan, the result is allowed.
   SetFileTransferAnalysisResult(
-      file,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      file, enterprise_connectors::FileTransferAnalysisDelegate::
+                FileTransferAnalysisResult::Allowed());
 
   base::RunLoop run_loop;
 
@@ -856,8 +904,8 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, AllowSingleFileUsingResultAllowed) {
 
   // Allow the file using RESULT_ALLOWED.
   SetFileTransferAnalysisResult(
-      file,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      file, enterprise_connectors::FileTransferAnalysisDelegate::
+                FileTransferAnalysisResult::Allowed());
 
   base::RunLoop run_loop;
 
@@ -918,7 +966,10 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, FilesOnDisabledAndEnabledFileSystems) {
   // Expect a scan for the enabled file and block it.
   SetFileTransferAnalysisResult(
       enabled_file,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      enterprise_connectors::FileTransferAnalysisDelegate::
+          FileTransferAnalysisResult::Blocked(
+              enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+              enterprise_connectors::kDlpTag));
   // Don't expect any scan for the file on the disabled file system.
 
   auto dest = GetDestinationFileSystemURL("");
@@ -941,11 +992,16 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, FilesOnDisabledAndEnabledFileSystems) {
       complete_callback, {enabled_file, disabled_file}, dest,
       {base::File::FILE_ERROR_SECURITY, base::File::FILE_OK},
       run_loop.QuitClosure(), /*maybe_total_num_files=*/absl::nullopt,
-      /*maybe_policy_error=*/
-      PolicyError(PolicyErrorType::kEnterpriseConnectors, 1));
+      /*maybe_policy_errors=*/
+      {UseNewPolicyUI() && UseNewConnectorsUI()
+           ? absl::make_optional(PolicyError(
+                 PolicyErrorType::kEnterpriseConnectors, 1, "file1.txt"))
+           : absl::nullopt});
 
-  if (UseNewUI()) {
-    ExpectFPNMBlockedFiles({enabled_file});
+  if (UseNewPolicyUI() && UseNewConnectorsUI()) {
+    ExpectFPNMBlockedFiles({enabled_file},
+                           policy::FilesPolicyDialog::BlockReason::
+                               kEnterpriseConnectorsSensitiveData);
   }
 
   // Start the copy/move.
@@ -976,11 +1032,15 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, DirectoryTransferBlockAll) {
   // Expect a scan for both files and block the transfer for all files.
   ExpectDirectoryScan(directory);
   SetFileTransferAnalysisResult(
-      file0,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      file0, enterprise_connectors::FileTransferAnalysisDelegate::
+                 FileTransferAnalysisResult::Blocked(
+                     enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+                     enterprise_connectors::kDlpTag));
   SetFileTransferAnalysisResult(
-      file1,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      file1, enterprise_connectors::FileTransferAnalysisDelegate::
+                 FileTransferAnalysisResult::Blocked(
+                     enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+                     enterprise_connectors::kMalwareTag));
 
   auto dest = GetDestinationFileSystemURL("");
 
@@ -1001,15 +1061,29 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, DirectoryTransferBlockAll) {
                             ? base::File::FILE_ERROR_SECURITY
                             : base::File::FILE_ERROR_NOT_EMPTY;
 
-  ExpectCompletionCallbackCall(
-      complete_callback, {directory}, dest, {expected_error},
-      run_loop.QuitClosure(),
-      /*maybe_total_num_files=*/2,
-      /*maybe_policy_error=*/
-      PolicyError(PolicyErrorType::kEnterpriseConnectors, 2));
+  std::vector<absl::optional<PolicyError>> maybe_policy_errors;
+  if (UseNewPolicyUI() && UseNewConnectorsUI()) {
+    // Depending on the order of the execution, `file_name` can be different.
+    maybe_policy_errors.push_back(
+        PolicyError(PolicyErrorType::kEnterpriseConnectors, 2, "file0.txt"));
+    maybe_policy_errors.push_back(
+        PolicyError(PolicyErrorType::kEnterpriseConnectors, 2, "file1.txt"));
+  } else {
+    maybe_policy_errors.push_back(absl::nullopt);
+  }
 
-  if (UseNewUI()) {
-    ExpectFPNMBlockedFiles({file1, file0});
+  ExpectCompletionCallbackCall(complete_callback, {directory}, dest,
+                               {expected_error}, run_loop.QuitClosure(),
+                               /*maybe_total_num_files=*/2,
+                               /*maybe_policy_errors=*/
+                               maybe_policy_errors);
+
+  if (UseNewPolicyUI() && UseNewConnectorsUI()) {
+    ExpectFPNMBlockedFiles({file0}, policy::FilesPolicyDialog::BlockReason::
+                                        kEnterpriseConnectorsSensitiveData);
+    ExpectFPNMBlockedFiles(
+        {file1},
+        policy::FilesPolicyDialog::BlockReason::kEnterpriseConnectorsMalware);
   }
 
   // Start the copy/move.
@@ -1040,11 +1114,13 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, DirectoryTransferBlockOne) {
   // Expect a scan for both files and block the transfer of one file.
   ExpectDirectoryScan(directory);
   SetFileTransferAnalysisResult(
-      file0,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      file0, enterprise_connectors::FileTransferAnalysisDelegate::
+                 FileTransferAnalysisResult::Blocked(
+                     enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+                     enterprise_connectors::kDlpTag));
   SetFileTransferAnalysisResult(
-      file1,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      file1, enterprise_connectors::FileTransferAnalysisDelegate::
+                 FileTransferAnalysisResult::Allowed());
 
   auto dest = GetDestinationFileSystemURL("");
 
@@ -1069,11 +1145,15 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, DirectoryTransferBlockOne) {
       complete_callback, {directory}, dest, {expected_error},
       run_loop.QuitClosure(),
       /*maybe_total_num_files=*/2,
-      /*maybe_policy_error=*/
-      PolicyError(PolicyErrorType::kEnterpriseConnectors, 1));
+      /*maybe_policy_errors=*/
+      {UseNewPolicyUI() && UseNewConnectorsUI()
+           ? absl::make_optional(PolicyError(
+                 PolicyErrorType::kEnterpriseConnectors, 1, "file0.txt"))
+           : absl::nullopt});
 
-  if (UseNewUI()) {
-    ExpectFPNMBlockedFiles({file0});
+  if (UseNewPolicyUI() && UseNewConnectorsUI()) {
+    ExpectFPNMBlockedFiles({file0}, policy::FilesPolicyDialog::BlockReason::
+                                        kEnterpriseConnectorsSensitiveData);
   }
 
   // Start the copy/move.
@@ -1093,6 +1173,9 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, DirectoryTransferBlockOne) {
 
 TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
        DirectoryTransferBlockSomeWarnSomeProceed) {
+  // This test can only work for UseNewConnectorsUI() == true.
+  ASSERT_TRUE(UseNewConnectorsUI());
+
   // Create directory.
   FileInfo directory{"", GetSourceFileSystemURLForEnabledVolume("folder"),
                      GetDestinationFileSystemURL("folder")};
@@ -1103,14 +1186,18 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
       SetupFile(/*on_enabled_fs=*/true, "folder/0_file_blocked.txt");
   auto blocked_file_1 =
       SetupFile(/*on_enabled_fs=*/true, "folder/1_file_blocked.txt");
+  auto blocked_file_2 =
+      SetupFile(/*on_enabled_fs=*/true, "folder/2_encrypted_file_blocked.txt");
+  auto blocked_file_3 =
+      SetupFile(/*on_enabled_fs=*/true, "folder/3_large_file_blocked.txt");
   auto allowed_file_0 =
-      SetupFile(/*on_enabled_fs=*/true, "folder/2_file_allowed.txt");
+      SetupFile(/*on_enabled_fs=*/true, "folder/4_file_allowed.txt");
   auto allowed_file_1 =
-      SetupFile(/*on_enabled_fs=*/true, "folder/3_file_allowed.txt");
+      SetupFile(/*on_enabled_fs=*/true, "folder/5_file_allowed.txt");
   auto warned_file_0 =
-      SetupFile(/*on_enabled_fs=*/true, "folder/4_file_warned.txt");
+      SetupFile(/*on_enabled_fs=*/true, "folder/6_file_warned.txt");
   auto warned_file_1 =
-      SetupFile(/*on_enabled_fs=*/true, "folder/5_file_warned.txt");
+      SetupFile(/*on_enabled_fs=*/true, "folder/7_file_warned.txt");
 
   // Mark the file to have a warning.
   SetFileHasWarning(warned_file_0);
@@ -1121,23 +1208,41 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
   ExpectDirectoryScan(directory);
   SetFileTransferAnalysisResult(
       blocked_file_0,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      enterprise_connectors::FileTransferAnalysisDelegate::
+          FileTransferAnalysisResult::Blocked(
+              enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+              enterprise_connectors::kDlpTag));
   SetFileTransferAnalysisResult(
       blocked_file_1,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_BLOCKED);
+      enterprise_connectors::FileTransferAnalysisDelegate::
+          FileTransferAnalysisResult::Blocked(
+              enterprise_connectors::FinalContentAnalysisResult::FAILURE,
+              enterprise_connectors::kMalwareTag));
   SetFileTransferAnalysisResult(
-      allowed_file_0,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      blocked_file_2, enterprise_connectors::FileTransferAnalysisDelegate::
+                          FileTransferAnalysisResult::Blocked(
+                              enterprise_connectors::
+                                  FinalContentAnalysisResult::ENCRYPTED_FILES,
+                              /*tag=*/std::string()));
   SetFileTransferAnalysisResult(
-      allowed_file_1,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      blocked_file_3,
+      enterprise_connectors::FileTransferAnalysisDelegate::
+          FileTransferAnalysisResult::Blocked(
+              enterprise_connectors::FinalContentAnalysisResult::LARGE_FILES,
+              /*tag=*/std::string()));
+  SetFileTransferAnalysisResult(
+      allowed_file_0, enterprise_connectors::FileTransferAnalysisDelegate::
+                          FileTransferAnalysisResult::Allowed());
+  SetFileTransferAnalysisResult(
+      allowed_file_1, enterprise_connectors::FileTransferAnalysisDelegate::
+                          FileTransferAnalysisResult::Allowed());
   // We proceed on the warning, so the result is allowed for the warned file
   SetFileTransferAnalysisResult(
-      warned_file_0,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      warned_file_0, enterprise_connectors::FileTransferAnalysisDelegate::
+                         FileTransferAnalysisResult::Allowed());
   SetFileTransferAnalysisResult(
-      warned_file_1,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      warned_file_1, enterprise_connectors::FileTransferAnalysisDelegate::
+                         FileTransferAnalysisResult::Allowed());
 
   auto dest = GetDestinationFileSystemURL("");
 
@@ -1148,7 +1253,7 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
   base::MockOnceCallback<void(ProgressStatus)> complete_callback;
 
   ExpectExtraProgressCallbackCalls(progress_callback, {directory}, dest,
-                                   /*total_num_files=*/6);
+                                   /*total_num_files=*/8);
   ExpectScanningCallbackCall(progress_callback, {directory}, dest, 1);
 
   // For moves, only the last error is reported. The last step the operation
@@ -1158,12 +1263,27 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
                             ? base::File::FILE_ERROR_SECURITY
                             : base::File::FILE_ERROR_NOT_EMPTY;
 
-  ExpectCompletionCallbackCall(
-      complete_callback, {directory}, dest, {expected_error},
-      run_loop.QuitClosure(),
-      /*maybe_total_num_files=*/6,
-      /*maybe_policy_error=*/
-      PolicyError(PolicyErrorType::kEnterpriseConnectors, 2));
+  std::vector<absl::optional<PolicyError>> maybe_policy_errors;
+  if (UseNewPolicyUI()) {
+    // Depending on the order of the execution, `file_name` can be different.
+    maybe_policy_errors.push_back(PolicyError(
+        PolicyErrorType::kEnterpriseConnectors, 4, "0_file_blocked.txt"));
+    maybe_policy_errors.push_back(PolicyError(
+        PolicyErrorType::kEnterpriseConnectors, 4, "1_file_blocked.txt"));
+    maybe_policy_errors.push_back(
+        PolicyError(PolicyErrorType::kEnterpriseConnectors, 4,
+                    "2_encrypted_file_blocked.txt"));
+    maybe_policy_errors.push_back(PolicyError(
+        PolicyErrorType::kEnterpriseConnectors, 4, "3_large_file_blocked.txt"));
+  } else {
+    maybe_policy_errors.push_back(absl::nullopt);
+  }
+
+  ExpectCompletionCallbackCall(complete_callback, {directory}, dest,
+                               {expected_error}, run_loop.QuitClosure(),
+                               /*maybe_total_num_files=*/8,
+                               /*maybe_policy_errors=*/
+                               maybe_policy_errors);
 
   // Start the copy/move.
   CopyOrMoveIOTask task(GetOperationType(),
@@ -1173,7 +1293,24 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
 
   // Expect a warning dialog and error dialog about the blocked files
   ExpectFPNMFilesWarningDialogAndProceed(task);
-  ExpectFPNMBlockedFiles({blocked_file_0, blocked_file_1});
+
+  if (UseNewPolicyUI()) {
+    // We expect a call to
+    // FilesPolicyNotificationManager::AddConnectorsBlockedFiles for scan result
+    // tag.
+    ExpectFPNMBlockedFiles({blocked_file_0},
+                           policy::FilesPolicyDialog::BlockReason::
+                               kEnterpriseConnectorsSensitiveData);
+    ExpectFPNMBlockedFiles(
+        {blocked_file_1},
+        policy::FilesPolicyDialog::BlockReason::kEnterpriseConnectorsMalware);
+    ExpectFPNMBlockedFiles({blocked_file_2},
+                           policy::FilesPolicyDialog::BlockReason::
+                               kEnterpriseConnectorsEncryptedFile);
+    ExpectFPNMBlockedFiles(
+        {blocked_file_3},
+        policy::FilesPolicyDialog::BlockReason::kEnterpriseConnectorsLargeFile);
+  }
 
   task.Execute(progress_callback.Get(), complete_callback.Get());
   // Wait for the copy/move to be completed.
@@ -1183,6 +1320,8 @@ TEST_P(CopyOrMoveIOTaskWithScansWarnTest,
   VerifyDirectoryExistsAtSourceAndDestination(directory);
   VerifyFileWasNotTransferred(blocked_file_0);
   VerifyFileWasNotTransferred(blocked_file_1);
+  VerifyFileWasNotTransferred(blocked_file_2);
+  VerifyFileWasNotTransferred(blocked_file_3);
   VerifyFileWasTransferred(allowed_file_0);
   VerifyFileWasTransferred(allowed_file_1);
   VerifyFileWasTransferred(warned_file_0);
@@ -1278,11 +1417,11 @@ TEST_P(CopyOrMoveIOTaskWithScansTest, DirectoryTransferAllowAll) {
   // Expect a scan for both files and allow the transfer for all files.
   ExpectDirectoryScan(directory);
   SetFileTransferAnalysisResult(
-      file0,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      file0, enterprise_connectors::FileTransferAnalysisDelegate::
+                 FileTransferAnalysisResult::Allowed());
   SetFileTransferAnalysisResult(
-      file1,
-      enterprise_connectors::FileTransferAnalysisDelegate::RESULT_ALLOWED);
+      file1, enterprise_connectors::FileTransferAnalysisDelegate::
+                 FileTransferAnalysisResult::Allowed());
 
   auto dest = GetDestinationFileSystemURL("");
 
@@ -1337,7 +1476,7 @@ class CopyOrMoveIOTaskWithDLPTest : public testing::Test {
 
     files_controller_ = std::make_unique<
         testing::StrictMock<policy::MockDlpFilesControllerAsh>>(
-        *mock_rules_manager_);
+        *mock_rules_manager_, profile_.get());
 
     ON_CALL(*mock_rules_manager_, GetDlpFilesController())
         .WillByDefault(::testing::Return(files_controller_.get()));
@@ -1391,10 +1530,10 @@ class CopyOrMoveIOTaskWithDLPTest : public testing::Test {
   base::test::ScopedFeatureList scoped_feature_list_;
   content::BrowserTaskEnvironment task_environment_;
   ash::disks::FakeDiskMountManager disk_mount_manager_;
+  const std::unique_ptr<TestingProfile> profile_;
   raw_ptr<policy::MockDlpRulesManager, DanglingUntriaged | ExperimentalAsh>
       mock_rules_manager_ = nullptr;
   std::unique_ptr<policy::MockDlpFilesControllerAsh> files_controller_;
-  const std::unique_ptr<TestingProfile> profile_;
   base::ScopedTempDir temp_dir_;
   scoped_refptr<storage::FileSystemContext> file_system_context_;
   raw_ptr<ash::FakeChromeUserManager, DanglingUntriaged | ExperimentalAsh>
@@ -1633,6 +1772,13 @@ TEST_F(CopyOrMoveIOTaskWithDLPTest, WarnMultipleFiles) {
                 Field(&ProgressStatus::state, State::kPaused),
                 Field(&ProgressStatus::bytes_transferred, 0))));
   // After the task is resumed.
+  EXPECT_CALL(
+      progress_callback,
+      Run(AllOf(Field(&ProgressStatus::type, OperationType::kCopy),
+                Field(&ProgressStatus::sources, EntryStatusUrls(source_urls)),
+                Property(&ProgressStatus::GetDestinationFolder, dest),
+                Field(&ProgressStatus::state, State::kInProgress),
+                Field(&ProgressStatus::bytes_transferred, 0))));
   EXPECT_CALL(
       progress_callback,
       Run(AllOf(Field(&ProgressStatus::type, OperationType::kCopy),

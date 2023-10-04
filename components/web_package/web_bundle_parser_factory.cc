@@ -45,6 +45,11 @@ class FileDataSource final : public mojom::BundleDataSource {
     std::move(callback).Run(true);
   }
 
+  void Close(CloseCallback callback) override {
+    file_.Close();
+    std::move(callback).Run();
+  }
+
   base::File file_;
 };
 
@@ -55,8 +60,7 @@ WebBundleParserFactory::WebBundleParserFactory() = default;
 WebBundleParserFactory::~WebBundleParserFactory() = default;
 
 std::unique_ptr<mojom::BundleDataSource>
-WebBundleParserFactory::CreateFileDataSourceForTesting(
-    base::File file) {
+WebBundleParserFactory::CreateFileDataSourceForTesting(base::File file) {
   return std::make_unique<FileDataSource>(std::move(file));
 }
 

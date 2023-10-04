@@ -10,7 +10,6 @@ import android.graphics.Color;
 import androidx.annotation.ColorInt;
 import androidx.core.content.res.ResourcesCompat;
 
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.ui.theme.ChromeSemanticColorUtils;
 import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.browser_ui.styles.SemanticColorUtils;
@@ -39,10 +38,7 @@ public class TabUiThemeUtil {
                 return Color.BLACK;
             }
 
-            int elevationDimenId = ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                    ? R.dimen.default_elevation_3
-                    : R.dimen.default_elevation_2;
-            return ChromeColors.getSurfaceColor(context, elevationDimenId);
+            return ChromeColors.getSurfaceColor(context, R.dimen.default_elevation_3);
         } else if (TabManagementFieldTrial.isTabStripDetachedEnabled()) {
             if (isIncognito) {
                 // Use a non-dynamic dark background color for incognito, slightly greyer than
@@ -125,6 +121,7 @@ public class TabUiThemeUtil {
      * @param isIncognito Whether the color is used for incognito mode.
      * @return The color for the detached tab container.
      */
+    @SuppressWarnings("AssertionSideEffect")
     private static int getTabStripDetachedTabColor(
             Context context, boolean isIncognito, boolean isReordering) {
         assert TabManagementFieldTrial.isTabStripDetachedEnabled();
@@ -143,17 +140,7 @@ public class TabUiThemeUtil {
 
         if (isIncognito) return Color.BLACK;
 
-        if (!ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                && ColorUtils.inNightMode(context)) {
-            final int baseColor = SemanticColorUtils.getDefaultControlColorActive(context);
-            final int overlayColor =
-                    ChromeColors.getSurfaceColor(context, R.dimen.default_elevation_0);
-
-            return ColorUtils.getColorWithOverlay(
-                    baseColor, overlayColor, DETACHED_TAB_OVERLAY_ALPHA);
-        } else {
-            return ChromeColors.getSurfaceColor(context, R.dimen.default_elevation_5);
-        }
+        return ChromeColors.getSurfaceColor(context, R.dimen.default_elevation_5);
     }
 
     /**
@@ -180,9 +167,7 @@ public class TabUiThemeUtil {
      */
     private static int getSurfaceColorElev5(Context context, boolean isIncognito) {
         if (isIncognito) {
-            return context.getColor(ChromeFeatureList.sBaselineGm3SurfaceColors.isEnabled()
-                            ? R.color.default_bg_color_dark_elev_5_gm3_baseline
-                            : R.color.default_bg_color_dark_elev_5_baseline);
+            return context.getColor(R.color.default_bg_color_dark_elev_5_baseline);
         }
 
         return ChromeColors.getSurfaceColor(context, R.dimen.default_elevation_5);

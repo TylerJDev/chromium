@@ -66,6 +66,7 @@ suite('ProfilePickerMainViewTest', function() {
       isGuestModeEnabled: true,
       isProfileCreationAllowed: true,
       isAskOnStartupAllowed: true,
+      profilesReorderingEnabled: true,
     });
   }
 
@@ -96,6 +97,20 @@ suite('ProfilePickerMainViewTest', function() {
                isPrimaryLacrosProfile: false,
                // </if>
              }));
+  }
+
+  async function simulateProfilesListChanged(profiles: ProfileState[]) {
+    webUIListenerCallback('profiles-list-changed', [...profiles]);
+
+    // Await for the profiles to be rendered before proceeding.
+    await waitAfterNextRender(mainViewElement.$.profiles);
+  }
+
+  async function simulateProfileRemoved(profilePath: string) {
+    webUIListenerCallback('profile-removed', profilePath);
+
+    // Await for the profiles to be rendered before proceeding.
+    await waitAfterNextRender(mainViewElement.$.profiles);
   }
 
   async function verifyProfileCard(
@@ -139,8 +154,7 @@ suite('ProfilePickerMainViewTest', function() {
     assertTrue(mainViewElement.$.profilesContainer.hidden);
     assertTrue(mainViewElement.$.askOnStartup.hidden);
     const profiles = generateProfilesList(6);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     // Profiles list defined.
     assertTrue(!mainViewElement.$.profilesContainer.hidden);
     assertTrue(!mainViewElement.$.askOnStartup.hidden);
@@ -158,14 +172,12 @@ suite('ProfilePickerMainViewTest', function() {
     assertTrue(!mainViewElement.$.askOnStartup.checked);
     // Update profile data.
     profiles[1] = profiles[4]!;
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
     // Profiles update on remove.
-    webUIListenerCallback('profile-removed', profiles[3]!.profilePath);
+    await simulateProfileRemoved(profiles[3]!.profilePath);
     profiles.splice(3, 1);
-    flushTasks();
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
   });
@@ -173,8 +185,7 @@ suite('ProfilePickerMainViewTest', function() {
   test('EditLocalProfileName', async function() {
     await browserProxy.whenCalled('initializeMainView');
     const profiles = generateProfilesList(1);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     const localProfileName =
         mainViewElement.shadowRoot!.querySelector('profile-card')!.$.nameInput;
     assertEquals(localProfileName.value, profiles[0]!.localProfileName);
@@ -200,8 +211,7 @@ suite('ProfilePickerMainViewTest', function() {
     resetTest();
     assertEquals(mainViewElement.$.browseAsGuestButton.style.display, 'none');
     await browserProxy.whenCalled('initializeMainView');
-    webUIListenerCallback('profiles-list-changed', generateProfilesList(2));
-    flushTasks();
+    await simulateProfilesListChanged(generateProfilesList(2));
     assertEquals(mainViewElement.$.browseAsGuestButton.style.display, 'none');
   });
 
@@ -214,8 +224,7 @@ suite('ProfilePickerMainViewTest', function() {
         mainViewElement.shadowRoot!.querySelector<HTMLElement>('#addProfile')!;
     assertEquals(addProfile.style.display, 'none');
     await browserProxy.whenCalled('initializeMainView');
-    webUIListenerCallback('profiles-list-changed', generateProfilesList(2));
-    flushTasks();
+    await simulateProfilesListChanged(generateProfilesList(2));
     navigationElement.reset();
     assertEquals(addProfile.style.display, 'none');
     addProfile.click();
@@ -229,8 +238,7 @@ suite('ProfilePickerMainViewTest', function() {
     assertTrue(mainViewElement.$.profilesContainer.hidden);
     assertTrue(mainViewElement.$.askOnStartup.hidden);
     let profiles = generateProfilesList(1);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
     // The checkbox 'Ask when chrome opens' should only be visible to
@@ -238,8 +246,7 @@ suite('ProfilePickerMainViewTest', function() {
     assertTrue(mainViewElement.$.askOnStartup.hidden);
     // Add a second profile.
     profiles = generateProfilesList(2);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
     assertTrue(!mainViewElement.$.askOnStartup.hidden);
@@ -255,14 +262,13 @@ suite('ProfilePickerMainViewTest', function() {
     assertTrue(mainViewElement.$.profilesContainer.hidden);
     assertTrue(mainViewElement.$.askOnStartup.hidden);
     const profiles = generateProfilesList(2);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
+    await simulateProfilesListChanged(profiles);
     flushTasks();
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
     assertTrue(!mainViewElement.$.askOnStartup.hidden);
     // Remove profile.
-    webUIListenerCallback('profile-removed', profiles[0]!.profilePath);
-    flushTasks();
+    await simulateProfileRemoved(profiles[0]!.profilePath);
     await verifyProfileCard(
         [profiles[1]!],
         mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
@@ -279,8 +285,7 @@ suite('ProfilePickerMainViewTest', function() {
     assertTrue(mainViewElement.$.profilesContainer.hidden);
     assertTrue(mainViewElement.$.askOnStartup.hidden);
     const profiles = generateProfilesList(2);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
 
@@ -295,34 +300,51 @@ suite('ProfilePickerMainViewTest', function() {
     await browserProxy.whenCalled('initializeMainView');
     const profiles = generateProfilesList(2);
     profiles[0]!.needsSignin = true;
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
+    await simulateProfilesListChanged(profiles);
     await verifyProfileCard(
         profiles, mainViewElement.shadowRoot!.querySelectorAll('profile-card'));
   });
 
   // This function makes sure that the test data is valid and consistent.
   function checkTestData(
-      numberOfProfiles: number, dragIndex: number,
-      dragEnterEvents:
-          Array<{index: number, expectedResultIndices: number[]}>) {
-    assertTrue(
-        0 <= dragIndex && dragIndex < numberOfProfiles,
-        'Test setup error: Drag index is out of bounds.');
+      expectedInitialProfileOrder: string[], dragEventCycles: Array<{
+        dragIndex: number,
+        dragEnterEvents:
+            Array<{index: number, expectedResultIndices: number[]}>,
+        expectedEndProfileOrder: string[],
+      }>) {
+    const profileSet = new Set();
+    expectedInitialProfileOrder.forEach((profileName) => {
+      assertFalse(
+          profileSet.has(profileName),
+          'Test setup error: Profile name is repeated in the initial profiles');
+      profileSet.add(profileName);
+    });
 
-    dragEnterEvents.forEach(event => {
+    const numberOfProfiles = expectedInitialProfileOrder.length;
+    dragEventCycles.forEach((cycle) => {
       assertTrue(
-          0 <= event.index && event.index < numberOfProfiles,
-          'Test setup error:  Event index is out of bounds');
-      const indicesSet = new Set();
-      event.expectedResultIndices.forEach(resultIndex => {
+          0 <= cycle.dragIndex && cycle.dragIndex < numberOfProfiles,
+          'Test setup error: Drag index is out of bounds.');
+
+      cycle.dragEnterEvents.forEach(event => {
         assertTrue(
-            0 <= resultIndex && resultIndex < numberOfProfiles,
-            'Test setup error:  Expected index result is out of bounds');
-        assertFalse(
-            indicesSet.has(resultIndex),
-            'Test setup error: Expected indices should\'nt have a repeated index');
-        indicesSet.add(resultIndex);
+            0 <= event.index && event.index < numberOfProfiles,
+            'Test setup error:  Event index is out of bounds');
+        const indicesSet = new Set();
+        event.expectedResultIndices.forEach(resultIndex => {
+          assertTrue(
+              0 <= resultIndex && resultIndex < numberOfProfiles,
+              'Test setup error:  Expected index result is out of bounds');
+          assertFalse(
+              indicesSet.has(resultIndex),
+              'Test setup error: Expected indices should\'nt have a repeated index');
+          indicesSet.add(resultIndex);
+        });
+
+        assertEquals(
+            numberOfProfiles, event.expectedResultIndices.length,
+            'Test setup error: `expectedResultIndices` length should match the profile count');
       });
     });
   }
@@ -335,7 +357,8 @@ suite('ProfilePickerMainViewTest', function() {
   // cards when they move due to drag events.
   function assertProfilesPositions(
       cards: ProfileCardElement[], draggingIndex: number|null,
-      initialRects: DOMRect[], expectedIndices: number[]) {
+      initialRects: DOMRect[], expectedIndices: number[],
+      errorMessage: string = '') {
     for (let i = 0; i < expectedIndices.length; ++i) {
       const expectedIndex = expectedIndices[i]!;
       // Do not compare the dragging profile element position, as it does not
@@ -348,8 +371,22 @@ suite('ProfilePickerMainViewTest', function() {
       // Initial indices are ordered, so we can use the loop index as the
       // basis.
       assertDeepEquals(
-          cards[expectedIndex]!.getBoundingClientRect(), initialRects[i]);
+          cards[expectedIndex]!.getBoundingClientRect(), initialRects[i],
+          errorMessage);
     }
+  }
+
+  // This function compares the profile names in the ProfileState array versus
+  // the given expected list.
+  function assertProfileNamesOrder(
+      profiles: ProfileState[], profileNames: string[],
+      errorMessage: string = '') {
+    assertEquals(profiles.length, profileNames.length);
+    assertDeepEquals(
+        profiles.map((profile) => {
+          return profile.localProfileName;
+        }),
+        profileNames, errorMessage);
   }
 
   // Sets up the profile picker with the reorder functionality and creates
@@ -362,98 +399,172 @@ suite('ProfilePickerMainViewTest', function() {
     mainViewElement.setDraggingTransitionDurationForTesting(0);
 
     // Create the profiles and push them to the main profile picker view.
-    const profiles = generateProfilesList(numberOfProfiles);
-    webUIListenerCallback('profiles-list-changed', [...profiles]);
-    flushTasks();
-
-    // Make sure to wait for the initialization of the DragDelegate which
-    // happens once the profile cards are rendered.
-    await waitAfterNextRender(mainViewElement.$.profiles);
+    await simulateProfilesListChanged(generateProfilesList(numberOfProfiles));
   }
 
-  // This test function simulates a full drag event cycle.
+  // This test function simulates drag event cycles.
   // It first creates multiple profiles based on `numberOfProfiles` and
-  // initialize the profile picker main view then perform some drag events:
+  // initialize the profile picker main view.
+
+  // In each cycle it performs some drag events:
   // - dragstart: with the given `dragIndex`.
   // - dragenter: multiple events through `dragEnterEvents`.
   // - dragend: with the given `dragIndex`.
   //
   // Multiple checks are done through the test to guarantee the state after each
-  // drag event.
+  // drag event:
+  //
+  // The initial profile order list is first checked.
+  // Then per drag cycle, we first make sure that the state at the start of the
+  // cycle is coherent, it should either be the initial profile order if this is
+  // the first cycle, or the ending expected profile order of the previous
+  // cycle.
+  // In each cycle the indices are reset and do not follow the profile state
+  // positions, we use these indices to check the profile movements within one
+  // cycle, where the indices will be swapped around.
+  // And finally we check the `expectedEndProfileOrder` of profile names that is
+  // resulted at the end of the cycle.
   //
   // Variables:
   // - `numberOfProfiles`: number of profiles created for the drag cycle.
-  // - `dragIndex`: the index of the card being dragged in this cycle.
-  // - `dragEnterEvents`: the list of drag enters that will happen in the cycle.
-  //    - `index`: the index of the card that will be entered.
-  //    - `expectedResultIndices`: the expected indices of profiles after the
+  // - `expectedInitialProfileOrder`: initial order of the profile names.
+  // - `dragEventCycles`: list of drag event cycles.
+  //    - `dragIndex`: the index of the card being dragged in this cycle.
+  //    - `dragEnterEvents`: the list of drag enters that will happen in the
+  //    cycle.
+  //       - `index`: the index of the card that will be entered, this will not
+  //       necessarily match with the position of the card in the list
+  //       (especially after multiple enters and resets), but rather the tile
+  //       that has the index to be entered.
+  //       - `expectedResultIndices`: the expected indices of profiles after the
   //    drag enter event.
-  async function testProfileReorderingDragCycle(dragData: {
-    numberOfProfiles: number,
-    dragIndex: number,
-    dragEnterEvents: Array<{index: number, expectedResultIndices: number[]}>,
+  //    - `expectedEndProfileOrder`: expected profile name order at the end of
+  //    the cycle.
+  async function testProfileReorderingDragCycles(dragData: {
+    expectedInitialProfileOrder: string[],
+    dragEventCycles: Array<{
+      dragIndex: number,
+      dragEnterEvents: Array<{index: number, expectedResultIndices: number[]}>,
+      expectedEndProfileOrder: string[],
+    }>,
   }) {
     // Preliminary `dragData` checks before proceeding with the actual test.
     checkTestData(
-        dragData.numberOfProfiles, dragData.dragIndex,
-        dragData.dragEnterEvents);
+        dragData.expectedInitialProfileOrder, dragData.dragEventCycles);
 
-    await setupProfileReorderingTest(dragData.numberOfProfiles);
+    const numberOfProfiles = dragData.expectedInitialProfileOrder.length;
+    await setupProfileReorderingTest(numberOfProfiles);
+    // Assert the initial profile order.
+    assertProfileNamesOrder(
+        mainViewElement.getProfileListForTesting(),
+        dragData.expectedInitialProfileOrder, 'Initial order check');
 
-    const cards = Array.from(
-        mainViewElement.shadowRoot!.querySelectorAll<ProfileCardElement>(
-            'profile-card'));
+    // ----------------- Start of the Drag Cycles -----------------
 
-    // Store the initial profile cards rects for later comparison.
-    const initialRects =
-        cards.map(card => card.getBoundingClientRect()) as DOMRect[];
+    for (let c = 0; c < dragData.dragEventCycles.length; ++c) {
+      let expectedPreviousEndProfileOrder: string[];
+      // For the first cycle, the order is the initial order.
+      // For the rest of the cycles, it is the ending order of the previous
+      // cycle.
+      if (c === 0) {
+        expectedPreviousEndProfileOrder = dragData.expectedInitialProfileOrder;
+      } else {
+        expectedPreviousEndProfileOrder =
+            dragData.dragEventCycles[c - 1]!.expectedEndProfileOrder;
+      }
+      assertProfileNamesOrder(
+          mainViewElement.getProfileListForTesting(),
+          expectedPreviousEndProfileOrder, `Cycle ${c} initial order check`);
 
-    // Equivalent to an array {0, 1, 2. ... , numberOfProfiles - 1}.
-    const initialIndices = Array.from(Array(dragData.numberOfProfiles).keys());
-    // Check that the initial positions of the profiles are aligned.
-    assertProfilesPositions(cards, null, initialRects, initialIndices);
+      const cards = Array.from(
+          mainViewElement.shadowRoot!.querySelectorAll<ProfileCardElement>(
+              'profile-card'));
 
-    // ----------------- Start of the Drag Events -----------------
+      // Store the initial profile cards rects for later comparison.
+      const initialRects =
+          cards.map(card => card.getBoundingClientRect()) as DOMRect[];
 
-    // - Perform the Drag Start.
-    cards[dragData.dragIndex]!.dispatchEvent(new DragEvent('dragstart'));
-    assertTrue(cards[dragData.dragIndex]!.classList.contains('dragging'));
-
-    // - Perform the list of Drag Enter events with position checks.
-    dragData.dragEnterEvents.forEach(event => {
-      // Perform the drag enter event.
-      cards[event.index]!.dispatchEvent(new DragEvent('dragenter'));
-      // Check that the positions of the cards are as expected after each enter
-      // events.
+      // // Equivalent to an array {0, 1, 2. ... , numberOfProfiles - 1}.
+      const initialIndices = Array.from(Array(numberOfProfiles).keys());
+      // Check that the initial positions of the profiles are aligned.
       assertProfilesPositions(
-          cards, dragData.dragIndex, initialRects, event.expectedResultIndices);
-    });
+          cards, null, initialRects, initialIndices,
+          `Cycle ${c}: initial indicies check.`);
 
-    // - Perform the Drag End.
-    cards[dragData.dragIndex]!.dispatchEvent(new DragEvent('dragend'));
-    assertFalse(cards[dragData.dragIndex]!.classList.contains('dragging'));
+      // ----------------- Start of the Drag Events -----------------
+
+      const cycle = dragData.dragEventCycles[c]!;
+      // - Perform the Drag Start.
+      cards[cycle.dragIndex]!.dispatchEvent(new DragEvent('dragstart'));
+      assertTrue(cards[cycle.dragIndex]!.classList.contains('dragging'));
+
+      // - Perform the list of Drag Enter events with position checks.
+      for (let e = 0; e < cycle.dragEnterEvents.length; ++e) {
+        const event = cycle.dragEnterEvents[e]!;
+        // Perform the drag enter event.
+        cards[event.index]!.dispatchEvent(new DragEvent('dragenter'));
+        // Check that the positions of the cards are as expected after each
+        // enter events.
+        assertProfilesPositions(
+            cards, cycle.dragIndex, initialRects, event.expectedResultIndices,
+            `Cycle ${c}, Enter ${e}: profile card positions check.`);
+      }
+
+      // - Perform the Drag End.
+      cards[cycle.dragIndex]!.dispatchEvent(new DragEvent('dragend'));
+      assertFalse(cards[cycle.dragIndex]!.classList.contains('dragging'));
+
+      assertProfileNamesOrder(
+          mainViewElement.getProfileListForTesting(),
+          cycle.expectedEndProfileOrder, `Cycle ${c} end order check`);
+    }
+  }
+
+  // A helper function that test a single cycle of drag events.
+  // It constructs the inputs for the main testing function.
+  async function testProfileReorderingDragCycle(dragData: {
+    expectedInitialProfileOrder: string[],
+    dragIndex: number,
+    dragEnterEvents: Array<{index: number, expectedResultIndices: number[]}>,
+    expectedEndProfileOrder: string[],
+  }) {
+    // Adapts the function to 1 cycle.
+    testProfileReorderingDragCycles({
+      expectedInitialProfileOrder: dragData.expectedInitialProfileOrder,
+      dragEventCycles: [{
+        dragIndex: dragData.dragIndex,
+        dragEnterEvents: dragData.dragEnterEvents,
+        expectedEndProfileOrder: dragData.expectedEndProfileOrder,
+      }],
+    });
   }
 
   test('ProfileReorder_DragStartEndNoEnter', async function() {
-    await testProfileReorderingDragCycle(
-        {numberOfProfiles: 3, dragIndex: 1, dragEnterEvents: []});
+    await testProfileReorderingDragCycle({
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
+      dragIndex: 1,
+      dragEnterEvents: [],
+      expectedEndProfileOrder: ['profile0', 'profile1', 'profile2'],
+    });
   });
 
   // This test simulates the dragged card to generate a 'dragenter' event on
   // itself (the hidden dragging card). This should have no effect on the order.
   test('ProfileReorder_DragEnterOnDraggedCardHasNoEffect', async function() {
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 3,
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
       dragIndex: 1,
       dragEnterEvents: [{index: 1, expectedResultIndices: [0, 1, 2]}],
+      expectedEndProfileOrder: ['profile0', 'profile1', 'profile2'],
     });
   });
 
   test('ProfileReorder_DragEnterOnNextCard', async function() {
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 3,
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
       dragIndex: 1,
       dragEnterEvents: [{index: 2, expectedResultIndices: [0, 2, 1]}],
+      expectedEndProfileOrder: ['profile0', 'profile2', 'profile1'],
     });
   });
 
@@ -462,32 +573,36 @@ suite('ProfilePickerMainViewTest', function() {
   // entering the initial dragging tile.
   test('ProfileReorder_DragEnterItselfAfterShifts', async function() {
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 3,
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
       dragIndex: 1,
       dragEnterEvents: [
         {index: 2, expectedResultIndices: [0, 2, 1]},
         {index: 1, expectedResultIndices: [0, 2, 1]},
       ],
+      expectedEndProfileOrder: ['profile0', 'profile2', 'profile1'],
     });
   });
 
   test('ProfileReorder_DragEnterOnFurtherCard', async function() {
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 3,
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
       dragIndex: 0,
       dragEnterEvents: [{index: 2, expectedResultIndices: [1, 2, 0]}],
+      expectedEndProfileOrder: ['profile1', 'profile2', 'profile0'],
     });
   });
 
   test('ProfileReorder_DragMultipleEnters', async function() {
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 4,
+      expectedInitialProfileOrder:
+          ['profile0', 'profile1', 'profile2', 'profile3'],
       dragIndex: 3,
       dragEnterEvents: [
         {index: 2, expectedResultIndices: [0, 1, 3, 2]},
         {index: 1, expectedResultIndices: [0, 3, 1, 2]},
         {index: 0, expectedResultIndices: [3, 0, 1, 2]},
       ],
+      expectedEndProfileOrder: ['profile3', 'profile0', 'profile1', 'profile2'],
     });
   });
 
@@ -495,7 +610,7 @@ suite('ProfilePickerMainViewTest', function() {
   // a `dragenter` event for a profile-card the reordering is not triggered and
   // the profile order is not affected.
   test('ProfileReorder_DragEnterOutOfDragCycleHasNoEffect', async function() {
-    setupProfileReorderingTest(3);
+    await setupProfileReorderingTest(3);
 
     const cards = Array.from(
         mainViewElement.shadowRoot!.querySelectorAll<ProfileCardElement>(
@@ -505,7 +620,8 @@ suite('ProfilePickerMainViewTest', function() {
     const initialRects =
         cards.map(card => card.getBoundingClientRect()) as DOMRect[];
     const initiIndices = [0, 1, 2];
-    assertProfilesPositions(cards, null, initialRects, initiIndices);
+    assertProfilesPositions(
+        cards, null, initialRects, initiIndices, 'Initial indicies check.');
 
     // Simulate a dragenter event without having a prior dragstart that started
     // the drag cycle event.
@@ -513,24 +629,28 @@ suite('ProfilePickerMainViewTest', function() {
 
     // Same assertion as the drag event should have no effect, or cause no
     // crash.
-    assertProfilesPositions(cards, null, initialRects, initiIndices);
+    assertProfilesPositions(
+        cards, null, initialRects, initiIndices,
+        'Expected same value as initial check');
   });
 
   test('ProfileReorder_SingleEnterWithReset', async function() {
     // Last enter event enters the shifted card.
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 3,
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
       dragIndex: 1,
       dragEnterEvents: [
         {index: 2, expectedResultIndices: [0, 2, 1]},
         {index: 2, expectedResultIndices: [0, 1, 2]},
       ],
+      expectedEndProfileOrder: ['profile0', 'profile1', 'profile2'],
     });
   });
 
   test('ProfileReorder_MultipleEntersWithResets', async function() {
     await testProfileReorderingDragCycle({
-      numberOfProfiles: 4,
+      expectedInitialProfileOrder:
+          ['profile0', 'profile1', 'profile2', 'profile3'],
       dragIndex: 0,
       dragEnterEvents: [
         {index: 1, expectedResultIndices: [1, 0, 2, 3]},
@@ -540,19 +660,136 @@ suite('ProfilePickerMainViewTest', function() {
         {index: 2, expectedResultIndices: [1, 0, 2, 3]},
         {index: 1, expectedResultIndices: [0, 1, 2, 3]},
       ],
+      expectedEndProfileOrder: ['profile0', 'profile1', 'profile2', 'profile3'],
+    });
+  });
+
+  test('ProfileReorder_MultipleEntersWithResetOnSameSide', async function() {
+    await testProfileReorderingDragCycle({
+      expectedInitialProfileOrder:
+          ['profile0', 'profile1', 'profile2', 'profile3'],
+      dragIndex: 3,
+      dragEnterEvents: [
+        {index: 1, expectedResultIndices: [0, 3, 1, 2]},
+        // Note that entering 1 again here is not the position 1, but the
+        // position of the card that has the index 1 (position 2 in the previous
+        // expected results).
+        {index: 1, expectedResultIndices: [0, 1, 3, 2]},
+      ],
+      expectedEndProfileOrder: ['profile0', 'profile1', 'profile3', 'profile2'],
     });
   });
 
   test(
-      'ProfileReorder_MultipleEntersOnDifferentSidesOfTheDraggingCard',
+      'ProfileReorder_MultipleEntersOnEachSidesOfTheDraggingCard',
       async function() {
         await testProfileReorderingDragCycle({
-          numberOfProfiles: 4,
+          expectedInitialProfileOrder:
+              ['profile0', 'profile1', 'profile2', 'profile3'],
           dragIndex: 2,
           dragEnterEvents: [
             {index: 3, expectedResultIndices: [0, 1, 3, 2]},
             {index: 0, expectedResultIndices: [2, 0, 1, 3]},
           ],
+          expectedEndProfileOrder:
+              ['profile2', 'profile0', 'profile1', 'profile3'],
         });
       });
+
+  test('ProfileReorder_SingleCycle', async function() {
+    await testProfileReorderingDragCycles({
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
+      dragEventCycles: [
+        {
+          dragIndex: 1,
+          dragEnterEvents: [
+            {index: 2, expectedResultIndices: [0, 2, 1]},
+            {index: 0, expectedResultIndices: [1, 0, 2]},
+          ],
+          expectedEndProfileOrder: ['profile1', 'profile0', 'profile2'],
+        },
+      ],
+    });
+  });
+
+  test('ProfileReorder_MultipleCycles', async function() {
+    await testProfileReorderingDragCycles({
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
+      dragEventCycles: [
+        {
+          dragIndex: 1,
+          dragEnterEvents: [
+            {index: 2, expectedResultIndices: [0, 2, 1]},
+          ],
+          expectedEndProfileOrder: ['profile0', 'profile2', 'profile1'],
+        },
+        {
+          dragIndex: 0,
+          dragEnterEvents: [
+            {index: 2, expectedResultIndices: [1, 2, 0]},
+          ],
+          expectedEndProfileOrder: ['profile2', 'profile1', 'profile0'],
+        },
+      ],
+    });
+  });
+
+  test('ProfileReorder_TwoIdenticalCyclesAreSymetric', async function() {
+    await testProfileReorderingDragCycles({
+      expectedInitialProfileOrder: ['profile0', 'profile1', 'profile2'],
+      dragEventCycles: [
+        {
+          dragIndex: 1,
+          dragEnterEvents: [
+            {index: 2, expectedResultIndices: [0, 2, 1]},
+          ],
+          expectedEndProfileOrder: ['profile0', 'profile2', 'profile1'],
+        },
+        {
+          dragIndex: 1,
+          dragEnterEvents: [
+            {index: 2, expectedResultIndices: [0, 2, 1]},
+          ],
+          expectedEndProfileOrder: ['profile0', 'profile1', 'profile2'],
+        },
+      ],
+    });
+  });
+
+  test('ProfileReorder_MultipleCyclesWithMultipleEnters', async function() {
+    await testProfileReorderingDragCycles({
+      expectedInitialProfileOrder:
+          ['profile0', 'profile1', 'profile2', 'profile3'],
+      dragEventCycles: [
+        {
+          dragIndex: 0,
+          dragEnterEvents: [
+            {index: 1, expectedResultIndices: [1, 0, 2, 3]},
+            {index: 2, expectedResultIndices: [1, 2, 0, 3]},
+          ],
+          expectedEndProfileOrder:
+              ['profile1', 'profile2', 'profile0', 'profile3'],
+        },
+        {
+          dragIndex: 3,
+          dragEnterEvents: [
+            {index: 1, expectedResultIndices: [0, 3, 1, 2]},
+            {index: 0, expectedResultIndices: [3, 0, 1, 2]},
+            {index: 1, expectedResultIndices: [0, 1, 3, 2]},
+          ],
+          expectedEndProfileOrder:
+              ['profile1', 'profile2', 'profile3', 'profile0'],
+        },
+        {
+          dragIndex: 0,
+          dragEnterEvents: [
+            {index: 1, expectedResultIndices: [1, 0, 2, 3]},
+            {index: 2, expectedResultIndices: [1, 2, 0, 3]},
+          ],
+          expectedEndProfileOrder:
+              ['profile2', 'profile3', 'profile1', 'profile0'],
+        },
+      ],
+    });
+  });
 });

@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">Het na weerspieëling gewissel</translation>
 <translation id="2031987842108996681">Rooi kanaal</translation>
 <translation id="2060505056492490888">"<ph name="DOT" />" word op die verkeerde plek gebruik in "<ph name="INVALIDDOMAIN" />".</translation>
+<translation id="2068711044993563745">Minimum waarde (<ph name="MINIMUM" />) moet minder as die maksimum waarde wees (<ph name="MAXIMUM" />).</translation>
 <translation id="2148716181193084225">Vandag</translation>
 <translation id="2226276347425096477">Verkort hierdie teks na <ph name="MAX_CHARACTERS" /> karakters of minder (jy gebruik tans <ph name="CURRENT_LENGTH" /> karakters).</translation>
 <translation id="2247351761944213033">Week <ph name="WEEKNUMBER" />, <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">Merk asseblief hierdie blokkie as jy wil voortgaan.</translation>
 <translation id="2908441821576996758">Voer asseblief 'n kommageskeide lys e-posadresse in.</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">vertoon oudiobeskrywingkieslys</translation>
 <translation id="3075154866155599887">Voer asseblief 'n geldige waarde in. Die veld is onvolledig of het 'n ongeldige datum.</translation>
 <translation id="310520048233152454">Voer 'n URL in</translation>
 <translation id="3220661731597678625">huidige stap</translation>

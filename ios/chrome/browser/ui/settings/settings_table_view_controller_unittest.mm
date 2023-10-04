@@ -25,6 +25,7 @@
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/browser_state/test_chrome_browser_state.h"
+#import "ios/chrome/browser/shared/model/browser_state/test_chrome_browser_state_manager.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/public/commands/application_commands.h"
 #import "ios/chrome/browser/shared/public/commands/browsing_data_commands.h"
@@ -40,13 +41,17 @@
 #import "ios/chrome/browser/signin/fake_authentication_service_delegate.h"
 #import "ios/chrome/browser/signin/fake_system_identity.h"
 #import "ios/chrome/browser/signin/fake_system_identity_manager.h"
-#import "ios/chrome/browser/sync/mock_sync_service_utils.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/mock_sync_service_utils.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/tabs/inactive_tabs/features.h"
+#import "ios/chrome/browser/tabs/tab_pickup/features.h"
 #import "ios/chrome/browser/ui/authentication/cells/table_view_account_item.h"
 #import "ios/chrome/browser/ui/settings/settings_table_view_controller_constants.h"
-#import "ios/chrome/grit/ios_chromium_strings.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_chrome_browser_state_manager.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/chrome/test/testing_application_context.h"
 #import "ios/web/public/test/web_task_environment.h"
 #import "testing/gtest/include/gtest/gtest.h"
 #import "testing/gtest_mac.h"
@@ -78,6 +83,16 @@ class SettingsTableViewControllerTest : public ChromeTableViewControllerTest {
             &password_manager::BuildPasswordStore<
                 web::BrowserState, password_manager::TestPasswordStore>));
     chrome_browser_state_ = builder.Build();
+
+    // Prepare mocks for PushNotificationClient dependency
+    TestingApplicationContext::GetGlobal()->SetLocalState(nullptr);
+    test_manager_ =
+        std::make_unique<TestChromeBrowserStateManager>(base::FilePath());
+    test_manager_pref_service_ =
+        TestingApplicationContext::GetGlobal()->GetLocalState();
+    TestingApplicationContext::GetGlobal()->SetLocalState(GetLocalState());
+    TestingApplicationContext::GetGlobal()->SetChromeBrowserStateManager(
+        test_manager_.get());
 
     browser_ = std::make_unique<TestBrowser>(chrome_browser_state_.get());
     browser_state_ = TestChromeBrowserState::Builder().Build();
@@ -118,6 +133,11 @@ class SettingsTableViewControllerTest : public ChromeTableViewControllerTest {
     // Cleanup any policies left from the test.
     [[NSUserDefaults standardUserDefaults]
         removeObjectForKey:kPolicyLoaderIOSConfigurationKey];
+
+    TestingApplicationContext::GetGlobal()->SetLocalState(
+        test_manager_pref_service_);
+    test_manager_.reset();
+    TestingApplicationContext::GetGlobal()->SetLocalState(GetLocalState());
 
     [static_cast<SettingsTableViewController*>(controller())
         settingsWillBeDismissed];
@@ -186,6 +206,7 @@ class SettingsTableViewControllerTest : public ChromeTableViewControllerTest {
   // Needed for test browser state created by TestChromeBrowserState().
   web::WebTaskEnvironment task_environment_;
   IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  PrefService* test_manager_pref_service_;
 
   FakeSystemIdentity* fake_identity_ = nullptr;
   AuthenticationService* auth_service_ = nullptr;
@@ -193,6 +214,7 @@ class SettingsTableViewControllerTest : public ChromeTableViewControllerTest {
   scoped_refptr<password_manager::TestPasswordStore> password_store_mock_;
 
   std::unique_ptr<TestChromeBrowserState> chrome_browser_state_;
+  std::unique_ptr<ios::ChromeBrowserStateManager> test_manager_;
   std::unique_ptr<TestBrowser> browser_;
   std::unique_ptr<TestChromeBrowserState> browser_state_;
   SceneState* scene_state_;
@@ -516,4 +538,24 @@ TEST_F(SettingsTableViewControllerTest, DontHoldAccountErrorWhenNoError) {
       base::apple::ObjCCast<TableViewAccountItem>(account_items[0]);
   ASSERT_TRUE(identityAccountItem != nil);
   EXPECT_FALSE(identityAccountItem.shouldDisplayError);
+}
+
+// Verifies that if the Save to Photos flag is enabled and Save to Photos is
+// supported, then there is a Downloads Settings item in the expected section.
+TEST_F(SettingsTableViewControllerTest, HasDownloadsMenuItem) {
+  base::test::ScopedFeatureList features;
+  features.InitAndEnableFeature(kIOSSaveToPhotos);
+
+  CreateController();
+  CheckController();
+
+  // The section to check for depends on some other features.
+  SettingsSectionIdentifier section =
+      IsInactiveTabsAvailable() || IsTabPickupEnabled()
+          ? SettingsSectionIdentifierInfo
+          : SettingsSectionIdentifierAdvanced;
+
+  EXPECT_TRUE([controller().tableViewModel
+      hasItemForItemType:SettingsItemTypeDownloadsSettings
+       sectionIdentifier:section]);
 }

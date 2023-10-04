@@ -22,10 +22,12 @@
 #include "third_party/skia/include/core/SkColorSpace.h"
 #include "third_party/skia/include/gpu/MutableTextureState.h"
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
 #include "ui/gl/egl_util.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/scoped_egl_image.h"
+#include "ui/gl/scoped_restore_texture.h"
 
 #define EGL_TEXTURE_INTERNAL_FORMAT_ANGLE 0x345D
 #define EGL_VULKAN_IMAGE_ANGLE 0x34D3
@@ -292,6 +294,8 @@ bool AngleVulkanImageBacking::Initialize(
     }
   }
 
+  // External sampling is supported only when initializing from GMB.
+  CHECK(!format().PrefersExternalSampler());
   int num_planes = format().NumberOfPlanes();
   vk_textures_.reserve(num_planes);
   for (int plane = 0; plane < num_planes; ++plane) {
@@ -306,7 +310,7 @@ bool AngleVulkanImageBacking::Initialize(
       return false;
     }
 
-    vk_textures_.emplace_back(std::move(vulkan_image));
+    vk_textures_.emplace_back(std::move(vulkan_image), color_space());
   }
 
   if (!data.empty()) {
@@ -326,7 +330,7 @@ bool AngleVulkanImageBacking::Initialize(
 
 bool AngleVulkanImageBacking::InitializeWihGMB(
     gfx::GpuMemoryBufferHandle handle) {
-  DCHECK(format().is_single_plane());
+  DCHECK(format().is_single_plane() || format().PrefersExternalSampler());
 
   auto* vulkan_implementation =
       context_state_->vk_context_provider()->GetVulkanImplementation();
@@ -334,7 +338,9 @@ bool AngleVulkanImageBacking::InitializeWihGMB(
   DCHECK(vulkan_implementation->CanImportGpuMemoryBuffer(device_queue,
                                                          handle.type));
 
-  VkFormat vk_format = ToVkFormat(format(), /*plane_index=*/0);
+  VkFormat vk_format = format().PrefersExternalSampler()
+                           ? ToVkFormatExternalSampler(format())
+                           : ToVkFormatSinglePlanar(format());
   auto vulkan_image = vulkan_implementation->CreateImageFromGpuMemoryHandle(
       device_queue, std::move(handle), size(), vk_format, color_space());
 
@@ -342,7 +348,7 @@ bool AngleVulkanImageBacking::InitializeWihGMB(
     return false;
   }
 
-  vk_textures_.emplace_back(std::move(vulkan_image));
+  vk_textures_.emplace_back(std::move(vulkan_image), color_space());
 
   SetCleared();
 
@@ -542,7 +548,8 @@ void AngleVulkanImageBacking::PrepareBackendTexture() {
 
   for (size_t i = 0; i < vk_textures_.size(); ++i) {
     auto vk_layout = GLImageLayoutToVkImageLayout(gl_layouts_[i]);
-    vk_textures_[i].backend_texture.setVkImageLayout(vk_layout);
+    GrBackendTextures::SetVkImageLayout(&vk_textures_[i].backend_texture,
+                                        vk_layout);
   }
 }
 
@@ -638,6 +645,15 @@ void AngleVulkanImageBacking::EndAccessSkia() {
 bool AngleVulkanImageBacking::InitializePassthroughTexture() {
   DCHECK(gl_textures_.empty());
 
+  // It is not possible to import into GL when using external sampling.
+  // Short-circuit out if this is requested (it should not be requested in
+  // production, but might be in fuzzing flows).
+  if (format().PrefersExternalSampler()) {
+    LOG(ERROR)
+        << "Importing textures with external sampling into GL is not possible";
+    return false;
+  }
+
   int num_planes = format().NumberOfPlanes();
   gl_textures_.reserve(num_planes);
   for (int plane = 0; plane < num_planes; ++plane) {
@@ -662,8 +678,13 @@ bool AngleVulkanImageBacking::InitializePassthroughTexture() {
         /*framebuffer_attachment_angle=*/true, &passthrough_texture, nullptr);
     passthrough_texture->SetEstimatedSize(GetEstimatedSize());
 
+    // NOTE: We pass `restore_prev_even_if_invalid=true` to maintain behavior
+    // from when this class was using a duplicate-but-not-identical utility.
+    // TODO(crbug.com/1367187): Eliminate this behavior with a Finch
+    // killswitch.
     gl::GLApi* api = gl::g_current_gl_context;
-    ScopedRestoreTexture scoped_restore(api, GL_TEXTURE_2D);
+    gl::ScopedRestoreTexture scoped_restore(
+        api, GL_TEXTURE_2D, /*restore_prev_even_if_invalid=*/true);
     api->glBindTextureFn(GL_TEXTURE_2D, texture_id);
 
     glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, egl_image.get());

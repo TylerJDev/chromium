@@ -960,9 +960,6 @@ class MathFunctionParser {
               is_percentage_allowed, allowed_anchor_queries),
           value_range);
     }
-    if (calc_value_ && calc_value_->HasComparisons()) {
-      context.Count(WebFeature::kCSSComparisonFunctions);
-    }
   }
 
   const CSSMathFunctionValue* Value() const { return calc_value_; }
@@ -1433,28 +1430,6 @@ CSSPrimitiveValue* ConsumeAngle(
   }
 
   return ConsumeMathFunctionAngle(range, context);
-}
-
-// ConsumeHue takes an angle as input (as angle in radians or in degrees, or as
-// plain number in degrees) and returns a plain number in degrees.
-CSSPrimitiveValue* ConsumeHue(
-    CSSParserTokenRange& range,
-    const CSSParserContext& context,
-    absl::optional<WebFeature> unitless_zero_feature) {
-  CSSPrimitiveValue* value = ConsumeAngle(range, context, absl::nullopt);
-  double angle_value;
-  if (!value) {
-    value = ConsumeNumber(range, context, CSSPrimitiveValue::ValueRange::kAll);
-    if (!value) {
-      return nullptr;
-    }
-    angle_value = value->GetDoubleValue();
-  } else {
-    angle_value = value->ComputeDegrees();
-  }
-  return CSSNumericLiteralValue::Create(
-      fmod(fmod(angle_value, 360.0) + 360.0, 360.0),
-      CSSPrimitiveValue::UnitType::kNumber);
 }
 
 CSSPrimitiveValue* ConsumeTime(CSSParserTokenRange& range,
@@ -3256,21 +3231,16 @@ void CountKeywordOnlyPropertyUsage(CSSPropertyID property,
   }
   switch (property) {
     case CSSPropertyID::kAppearance:
-      // TODO(crbug.com/924486): Remove CSS value slider-vertical
-      // and the associated warnings.
-      if (value_id == CSSValueID::kSliderVertical ||
-          (!RuntimeEnabledFeatures::RemoveNonStandardAppearanceValueEnabled() &&
-           (value_id == CSSValueID::kInnerSpinButton ||
-            value_id == CSSValueID::kMediaSlider ||
-            value_id == CSSValueID::kMediaSliderthumb ||
-            value_id == CSSValueID::kMediaVolumeSlider ||
-            value_id == CSSValueID::kMediaVolumeSliderthumb ||
-            value_id == CSSValueID::kPushButton ||
-            value_id == CSSValueID::kSquareButton ||
-            value_id == CSSValueID::kSliderHorizontal ||
-            value_id == CSSValueID::kSliderthumbHorizontal ||
-            value_id == CSSValueID::kSliderthumbVertical ||
-            value_id == CSSValueID::kSearchfieldCancelButton))) {
+    case CSSPropertyID::kAliasWebkitAppearance: {
+      // TODO(crbug.com/924486): Remove warnings after shipping.
+      if ((RuntimeEnabledFeatures::
+               NonStandardAppearanceValuesHighUsageEnabled() &&
+           CSSParserFastPaths::IsNonStandardAppearanceValuesHighUsage(
+               value_id)) ||
+          (RuntimeEnabledFeatures::
+               NonStandardAppearanceValuesLowUsageEnabled() &&
+           CSSParserFastPaths::IsNonStandardAppearanceValuesLowUsage(
+               value_id))) {
         if (const auto* document = context.GetDocument()) {
           document->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
               mojom::blink::ConsoleMessageSource::kDeprecation,
@@ -3282,12 +3252,31 @@ void CountKeywordOnlyPropertyUsage(CSSPropertyID property,
               document->GetExecutionContext(),
               WebFeature::kCSSValueAppearanceNonStandard);
         }
+        // We make sure feature is counted even without document context.
+        context.Count(WebFeature::kCSSValueAppearanceNonStandard);
       }
-      [[fallthrough]];
-      // This function distinguishes 'appearance' and '-webkit-appearance'
-      // though other property aliases are handles as their aliased properties.
-      // See Appearance::ParseSingleValue().
-    case CSSPropertyID::kAliasWebkitAppearance: {
+      // TODO(crbug.com/1426629): Remove warning after shipping.
+      if (RuntimeEnabledFeatures::
+              NonStandardAppearanceValueSliderVerticalEnabled() &&
+          value_id == CSSValueID::kSliderVertical) {
+        if (const auto* document = context.GetDocument()) {
+          // TODO(crbug.com/681917): Remove "currently experimental" note when
+          // feature FormControlsVerticalWritingModeSupport is in stable.
+          document->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
+              mojom::blink::ConsoleMessageSource::kDeprecation,
+              mojom::blink::ConsoleMessageLevel::kWarning,
+              "The keyword 'slider-vertical' specified to an 'appearance' "
+              "property is not standardized. It will be removed in the future "
+              "and replaced by vertical writing-mode (currently "
+              "experimental)."));
+          Deprecation::CountDeprecation(
+              document->GetExecutionContext(),
+              WebFeature::kCSSValueAppearanceSliderVertical);
+        }
+        // We make double-sure the feature kCSSValueAppearanceSliderVertical is
+        // counted here. It should also be counted below.
+        context.Count(WebFeature::kCSSValueAppearanceSliderVertical);
+      }
       WebFeature feature;
       if (value_id == CSSValueID::kNone) {
         feature = WebFeature::kCSSValueAppearanceNone;
@@ -3379,19 +3368,61 @@ void CountKeywordOnlyPropertyUsage(CSSPropertyID property,
   }
 }
 
+void WarnInvalidKeywordPropertyUsage(CSSPropertyID property,
+                                     const CSSParserContext& context,
+                                     CSSValueID value_id) {
+  if (!context.IsUseCounterRecordingEnabled()) {
+    return;
+  }
+  switch (property) {
+    case CSSPropertyID::kAppearance:
+    case CSSPropertyID::kAliasWebkitAppearance: {
+      // TODO(crbug.com/924486, crbug.com/1426629): Remove warnings after
+      // shipping.
+      if ((!RuntimeEnabledFeatures::
+               NonStandardAppearanceValuesHighUsageEnabled() &&
+           CSSParserFastPaths::IsNonStandardAppearanceValuesHighUsage(
+               value_id)) ||
+          (!RuntimeEnabledFeatures::
+               NonStandardAppearanceValuesLowUsageEnabled() &&
+           CSSParserFastPaths::IsNonStandardAppearanceValuesLowUsage(
+               value_id)) ||
+          (!RuntimeEnabledFeatures::
+               NonStandardAppearanceValueSliderVerticalEnabled() &&
+           value_id == CSSValueID::kSliderVertical)) {
+        if (const auto* document = context.GetDocument()) {
+          document->AddConsoleMessage(
+              MakeGarbageCollected<ConsoleMessage>(
+                  mojom::blink::ConsoleMessageSource::kOther,
+                  mojom::blink::ConsoleMessageLevel::kWarning,
+                  String("The keyword '") + getValueName(value_id) +
+                      "' used on the 'appearance' property was deprecated and "
+                      "has now been removed. It will no longer have any "
+                      "effect."),
+              true);
+        }
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 const CSSValue* ParseLonghand(CSSPropertyID unresolved_property,
                               CSSPropertyID current_shorthand,
                               const CSSParserContext& context,
                               CSSParserTokenRange& range) {
   CSSPropertyID property_id = ResolveCSSPropertyID(unresolved_property);
+  CSSValueID value_id = range.Peek().Id();
   DCHECK(!CSSProperty::Get(property_id).IsShorthand());
   if (CSSParserFastPaths::IsHandledByKeywordFastPath(property_id)) {
     if (CSSParserFastPaths::IsValidKeywordPropertyAndValue(
             property_id, range.Peek().Id(), context.Mode())) {
-      CountKeywordOnlyPropertyUsage(property_id, context, range.Peek().Id());
+      CountKeywordOnlyPropertyUsage(property_id, context, value_id);
       return ConsumeIdent(range);
     }
-
+    WarnInvalidKeywordPropertyUsage(property_id, context, value_id);
     return nullptr;
   }
 
@@ -5038,7 +5069,7 @@ CSSValue* ConsumeFontStyle(CSSParserTokenRange& range,
       ConsumeIdent<CSSValueID::kOblique>(range);
 
   CSSPrimitiveValue* start_angle = ConsumeAngle(
-      range, context, absl::nullopt, MinObliqueValue(), MaxObliqueValue());
+      range, context, absl::nullopt, kMinObliqueValue, kMaxObliqueValue);
   if (!start_angle) {
     return oblique_identifier;
   }
@@ -5054,7 +5085,7 @@ CSSValue* ConsumeFontStyle(CSSParserTokenRange& range,
   }
 
   CSSPrimitiveValue* end_angle = ConsumeAngle(
-      range, context, absl::nullopt, MinObliqueValue(), MaxObliqueValue());
+      range, context, absl::nullopt, kMinObliqueValue, kMaxObliqueValue);
   if (!end_angle || !IsAngleWithinLimits(end_angle)) {
     return nullptr;
   }
@@ -5335,13 +5366,13 @@ CSSValue* ConsumeGridBreadth(CSSParserTokenRange& range,
     return ConsumeIdent(range);
   }
   if (token.GetType() == kDimensionToken &&
-      token.GetUnitType() == CSSPrimitiveValue::UnitType::kFraction) {
+      token.GetUnitType() == CSSPrimitiveValue::UnitType::kFlex) {
     if (token.NumericValue() < 0) {
       return nullptr;
     }
     return CSSNumericLiteralValue::Create(
         range.ConsumeIncludingWhitespace().NumericValue(),
-        CSSPrimitiveValue::UnitType::kFraction);
+        CSSPrimitiveValue::UnitType::kFlex);
   }
   return ConsumeLengthOrPercent(range, context,
                                 CSSPrimitiveValue::ValueRange::kNonNegative,
@@ -6334,7 +6365,7 @@ CSSValue* ConsumeOffsetRotate(CSSParserTokenRange& range,
 
 CSSValue* ConsumeInitialLetter(CSSParserTokenRange& range,
                                const CSSParserContext& context) {
-  if (auto* normal = ConsumeIdent<CSSValueID::kNormal>(range)) {
+  if (ConsumeIdent<CSSValueID::kNormal>(range)) {
     return CSSIdentifierValue::Create(CSSValueID::kNormal);
   }
 
@@ -6978,13 +7009,14 @@ CSSValue* ConsumeContainerName(CSSParserTokenRange& range,
 }
 
 CSSValue* ConsumeContainerType(CSSParserTokenRange& range) {
-  // container-type: normal | [ [ size | inline-size ] || sticky ]
+  // container-type: normal | [ [ size | inline-size ] || sticky || snap ]
   if (CSSValue* value = ConsumeIdent<CSSValueID::kNormal>(range)) {
     return value;
   }
 
   CSSValue* size_value = nullptr;
   CSSValue* sticky_value = nullptr;
+  CSSValue* snap_value = nullptr;
 
   do {
     if (!size_value) {
@@ -7001,6 +7033,13 @@ CSSValue* ConsumeContainerType(CSSParserTokenRange& range) {
         continue;
       }
     }
+    if (!snap_value &&
+        RuntimeEnabledFeatures::CSSSnapContainerQueriesEnabled()) {
+      snap_value = ConsumeIdent<CSSValueID::kSnap>(range);
+      if (snap_value) {
+        continue;
+      }
+    }
     return nullptr;
   } while (!range.AtEnd());
 
@@ -7010,6 +7049,9 @@ CSSValue* ConsumeContainerType(CSSParserTokenRange& range) {
   }
   if (sticky_value) {
     list->Append(*sticky_value);
+  }
+  if (snap_value) {
+    list->Append(*snap_value);
   }
   return list;
 }

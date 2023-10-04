@@ -48,8 +48,8 @@
 #include "third_party/blink/renderer/core/layout/geometry/writing_mode_converter.h"
 #include "third_party/blink/renderer/core/layout/layout_block.h"
 #include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
+#include "third_party/blink/renderer/core/layout/layout_text_combine.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text_combine.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_abstract_inline_text_box.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_item.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_cursor.h"
@@ -190,18 +190,17 @@ void LayoutText::Trace(Visitor* visitor) const {
   LayoutObject::Trace(visitor);
 }
 
-LayoutText* LayoutText::CreateEmptyAnonymous(
-    Document& doc,
-    scoped_refptr<const ComputedStyle> style) {
+LayoutText* LayoutText::CreateEmptyAnonymous(Document& doc,
+                                             const ComputedStyle* style) {
   auto* text = MakeGarbageCollected<LayoutText>(nullptr, StringImpl::empty_);
   text->SetDocumentForAnonymous(&doc);
-  text->SetStyle(std::move(style));
+  text->SetStyle(style);
   return text;
 }
 
 LayoutText* LayoutText::CreateAnonymousForFormattedText(
     Document& doc,
-    scoped_refptr<const ComputedStyle> style,
+    const ComputedStyle* style,
     String text) {
   auto* layout_text =
       MakeGarbageCollected<LayoutText>(nullptr, std::move(text));
@@ -586,7 +585,7 @@ void LayoutText::AbsoluteQuadsForRange(Vector<gfx::QuadF>& quads,
     if (!MapDOMOffsetToTextContentOffset(*mapping, &start, &end))
       return;
 
-    const auto* const text_combine = DynamicTo<LayoutNGTextCombine>(Parent());
+    const auto* const text_combine = DynamicTo<LayoutTextCombine>(Parent());
 
     // We don't want to add collapsed (i.e., start == end) quads from text
     // fragments that intersect [start, end] only at the boundary, unless they
@@ -694,7 +693,7 @@ PositionWithAffinity LayoutText::PositionForPoint(
       point_in_contents += PhysicalOffset(
           containing_block_flow->PixelSnappedScrolledContentOffset());
     }
-    const auto* const text_combine = DynamicTo<LayoutNGTextCombine>(Parent());
+    const auto* const text_combine = DynamicTo<LayoutTextCombine>(Parent());
     const NGPhysicalBoxFragment* container_fragment = nullptr;
     PhysicalOffset point_in_container_fragment;
     DCHECK(!IsSVGInlineText());
@@ -987,7 +986,7 @@ void LayoutText::ForceSetText(String text) {
 
 void LayoutText::SetNeedsLayoutAndIntrinsicWidthsRecalcAndFullPaintInvalidation(
     LayoutInvalidationReasonForTracing reason) {
-  auto* const text_combine = DynamicTo<LayoutNGTextCombine>(Parent());
+  auto* const text_combine = DynamicTo<LayoutTextCombine>(Parent());
   if (UNLIKELY(text_combine)) {
     // Number of characters in text may change compressed font or scaling of
     // text combine. So, we should invalidate |LayoutNGTextCombine| to repaint.
@@ -1071,13 +1070,13 @@ PhysicalRect LayoutText::PhysicalLinesBoundingBox() const {
   if (result == PhysicalRect())
     result.offset = FirstLineBoxTopLeft();
   // Note: |result.offset| is relative to container fragment.
-  const auto* const text_combine = DynamicTo<LayoutNGTextCombine>(Parent());
+  const auto* const text_combine = DynamicTo<LayoutTextCombine>(Parent());
   if (UNLIKELY(text_combine))
     return text_combine->AdjustRectForBoundingBox(result);
   return result;
 }
 
-PhysicalRect LayoutText::PhysicalVisualOverflowRect() const {
+PhysicalRect LayoutText::VisualOverflowRect() const {
   NOT_DESTROYED();
   DCHECK(IsInLayoutNGInlineFormattingContext());
   return NGFragmentItem::LocalVisualRectFor(*this);
@@ -1085,7 +1084,7 @@ PhysicalRect LayoutText::PhysicalVisualOverflowRect() const {
 
 PhysicalRect LayoutText::LocalVisualRectIgnoringVisibility() const {
   NOT_DESTROYED();
-  return UnionRect(PhysicalVisualOverflowRect(), LocalSelectionVisualRect());
+  return UnionRect(VisualOverflowRect(), LocalSelectionVisualRect());
 }
 
 PhysicalRect LayoutText::LocalSelectionVisualRect() const {
@@ -1367,7 +1366,7 @@ const DisplayItemClient* LayoutText::GetSelectionDisplayItemClient() const {
     return nullptr;
   // When |this| is in text-combine box, we should use text-combine box as
   // display client item to paint caret with affine transform.
-  const auto* const text_combine = DynamicTo<LayoutNGTextCombine>(Parent());
+  const auto* const text_combine = DynamicTo<LayoutTextCombine>(Parent());
   if (UNLIKELY(text_combine) && text_combine->NeedsAffineTransformInPaint())
     return text_combine;
   if (!IsSelected())
@@ -1391,7 +1390,7 @@ DOMNodeId LayoutText::EnsureNodeId() {
     if (auto* content_capture_manager = GetOrResetContentCaptureManager()) {
       if (auto* node = GetNode()) {
         content_capture_manager->ScheduleTaskIfNeeded(*node);
-        node_id_ = DOMNodeIds::IdForNode(node);
+        node_id_ = node->GetDomNodeId();
       }
     }
   }

@@ -11,7 +11,6 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
 #include "media/base/media_switches.h"
@@ -103,7 +102,8 @@ H264Decoder::H264Accelerator::ParseEncryptedSliceHeader(
 
 H264Decoder::H264Accelerator::Status H264Decoder::H264Accelerator::SetStream(
     base::span<const uint8_t> stream,
-    const DecryptConfig* decrypt_config) {
+    const DecryptConfig* decrypt_config,
+    uint64_t secure_handle) {
   return H264Decoder::H264Accelerator::Status::kNotSupported;
 }
 
@@ -161,6 +161,8 @@ void H264Decoder::Reset() {
 
   recovery_frame_num_.reset();
   recovery_frame_cnt_.reset();
+
+  secure_handle_ = 0;
 
   // If we are in kDecoding, we can resume without processing an SPS.
   // The state becomes kDecoding again, (1) at the first IDR slice or (2) at
@@ -1074,6 +1076,8 @@ bool H264Decoder::FinishPicture(scoped_refptr<H264Picture> pic) {
     dpb_.StorePic(std::move(pic));
   }
 
+  secure_handle_ = 0;
+
   return true;
 }
 
@@ -1183,8 +1187,6 @@ bool H264Decoder::ProcessSPS(int sps_id,
   VideoChromaSampling new_chroma_sampling = sps->GetChromaSampling();
   if (new_chroma_sampling != chroma_sampling_) {
     chroma_sampling_ = new_chroma_sampling;
-    base::UmaHistogramEnumeration("Media.PlatformVideoDecoding.ChromaSampling",
-                                  chroma_sampling_);
   }
 
   if (chroma_sampling_ != VideoChromaSampling::k420) {
@@ -1448,6 +1450,12 @@ void H264Decoder::SetStream(int32_t id, const DecoderBuffer& decoder_buffer) {
     parser_.SetStream(ptr, size);
     current_decrypt_config_ = nullptr;
   }
+  if (decoder_buffer.has_side_data() &&
+      decoder_buffer.side_data()->secure_handle) {
+    secure_handle_ = decoder_buffer.side_data()->secure_handle;
+  } else {
+    secure_handle_ = 0;
+  }
 }
 
 H264Decoder::DecodeResult H264Decoder::Decode() {
@@ -1461,7 +1469,7 @@ H264Decoder::DecodeResult H264Decoder::Decode() {
     // originally set in case the accelerator needs to return kTryAgain.
     H264Accelerator::Status result = accelerator_->SetStream(
         base::span<const uint8_t>(current_stream_, current_stream_size_),
-        current_decrypt_config_.get());
+        current_decrypt_config_.get(), secure_handle_);
     switch (result) {
       case H264Accelerator::Status::kOk:
       case H264Accelerator::Status::kNotSupported:

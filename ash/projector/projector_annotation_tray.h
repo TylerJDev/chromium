@@ -55,10 +55,12 @@ class ProjectorAnnotationTray : public TrayBackgroundView,
   TrayBubbleView* GetBubbleView() override;
   views::Widget* GetBubbleWidget() const override;
   void OnThemeChanged() override;
+  void HideBubble(const TrayBubbleView* bubble_view) override;
 
   // SessionObserver:
   void OnActiveUserPrefServiceChanged(PrefService* pref_service) override;
 
+  void OnTrayButtonPressed(const ui::Event& event);
   void HideAnnotationTray();
   void SetTrayEnabled(bool enabled);
   void ToggleAnnotator();
@@ -81,6 +83,9 @@ class ProjectorAnnotationTray : public TrayBackgroundView,
   void ResetTray();
 
   std::u16string GetTooltip();
+
+  // Sets the image with the color that corresponds to the active state.
+  void SetIconImage(bool is_active);
 
   // Image view of the tray icon.
   const raw_ptr<views::ImageView, ExperimentalAsh> image_view_;

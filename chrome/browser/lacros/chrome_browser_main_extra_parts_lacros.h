@@ -22,13 +22,13 @@ class DriveFsCache;
 class DownloadControllerClientLacros;
 class ForceInstalledTrackerLacros;
 class FullscreenControllerClientLacros;
+class LacrosAppsPublisher;
 class LacrosExtensionAppsController;
 class LacrosExtensionAppsPublisher;
 class LacrosFileSystemProvider;
 class KioskSessionServiceLacros;
 class FieldTrialObserver;
 class NetworkChangeManagerBridge;
-class QuickAnswersController;
 class StandaloneBrowserTestController;
 class TabletModePageBehavior;
 class UiMetricRecorderLacros;
@@ -40,6 +40,10 @@ class MultitaskMenuNudgeDelegateLacros;
 namespace arc {
 class ArcIconCacheDelegateProvider;
 }  // namespace arc
+
+namespace chromeos {
+class ReadWriteCardsManager;
+}  // namespace chromeos
 
 namespace crosapi {
 class ClipboardHistoryLacros;
@@ -143,6 +147,9 @@ class ChromeBrowserMainExtraPartsLacros : public ChromeBrowserMainExtraParts {
   // Receives web app control commands from ash.
   std::unique_ptr<crosapi::WebAppProviderBridgeLacros> web_app_provider_bridge_;
 
+  // Sends Lacros events to ash.
+  std::unique_ptr<LacrosAppsPublisher> lacros_apps_publisher_;
+
   // Sends Chrome app (AKA extension app) events to ash.
   std::unique_ptr<LacrosExtensionAppsPublisher> chrome_apps_publisher_;
 
@@ -174,8 +181,8 @@ class ChromeBrowserMainExtraPartsLacros : public ChromeBrowserMainExtraParts {
   std::unique_ptr<WebAuthnRequestRegistrarLacros>
       webauthn_request_registrar_lacros_;
 
-  // Handles Quick answers requests from the Lacros browser.
-  std::unique_ptr<QuickAnswersController> quick_answers_controller_;
+  // Handles read write cards requests from the Lacros browser.
+  std::unique_ptr<chromeos::ReadWriteCardsManager> read_write_cards_manager_;
 
   // Updates Blink preferences on tablet mode state change.
   std::unique_ptr<TabletModePageBehavior> tablet_mode_page_behavior_;

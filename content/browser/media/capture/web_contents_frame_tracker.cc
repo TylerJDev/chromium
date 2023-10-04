@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
@@ -17,6 +18,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "components/viz/common/surfaces/video_capture_target.h"
 #include "content/browser/media/capture/web_contents_video_capture_device.h"
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/browser/web_contents/web_contents_impl.h"
@@ -64,8 +66,8 @@ class WebContentsContext : public WebContentsFrameTracker::Context {
     return absl::nullopt;
   }
 
-  viz::FrameSinkId GetFrameSinkIdForCapture() override {
-    return static_cast<WebContentsImpl*>(contents_)->GetCaptureFrameSinkId();
+  WebContentsImpl::CaptureTarget GetCaptureTarget() override {
+    return static_cast<WebContentsImpl*>(contents_)->GetCaptureTarget();
   }
 
   void IncrementCapturerCount(const gfx::Size& capture_size) override {
@@ -108,6 +110,14 @@ class WebContentsContext : public WebContentsFrameTracker::Context {
   // The backing WebContents.
   raw_ptr<WebContents, DanglingUntriaged> contents_;
 };
+
+viz::VideoCaptureSubTarget DeriveSubTarget(base::Token crop_id) {
+  if (base::FeatureList::IsEnabled(media::kUseElementInsteadOfRegionCapture)) {
+    return viz::SubtreeCaptureId(crop_id);
+  } else {
+    return crop_id;
+  }
+}
 
 }  // namespace
 
@@ -179,8 +189,9 @@ void WebContentsFrameTracker::SetCapturedContentSize(
     const gfx::Size& content_size) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (!web_contents())
+  if (!web_contents()) {
     return;
+  }
 
   // For efficiency, this function should only be called when the captured
   // content size changes. The caller is responsible for enforcing that.
@@ -438,10 +449,12 @@ void WebContentsFrameTracker::Crop(
 
   // If we don't have a target yet, we can store the crop ID but cannot actually
   // crop yet.
-  if (!target_frame_sink_id_.is_valid())
+  if (!target_frame_sink_id_.is_valid()) {
     return;
+  }
 
-  const viz::VideoCaptureTarget target(target_frame_sink_id_, crop_id_);
+  const viz::VideoCaptureTarget target(target_frame_sink_id_,
+                                       DeriveSubTarget(crop_id_));
   device_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(
@@ -480,18 +493,18 @@ void WebContentsFrameTracker::OnPossibleTargetChange() {
     return;
   }
 
-  viz::FrameSinkId frame_sink_id;
-  if (context_) {
-    frame_sink_id = context_->GetFrameSinkIdForCapture();
-  }
+  const WebContentsImpl::CaptureTarget capture_target =
+      context_ ? context_->GetCaptureTarget()
+               : WebContentsImpl::CaptureTarget{};
 
   // TODO(crbug.com/1264849): Clear |crop_id_| when share-this-tab-instead
   // is clicked.
-  if (frame_sink_id != target_frame_sink_id_) {
-    target_frame_sink_id_ = frame_sink_id;
+  if (capture_target.sink_id != target_frame_sink_id_) {
+    target_frame_sink_id_ = capture_target.sink_id;
     absl::optional<viz::VideoCaptureTarget> target;
-    if (frame_sink_id.is_valid()) {
-      target = viz::VideoCaptureTarget(frame_sink_id, crop_id_);
+    if (capture_target.sink_id.is_valid()) {
+      target = viz::VideoCaptureTarget(capture_target.sink_id,
+                                       DeriveSubTarget(crop_id_));
     }
 
     // The target may change to an invalid one, but we don't consider it
@@ -505,13 +518,14 @@ void WebContentsFrameTracker::OnPossibleTargetChange() {
   // Note: MouseCursorOverlayController runs on the UI thread. SetTargetView()
   // must be called synchronously since the NativeView pointer is not valid
   // across task switches, cf. https://crbug.com/818679
-  SetTargetView(web_contents()->GetNativeView());
+  SetTargetView(capture_target.view);
 }
 
 void WebContentsFrameTracker::SetTargetView(gfx::NativeView view) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  if (view == target_native_view_)
+  if (view == target_native_view_) {
     return;
+  }
   target_native_view_ = view;
 #if !BUILDFLAG(IS_ANDROID)
   cursor_controller_->SetTargetView(view);
@@ -542,8 +556,9 @@ void WebContentsFrameTracker::SetCaptureScaleOverride(float new_value) {
 float WebContentsFrameTracker::DetermineMaxScaleOverride() {
   // If we have no feedback or don't want to apply a scale factor, leave it
   // unchanged.
-  if (!capture_feedback_ || !content_size_)
+  if (!capture_feedback_ || !content_size_) {
     return max_capture_scale_override_;
+  }
 
   // First, determine if we need to lower the max scale override.
   // Clue 1: we are above 80% resource utilization.

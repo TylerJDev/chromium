@@ -104,7 +104,7 @@ $ ${chromium_build}/recipes/recipe_modules/tricium_clang_tidy/resources/tricium_
     --out_dir out/Linux \
     --findings_file all_findings.json \
     --clang_tidy_binary $PWD/third_party/llvm-build/Release+Asserts/bin/clang-tidy \
-    --tidy_checks '-*,YOUR-NEW-CHECK-NAME-HERE'
+    --tidy_checks='-*,YOUR-NEW-CHECK-NAME-HERE'
     --all
 ```
 
@@ -229,13 +229,13 @@ Running clang-tidy is then (hopefully) simple.
 ```
 ninja -C out/Release chrome
 ```
-2.  Enter the build directory
+2.  Export Chrome's compile command database
+```
+gn gen out/Release --export-compile-commands
+```
+3.  Enter the build directory
 ```
 cd out/Release
-```
-3.  Export Chrome's compile command database
-```
-gn gen . --export-compile-commands
 ```
 4.  Run clang-tidy.
 ```

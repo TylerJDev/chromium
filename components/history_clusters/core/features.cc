@@ -86,7 +86,7 @@ BASE_FEATURE(kJourneysIncludeSyncedVisits,
 
 BASE_FEATURE(kJourneysPersistCachesToPrefs,
              "JourneysPersistCachesToPrefs",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kHistoryClustersNavigationContextClustering,
              "HistoryClustersNavigationContextClustering",
@@ -110,5 +110,9 @@ BASE_FEATURE(kSidePanelJourneys,
 // entrypoints open Journeys in Side Panel rather than the History WebUI.
 const base::FeatureParam<bool> kSidePanelJourneysOpensFromOmnibox{
     &kSidePanelJourneys, "SidePanelJourneysOpensFromOmnibox", true};
+
+BASE_FEATURE(kRenameJourneys,
+             "RenameJourneys",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 }  // namespace history_clusters

@@ -12,6 +12,7 @@ import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.util.FloatProperty;
 import android.view.KeyEvent;
@@ -37,6 +38,7 @@ import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.chrome.browser.back_press.BackPressManager;
 import org.chromium.chrome.browser.device.DeviceClassManager;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.lens.LensController;
 import org.chromium.chrome.browser.lens.LensEntryPoint;
@@ -56,6 +58,8 @@ import org.chromium.chrome.browser.prefetch.settings.PreloadPagesState;
 import org.chromium.chrome.browser.privacy.settings.PrivacyPreferencesManager;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabLaunchType;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.theme.ThemeUtils;
 import org.chromium.chrome.browser.ui.native_page.NativePage;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
@@ -192,6 +196,7 @@ class LocationBarMediator
     private ObservableSupplierImpl<Boolean> mBackPressStateSupplier =
             new ObservableSupplierImpl<>();
     private boolean mShouldClearOmniboxOnFocus = true;
+    private ObservableSupplier<TabModelSelector> mTabModelSelectorSupplier;
 
     /*package */ LocationBarMediator(@NonNull Context context,
             @NonNull LocationBarLayout locationBarLayout,
@@ -206,7 +211,8 @@ class LocationBarMediator
             @NonNull LensController lensController,
             @NonNull SaveOfflineButtonState saveOfflineButtonState, @NonNull OmniboxUma omniboxUma,
             @NonNull BooleanSupplier isToolbarMicEnabledSupplier,
-            @NonNull OmniboxSuggestionsDropdownEmbedderImpl dropdownEmbedder) {
+            @NonNull OmniboxSuggestionsDropdownEmbedderImpl dropdownEmbedder,
+            @Nullable ObservableSupplier<TabModelSelector> tabModelSelectorSupplier) {
         mContext = context;
         mLocationBarLayout = locationBarLayout;
         mLocationBarDataProvider = locationBarDataProvider;
@@ -229,6 +235,7 @@ class LocationBarMediator
         mOmniboxUma = omniboxUma;
         mIsToolbarMicEnabledSupplier = isToolbarMicEnabledSupplier;
         mEmbedderImpl = dropdownEmbedder;
+        mTabModelSelectorSupplier = tabModelSelectorSupplier;
     }
 
     /**
@@ -275,9 +282,10 @@ class LocationBarMediator
 
         if (hasFocus) {
             if (mNativeInitialized) RecordUserAction.record("FocusLocation");
-            UrlBarData urlBarData = mLocationBarDataProvider.getUrlBarData();
-            if (urlBarData.editingText != null) {
-                setUrlBarText(urlBarData, UrlBar.ScrollType.NO_SCROLL, SelectionState.SELECT_ALL);
+            // Don't clear Omnibox if the user just pasted text to NTP Omnibox.
+            if (mShouldClearOmniboxOnFocus) {
+                setUrlBarText(
+                        UrlBarData.EMPTY, UrlBar.ScrollType.NO_SCROLL, SelectionState.SELECT_END);
             }
         } else {
             mUrlFocusedFromFakebox = false;
@@ -402,6 +410,19 @@ class LocationBarMediator
                 OmniboxFocusReason.DEFAULT_WITH_HARDWARE_KEYBOARD);
     }
 
+    /**
+     * If the URL bar was previously focused on the NTP due to a connected keyboard, an navigation
+     * away from the NTP should clear this focus before filling the current tab's URL.
+     */
+    /*package */ void clearUrlBarCursorWithoutFocusAnimations() {
+        if (mUrlCoordinator.hasFocus() && mUrlFocusedWithoutAnimations) {
+            // If we did not run the focus animations, then the user has not typed any text.
+            // So, clear the focus and accept whatever URL the page is currently attempting to
+            // display, given that the current tab is not displaying the NTP.
+            setUrlBarFocus(false, null, OmniboxFocusReason.UNFOCUS);
+        }
+    }
+
     /*package */ void revertChanges() {
         if (mUrlHasFocus) {
             GURL currentUrl = mLocationBarDataProvider.getCurrentGurl();
@@ -451,12 +472,12 @@ class LocationBarMediator
                 mAutocompleteCoordinator.getSuggestionCount() != 0);
     }
 
-    /* package */ void loadUrl(String url, int transition, long inputStart) {
-        loadUrlWithPostData(url, transition, inputStart, null, null);
+    /* package */ void loadUrl(String url, int transition, long inputStart, boolean openInNewTab) {
+        loadUrlWithPostData(url, transition, inputStart, null, null, openInNewTab);
     }
 
-    /* package */ void loadUrlWithPostData(
-            String url, int transition, long inputStart, String postDataType, byte[] postData) {
+    /* package */ void loadUrlWithPostData(String url, int transition, long inputStart,
+            String postDataType, byte[] postData, boolean openInNewTab) {
         assert mLocationBarDataProvider != null;
         Tab currentTab = mLocationBarDataProvider.getTab();
 
@@ -513,7 +534,13 @@ class LocationBarMediator
                 loadUrlParams.setPostData(ResourceRequestBody.createFromBytes(postData));
             }
 
-            currentTab.loadUrl(loadUrlParams);
+            if (openInNewTab && mTabModelSelectorSupplier != null
+                    && mTabModelSelectorSupplier.get() != null) {
+                mTabModelSelectorSupplier.get().openNewTab(loadUrlParams,
+                        TabLaunchType.FROM_OMNIBOX, currentTab, currentTab.isIncognito());
+            } else {
+                currentTab.loadUrl(loadUrlParams);
+            }
             RecordUserAction.record("MobileOmniboxUse");
         }
         mLocaleManager.recordLocaleBasedSearchMetrics(false, url, transition);
@@ -546,14 +573,7 @@ class LocationBarMediator
         // If the URL is currently focused, do not replace the text they have entered with the URL.
         // Once they stop editing the URL, the current tab's URL will automatically be filled in.
         if (mUrlCoordinator.hasFocus()) {
-            if (mUrlFocusedWithoutAnimations && !UrlUtilities.isNTPUrl(currentUrl)) {
-                // If we did not run the focus animations, then the user has not typed any text.
-                // So, clear the focus and accept whatever URL the page is currently attempting to
-                // display. If the NTP is showing, the current page's URL should not be displayed.
-                setUrlBarFocus(false, null, OmniboxFocusReason.UNFOCUS);
-            } else {
-                return;
-            }
+            return;
         }
 
         mOriginalUrl = currentUrl;
@@ -904,12 +924,7 @@ class LocationBarMediator
 
     /* package */ void forceOnTextChanged() {
         String textWithoutAutocomplete = mUrlCoordinator.getTextWithoutAutocomplete();
-        String textWithAutocomplete = mUrlCoordinator.getTextWithAutocomplete();
         mAutocompleteCoordinator.onTextChanged(textWithoutAutocomplete);
-    }
-
-    /* package */ boolean shouldClearOmniboxOnFocus() {
-        return mShouldClearOmniboxOnFocus;
     }
 
     // Private methods
@@ -1268,7 +1283,7 @@ class LocationBarMediator
                 mTemplateUrlServiceSupplier.get().getUrlForSearchQuery(query, searchParams);
 
         if (!TextUtils.isEmpty(queryUrl)) {
-            loadUrl(queryUrl, PageTransition.GENERATED, 0);
+            loadUrl(queryUrl, PageTransition.GENERATED, 0, /*openInNewTab=*/false);
         } else {
             setSearchQuery(query);
         }
@@ -1313,7 +1328,7 @@ class LocationBarMediator
 
     @Override
     public void loadUrlFromVoice(String url) {
-        loadUrl(url, PageTransition.TYPED, 0);
+        loadUrl(url, PageTransition.TYPED, 0, /*openInNewTab=*/false);
     }
 
     @Override
@@ -1387,9 +1402,33 @@ class LocationBarMediator
     }
 
     @Override
-    public void gestureDetected(boolean isLongPress) {
-        recordOmniboxFocusReason(isLongPress ? OmniboxFocusReason.OMNIBOX_LONG_PRESS
-                                             : OmniboxFocusReason.OMNIBOX_TAP);
+    public void onFocusByTouch() {
+        recordOmniboxFocusReason(OmniboxFocusReason.OMNIBOX_TAP);
+    }
+
+    @Override
+    public void onTouchAfterFocus() {
+        // The goal of this special logic is to support the following use case:
+        // On opening the NTP, the URL bar gains focus with a blinking cursor and without showing
+        // the zero-prefix dropdown when a hardware keyboard is connected. Subsequently, if the user
+        // taps on the omnibox without typing any text into it, the zero-prefix dropdown will be
+        // shown.
+        //
+        // A touch event will be handled after the omnibox is already focused only when the
+        // following criteria are satisfied:
+        // 1. |mUrlFocusedWithoutAnimations| is true, which means that the omnibox is focused on the
+        // NTP without any focus animations while a hardware keyboard is connected.
+        // 2. The omnibox does not contain any text. It is possible that the user has typed text
+        // into the omnibox after it gains focus due to hardware keyboard availability and a
+        // subsequent tap will hide the suggestions dropdown shown for the typed text, while keeping
+        // the scrim on the web contents, which is not desirable.
+        if (!mUrlFocusedWithoutAnimations || mUrlCoordinator == null
+                || !TextUtils.isEmpty(mUrlCoordinator.getTextWithoutAutocomplete())
+                || !ChromeFeatureList.isEnabled(ChromeFeatureList.ADVANCED_PERIPHERALS_SUPPORT)) {
+            return;
+        }
+        handleUrlFocusAnimation(true);
+        recordOmniboxFocusReason(OmniboxFocusReason.TAP_AFTER_FOCUS_FROM_KEYBOARD);
     }
 
     // BackPressHandler implementation.
@@ -1409,15 +1448,17 @@ class LocationBarMediator
     // OnKeyListener implementation.
     @Override
     public boolean onKey(View view, int keyCode, KeyEvent event) {
-        boolean result = handleKeyEvent(view, keyCode, event);
-
-        if (result && mUrlHasFocus && mUrlFocusedWithoutAnimations
-                && event.getAction() == KeyEvent.ACTION_DOWN && event.isPrintingKey()
-                && event.hasNoModifiers()) {
+        // Trigger focus animations to adequately set system state before potentially handling the
+        // key event. This is required only when the intention is to trigger the suggestions
+        // dropdown after the omnibox has gained focus without animations and a valid key is
+        // pressed. All printing keys will be taken into account as long as CTRL is not pressed,
+        // since that may trigger special functionality.
+        if (mUrlFocusedWithoutAnimations && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.isPrintingKey() && !event.isCtrlPressed()) {
             handleUrlFocusAnimation(/*hasFocus=*/true);
         }
 
-        return result;
+        return handleKeyEvent(view, keyCode, event);
     }
 
     // ComponentCallbacks implementation.
@@ -1450,5 +1491,31 @@ class LocationBarMediator
         mLensController.startLens(mWindowAndroid,
                 new LensIntentParams.Builder(lensEntryPoint, mLocationBarDataProvider.isIncognito())
                         .build());
+    }
+
+    /**
+     * Sets the color of the hint text in the search box based on the current page. If the current
+     * page is Start Surface or NTP, we set the hint text color to be colorOnSurface or
+     * colorOnPrimaryContainer based on whether useColorfulOmniboxType is true or not. If the
+     * current page is not Start Surface or NTP, we set the hint text color back to the previous
+     * value set before entering Start Surface or NTP.
+     * @param useColorfulOmniboxType True if the surface polish flag and omnibox
+     *         color variant are both enabled and we need to use the colorful type for the url bar
+     *         hint color.
+     * @param usePreviousHintTextColor True if we leave the Start Surface or NTP and return to the
+     *         value set originally.
+     */
+    public void setUrlBarHintTextColorForSurfacePolish(
+            boolean useColorfulOmniboxType, boolean usePreviousHintTextColor) {
+        mUrlCoordinator.setUrlBarHintTextColorForSurfacePolish(
+                useColorfulOmniboxType, usePreviousHintTextColor, mBrandedColorScheme);
+    }
+
+    /**
+     * Sets the typeface and style of the search text in the search box.
+     * @param typeface The typeface for the search text in the search box.
+     */
+    public void setUrlBarTypeface(Typeface typeface) {
+        mUrlCoordinator.setUrlBarTypeface(typeface);
     }
 }

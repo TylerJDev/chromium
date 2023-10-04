@@ -11,9 +11,10 @@ import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 
+import org.chromium.base.ResettersForTesting;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
-import org.chromium.chrome.browser.preferences.SharedPreferencesManager;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.signin.LegacySyncPromoView;
 import org.chromium.chrome.browser.signin.SyncConsentActivityLauncherImpl;
@@ -63,25 +64,26 @@ public class BookmarkPromoHeader implements SyncService.SyncStateChangedListener
         mContext = context;
         mProfile = profile;
         mPromoHeaderChangeAction = promoHeaderChangeAction;
-
         mSyncService = SyncServiceFactory.getForProfile(profile);
-        if (mSyncService != null) mSyncService.addSyncStateChangedListener(this);
-
         mSigninManager = IdentityServicesProvider.get().getSigninManager(mProfile);
-        mSigninManager.addSignInStateObserver(this);
-
         mAccountManagerFacade = AccountManagerFacadeProvider.getInstance();
 
         if (SyncPromoController.canShowSyncPromo(SigninAccessPoint.BOOKMARK_MANAGER)) {
             mProfileDataCache = ProfileDataCache.createWithDefaultImageSizeAndNoBadge(mContext);
-            mProfileDataCache.addObserver(this);
             mSyncPromoController = new SyncPromoController(
                     SigninAccessPoint.BOOKMARK_MANAGER, SyncConsentActivityLauncherImpl.get());
-            mAccountManagerFacade.addObserver(this);
         } else {
             mProfileDataCache = null;
             mSyncPromoController = null;
         }
+
+        if (mSyncService != null) mSyncService.addSyncStateChangedListener(this);
+        mSigninManager.addSignInStateObserver(this);
+        if (mSyncPromoController != null) {
+            mAccountManagerFacade.addObserver(this);
+            mProfileDataCache.addObserver(this);
+        }
+
         updatePromoState();
     }
 
@@ -171,7 +173,7 @@ public class BookmarkPromoHeader implements SyncService.SyncStateChangedListener
         }
 
         boolean impressionLimitNotReached =
-                SharedPreferencesManager.getInstance().readInt(
+                ChromeSharedPreferences.getInstance().readInt(
                         ChromePreferenceKeys.SIGNIN_AND_SYNC_PROMO_SHOW_COUNT)
                 < MAX_SIGNIN_AND_SYNC_PROMO_SHOW_COUNT;
         if (mSyncService.getSelectedTypes().isEmpty() && impressionLimitNotReached) {
@@ -194,7 +196,7 @@ public class BookmarkPromoHeader implements SyncService.SyncStateChangedListener
             mSyncPromoController.increasePromoShowCount();
         }
         if (newState == SyncPromoState.PROMO_FOR_SYNC_TURNED_OFF_STATE) {
-            SharedPreferencesManager.getInstance().incrementInt(
+            ChromeSharedPreferences.getInstance().incrementInt(
                     ChromePreferenceKeys.SIGNIN_AND_SYNC_PROMO_SHOW_COUNT);
         }
         mPromoState = newState;
@@ -243,5 +245,6 @@ public class BookmarkPromoHeader implements SyncService.SyncStateChangedListener
      */
     public static void forcePromoStateForTesting(@Nullable @SyncPromoState Integer promoState) {
         sPromoStateForTests = promoState;
+        ResettersForTesting.register(() -> sPromoStateForTests = null);
     }
 }

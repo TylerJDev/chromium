@@ -12,6 +12,9 @@
 #include "ash/system/power/battery_saver_controller.h"
 #include "ash/system/power/power_notification_controller.h"
 #include "ash/system/power/power_status.h"
+#include "ash/system/system_notification_controller.h"
+#include "ash/system/toast/toast_manager_impl.h"
+#include "ash/system/toast/toast_overlay.h"
 #include "ash/test/ash_test_base.h"
 #include "base/test/scoped_feature_list.h"
 #include "chromeos/dbus/power/fake_power_manager_client.h"
@@ -48,10 +51,15 @@ class BatteryNotificationTest : public AshTestBase {
     chromeos::FakePowerManagerClient::InitializeFake();
     AshTestBase::SetUp();
 
+    SetNotificationStateForTesting(
+        PowerNotificationController::NotificationState::
+            NOTIFICATION_BSM_ENABLING_AT_THRESHOLD);
+
     battery_notification_ = std::make_unique<BatteryNotification>(
         message_center::MessageCenter::Get(),
-        PowerNotificationController::NotificationState::NOTIFICATION_LOW_POWER,
-        false);
+        Shell::Get()
+            ->system_notification_controller()
+            ->power_notification_controller());
   }
 
   void TearDown() override {
@@ -80,8 +88,11 @@ class BatteryNotificationTest : public AshTestBase {
         BatteryNotification::kNotificationId);
   }
 
+  ToastOverlay* GetCurrentToast() {
+    return Shell::Get()->toast_manager()->GetCurrentOverlayForTesting();
+  }
+
   void TestBatterySaverNotification(
-      const PowerStatus& status,
       const ExpectedNotificationValues& expected_values,
       PowerNotificationController::NotificationState notification_state,
       bool expected_bsm_state_after_click) {
@@ -97,7 +108,8 @@ class BatteryNotificationTest : public AshTestBase {
         !expected_bsm_state_after_click);
 
     // Display notification.
-    battery_notification_->Update(notification_state, false);
+    SetNotificationStateForTesting(notification_state);
+    battery_notification_->Update();
 
     auto* notification = GetBatteryNotification();
     ASSERT_TRUE(notification);
@@ -108,6 +120,18 @@ class BatteryNotificationTest : public AshTestBase {
     // Click the button to turn off/on battery saver mode depending on
     // NotificationState.
     notification->delegate()->Click(0, absl::nullopt);
+
+    // Test that notification is dismissed after button is pressed.
+    EXPECT_EQ(GetBatteryNotification(), nullptr);
+
+    // Test Enable Toast on Button Click in Opt-In Branch.
+    if (notification_state ==
+        PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN) {
+      EXPECT_NE(GetCurrentToast(), nullptr);
+      EXPECT_EQ(
+          GetCurrentToast()->GetText(),
+          l10n_util::GetStringUTF16(IDS_ASH_BATTERY_SAVER_ENABLED_TOAST_TEXT));
+    }
 
     // Verify battery saver mode state changed respective to the
     // NotificationState.
@@ -121,6 +145,8 @@ class BatteryNotificationTest : public AshTestBase {
   void TestExpectedNotificationValues(
       const ExpectedNotificationValues& values,
       const message_center::Notification* notification) {
+    const std::vector<message_center::ButtonInfo> buttons =
+        notification->buttons();
     EXPECT_EQ(values.expected_warning_level,
               notification->system_notification_warning_level());
     EXPECT_EQ(values.expected_title, notification->title());
@@ -128,12 +154,37 @@ class BatteryNotificationTest : public AshTestBase {
     EXPECT_EQ(values.expected_fullscreen_visibility,
               notification->fullscreen_visibility());
     EXPECT_FALSE(notification->pinned());
-    EXPECT_EQ(values.expected_button_size, notification->buttons().size());
-    EXPECT_EQ(values.expected_button_title, notification->buttons()[0].title);
+    EXPECT_EQ(values.expected_button_size, buttons.size());
+    EXPECT_EQ(values.expected_button_title,
+              buttons.size() != 0 ? buttons[0].title : u"");
+  }
+
+  void SetBatterySaverFeature(bool enabled) {
+    scoped_feature_list_.reset();
+    if (enabled) {
+      scoped_feature_list_ = std::make_unique<base::test::ScopedFeatureList>(
+          features::kBatterySaver);
+    } else {
+      scoped_feature_list_ = std::make_unique<base::test::ScopedFeatureList>();
+    }
+  }
+
+  void SetNotificationStateForTesting(
+      PowerNotificationController::NotificationState new_state) {
+    Shell::Get()
+        ->system_notification_controller()
+        ->power_notification_controller()
+        ->notification_state_ = new_state;
   }
 
   std::u16string GetLowPowerTitle() {
     return GetStringUTF16(IDS_ASH_STATUS_TRAY_LOW_BATTERY_TITLE);
+  }
+
+  std::u16string GetLowPowerMessageWithoutTime() {
+    return GetStringFUTF16(
+        IDS_ASH_STATUS_TRAY_LOW_BATTERY_MESSAGE_WITHOUT_TIME,
+        base::NumberToString16(PowerStatus::Get()->GetRoundedBatteryPercent()));
   }
 
   std::u16string GetLowPowerMessage() {
@@ -144,6 +195,12 @@ class BatteryNotificationTest : public AshTestBase {
 
   std::u16string GetBatterySaverTitle() {
     return GetStringUTF16(IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_TITLE);
+  }
+
+  std::u16string GetBatterySaverMessageWithoutTime() {
+    return GetStringFUTF16(
+        IDS_ASH_STATUS_TRAY_LOW_BATTERY_BSM_MESSAGE_WITHOUT_TIME,
+        base::NumberToString16(PowerStatus::Get()->GetRoundedBatteryPercent()));
   }
 
   std::u16string GetBatterySaverMessage() {
@@ -181,68 +238,33 @@ class BatteryNotificationTest : public AshTestBase {
   std::unique_ptr<base::test::ScopedFeatureList> scoped_feature_list_;
 };
 
+// Keep test for backwards compatibility for time-based notifications.
 TEST_F(BatteryNotificationTest, LowPowerNotification) {
-  power_manager::PowerSupplyProperties proto;
-  // Set the rounded value matches the low power threshold.
-  proto.set_battery_time_to_empty_sec(kLowPowerMinutes * 60 + 29);
-  PowerStatus::Get()->SetProtoForTesting(proto);
+  // Disable Battery Saver feature to test original notification.
+  SetBatterySaverFeature(false);
 
-  battery_notification_->Update(
-      PowerNotificationController::NotificationState::NOTIFICATION_LOW_POWER,
-      false);
+  // Set the rounded value matches the low power threshold, percentage here is
+  // arbitrary.
+  SetPowerStatus(25, kLowPowerMinutes * 60 + 29);
+
+  SetNotificationStateForTesting(
+      PowerNotificationController::NotificationState::
+          NOTIFICATION_BSM_ENABLING_AT_THRESHOLD);
+  battery_notification_->Update();
 
   auto* notification = GetBatteryNotification();
   ASSERT_TRUE(notification);
 
-  EXPECT_EQ(message_center::SystemNotificationWarningLevel::WARNING,
-            notification->system_notification_warning_level());
-  EXPECT_EQ(l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_LOW_BATTERY_TITLE),
-            notification->title());
-  EXPECT_EQ(message_center::FullscreenVisibility::OVER_USER,
-            notification->fullscreen_visibility());
-  EXPECT_FALSE(notification->pinned());
-}
-
-TEST_F(BatteryNotificationTest, LowPowerBatterySaverOptOutNotification) {
-  // Set the rounded value matches the low power threshold.
-  SetPowerStatus(/*battery_percent=*/100, kLowPowerMinutes * 60 + 29);
-
-  // Expect a notification with 'turning on battery saver', and a
-  // 'turn off' button to appear.
+  // Expect a notification with 'Low Power', and no buttons to appear.
   ExpectedNotificationValues expected_values{
-      1,
-      SystemNotificationWarningLevel::WARNING,
-      FullscreenVisibility::OVER_USER,
-      GetBatterySaverTitle(),
-      GetBatterySaverMessage(),
-      GetBatterySaverOptOutButtonString()};
-
-  // Battery Saver should turn off when the button is clicked.
-  TestBatterySaverNotification(
-      *PowerStatus::Get(), expected_values,
-      PowerNotificationController::NOTIFICATION_LOW_POWER,
-      /*expected_bsm_state_after_click=*/false);
-}
-
-TEST_F(BatteryNotificationTest, LowPowerBatterySaverOptInNotification) {
-  // Set the rounded value matches the low power threshold.
-  SetPowerStatus(/*battery_percent=*/100, kLowPowerMinutes * 60 + 29);
-
-  // Expect a regular Low Power notification, and a 'turn on battery saver'
-  // button to appear.
-  ExpectedNotificationValues expected_values{
-      1,
+      0,
       SystemNotificationWarningLevel::WARNING,
       FullscreenVisibility::OVER_USER,
       GetLowPowerTitle(),
       GetLowPowerMessage(),
-      GetBatterySaverOptInButtonString()};
+      u""};
 
-  // Battery Saver should turn on when the button is clicked.
-  TestBatterySaverNotification(
-      *PowerStatus::Get(), expected_values,
-      PowerNotificationController::NOTIFICATION_BSM_LOW_POWER_OPT_IN,
-      /*expected_bsm_state_after_click=*/true);
+  TestExpectedNotificationValues(expected_values, notification);
 }
 
 TEST_F(BatteryNotificationTest, ThresholdBatterySaverOptOutNotification) {
@@ -261,8 +283,30 @@ TEST_F(BatteryNotificationTest, ThresholdBatterySaverOptOutNotification) {
 
   // Battery Saver should turn off when the button is clicked.
   TestBatterySaverNotification(
-      *PowerStatus::Get(), expected_values,
-      PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_OUT,
+      expected_values,
+      PowerNotificationController::NOTIFICATION_BSM_ENABLING_AT_THRESHOLD,
+      /*expected_bsm_state_after_click=*/false);
+}
+
+TEST_F(BatteryNotificationTest,
+       ThresholdBatterySaverOptOutNotificationTimeCalculating) {
+  // Set the battery percentage to the threshold amount, and < 1 minute.
+  SetPowerStatus(features::kBatterySaverActivationChargePercent.Get(), 30);
+
+  // Expect a notification with 'turning on battery saver', with a message
+  // excluding the time remaining, and a 'turn off' button to appear.
+  ExpectedNotificationValues expected_values{
+      1,
+      SystemNotificationWarningLevel::WARNING,
+      FullscreenVisibility::OVER_USER,
+      GetBatterySaverTitle(),
+      GetBatterySaverMessageWithoutTime(),
+      GetBatterySaverOptOutButtonString()};
+
+  // Battery Saver should turn off when the button is clicked.
+  TestBatterySaverNotification(
+      expected_values,
+      PowerNotificationController::NOTIFICATION_BSM_ENABLING_AT_THRESHOLD,
       /*expected_bsm_state_after_click=*/false);
 }
 
@@ -282,7 +326,30 @@ TEST_F(BatteryNotificationTest, ThresholdBatterySaverOptInNotification) {
 
   // Battery Saver should turn on when the button is clicked.
   TestBatterySaverNotification(
-      *PowerStatus::Get(), expected_values,
+      expected_values,
+      PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN,
+      /*expected_bsm_state_after_click=*/true);
+}
+
+TEST_F(BatteryNotificationTest,
+       ThresholdBatterySaverOptInNotificationTimeCalculating) {
+  // Set the battery percentage to the threshold amount, and < 1 minute.
+  SetPowerStatus(features::kBatterySaverActivationChargePercent.Get(), 30);
+
+  // Expect a regular Low Power notification, with a message
+  // excluding the time remaining, and a 'turn on battery saver'
+  // button to appear.
+  ExpectedNotificationValues expected_values{
+      1,
+      SystemNotificationWarningLevel::WARNING,
+      FullscreenVisibility::OVER_USER,
+      GetLowPowerTitle(),
+      GetLowPowerMessageWithoutTime(),
+      GetBatterySaverOptInButtonString()};
+
+  // Battery Saver should turn on when the button is clicked.
+  TestBatterySaverNotification(
+      expected_values,
       PowerNotificationController::NOTIFICATION_BSM_THRESHOLD_OPT_IN,
       /*expected_bsm_state_after_click=*/true);
 }
@@ -293,9 +360,9 @@ TEST_F(BatteryNotificationTest, CriticalPowerNotification) {
   proto.set_battery_time_to_empty_sec(kCriticalMinutes * 60 + 29);
   PowerStatus::Get()->SetProtoForTesting(proto);
 
-  battery_notification_->Update(
-      PowerNotificationController::NotificationState::NOTIFICATION_CRITICAL,
-      false);
+  SetNotificationStateForTesting(
+      PowerNotificationController::NotificationState::NOTIFICATION_CRITICAL);
+  battery_notification_->Update();
 
   auto* notification = GetBatteryNotification();
   ASSERT_TRUE(notification);

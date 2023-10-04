@@ -6,11 +6,6 @@
 
 #include <utility>
 
-#include "build/build_config.h"
-#include "chrome/browser/headless/headless_mode_util.h"
-#include "chrome/browser/metrics/chrome_metrics_service_accessor.h"
-#include "chrome/common/chrome_switches.h"
-
 namespace {
 
 ChromeProcessSingleton* g_chrome_process_singleton_ = nullptr;
@@ -30,14 +25,13 @@ ChromeProcessSingleton::~ChromeProcessSingleton() = default;
 
 ProcessSingleton::NotifyResult
     ChromeProcessSingleton::NotifyOtherProcessOrCreate() {
-  // In headless mode we don't want to hand off pages to an existing processes,
-  // so short circuit process singleton creation and bail out if we're not
-  // the only process using this user data dir.
-  if (headless::IsHeadlessMode()) {
-    return process_singleton_.Create() ? ProcessSingleton::PROCESS_NONE
-                                       : ProcessSingleton::PROFILE_IN_USE;
+  CHECK(!is_singleton_instance_);
+  ProcessSingleton::NotifyResult result =
+      process_singleton_.NotifyOtherProcessOrCreate();
+  if (result == ProcessSingleton::PROCESS_NONE) {
+    is_singleton_instance_ = true;
   }
-  return process_singleton_.NotifyOtherProcessOrCreate();
+  return result;
 }
 
 void ChromeProcessSingleton::StartWatching() {
@@ -45,7 +39,9 @@ void ChromeProcessSingleton::StartWatching() {
 }
 
 void ChromeProcessSingleton::Cleanup() {
-  process_singleton_.Cleanup();
+  if (is_singleton_instance_) {
+    process_singleton_.Cleanup();
+  }
 }
 
 void ChromeProcessSingleton::SetModalDialogNotificationHandler(
@@ -80,6 +76,12 @@ void ChromeProcessSingleton::DeleteInstance() {
 ChromeProcessSingleton* ChromeProcessSingleton::GetInstance() {
   CHECK(g_chrome_process_singleton_);
   return g_chrome_process_singleton_;
+}
+
+// static
+bool ChromeProcessSingleton::IsSingletonInstance() {
+  return g_chrome_process_singleton_ &&
+         g_chrome_process_singleton_->is_singleton_instance_;
 }
 
 bool ChromeProcessSingleton::NotificationCallback(

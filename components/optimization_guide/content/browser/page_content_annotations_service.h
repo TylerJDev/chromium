@@ -130,6 +130,7 @@ class PageContentAnnotationsService : public KeyedService,
   PageContentAnnotationsService(
       std::unique_ptr<AutocompleteProviderClient> autocomplete_provider_client,
       const std::string& application_locale,
+      const std::string& country_code,
       OptimizationGuideModelProvider* optimization_guide_model_provider,
       history::HistoryService* history_service,
       TemplateURLService* template_url_service,
@@ -214,6 +215,14 @@ class PageContentAnnotationsService : public KeyedService,
     return optimization_guide_logger_;
   }
 
+ protected:
+  // Callback invoked when related searches have been extracted for |visit|.
+  // protected instead of private for testing purposes.
+  void OnRelatedSearchesExtracted(
+      const HistoryVisit& visit,
+      continuous_search::SearchResultExtractorClientStatus status,
+      continuous_search::mojom::CategoryResultsPtr results);
+
  private:
 #if BUILDFLAG(BUILD_WITH_TFLITE_LIB)
   // Callback invoked when a single |visit| has been annotated.
@@ -283,11 +292,13 @@ class PageContentAnnotationsService : public KeyedService,
   virtual void ExtractRelatedSearches(const HistoryVisit& visit,
                                       content::WebContents* web_contents);
 
-  // Callback invoked when related searches have been extracted for |visit|.
-  void OnRelatedSearchesExtracted(
+  // Annotates the provided `visit` in the history DB with the given list of
+  // `related_searches`.
+  //
+  // Virtualized for testing.
+  virtual void AddRelatedSearchesForVisit(
       const HistoryVisit& visit,
-      continuous_search::SearchResultExtractorClientStatus status,
-      continuous_search::mojom::CategoryResultsPtr results);
+      const std::vector<std::string>& related_searches);
 
   // Persist |page_entities_metadata| for |visit| in |history_service_|.
   //
@@ -378,8 +389,15 @@ class PageContentAnnotationsService : public KeyedService,
   base::ScopedObservation<ZeroSuggestCacheService,
                           PageContentAnnotationsService>
       zero_suggest_cache_service_observation_{this};
-  // The client of continuous_search::mojom::SearchResultExtractor interface
-  // used for extracting data from the main frame of Google SRP |web_contents|.
+  // A LRU cache mapping each SRP URL to the associated set of "related
+  // searches" which were obtained via ZPS prefetch logic. This cache is used to
+  // coordinate the SRP DOM extraction and ZPS prefetch flows to ensure that the
+  // appropriate history visit is targeted for annotation.
+  base::HashingLRUCache<std::string, std::vector<std::string>>
+      prefetched_related_searches_;
+  // The client of continuous_search::mojom::SearchResultExtractor
+  // interface used for extracting data from the main frame of Google SRP
+  // |web_contents|.
   continuous_search::SearchResultExtractorClient
       search_result_extractor_client_;
   // A LRU Cache keeping track of the visits that have been requested for
@@ -417,6 +435,12 @@ class PageContentAnnotationsService : public KeyedService,
   std::unique_ptr<PageContentAnnotationsValidator> validator_;
 
   raw_ptr<OptimizationGuideLogger> optimization_guide_logger_ = nullptr;
+
+  // Whether fetching for remote page metadata enabled.
+  bool is_remote_page_metadata_fetching_enabled_ = false;
+
+  // Whether fetching for salient image metadata is enabled.
+  bool is_salient_image_metadata_fetching_enabled_ = false;
 
   // Not owned and must outlive |this|.
   raw_ptr<OptimizationGuideDecider> optimization_guide_decider_;

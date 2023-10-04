@@ -29,7 +29,7 @@
 #include "components/password_manager/core/browser/affiliation/mock_affiliation_service.h"
 #include "components/password_manager/core/browser/mock_password_change_success_tracker.h"
 #include "components/password_manager/core/browser/password_change_success_tracker.h"
-#include "components/password_manager/core/browser/well_known_change_password_util.h"
+#include "components/password_manager/core/browser/well_known_change_password/well_known_change_password_util.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/sync/test/test_sync_service.h"
 #include "components/ukm/test_ukm_recorder.h"
@@ -632,7 +632,7 @@ class PrerenderingChangePasswordNavigationThrottleBrowserTest
   }
 
   void SetUp() override {
-    prerender_helper_.SetUp(test_server_.get());
+    prerender_helper_.RegisterServerRequestMonitor(test_server_.get());
     WellKnownChangePasswordNavigationThrottleBrowserTest::SetUp();
   }
 

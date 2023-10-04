@@ -6,13 +6,13 @@ import {assertInstanceof} from 'chrome://resources/ash/common/assert.js';
 
 import {DialogType, isFolderDialogType} from '../../common/js/dialog_type.js';
 import {getFocusedTreeItem, getKeyModifiers} from '../../common/js/dom_utils.js';
-import {metrics} from '../../common/js/metrics.js';
+import {recordEnum} from '../../common/js/metrics.js';
 import {TrashEntry} from '../../common/js/trash.js';
 import {str, util} from '../../common/js/util.js';
 import {VolumeManagerCommon} from '../../common/js/volume_manager_types.js';
 import {DirectoryChangeEvent} from '../../externs/directory_change_event.js';
 import {VolumeManager} from '../../externs/volume_manager.js';
-import {changeDirectory} from '../../state/actions/current_directory.js';
+import {changeDirectory} from '../../state/ducks/current_directory.js';
 import {getStore} from '../../state/store.js';
 
 import {AppStateController} from './app_state_controller.js';
@@ -376,8 +376,7 @@ export class MainWindowComponent {
     // explicitly show the tooltip.
     this.ui_.filesTooltip.updateTooltipText(
         /** @type {!HTMLElement} */ (this.ui_.toggleViewButton));
-    metrics.recordEnum(
-        'ToggleFileListType', listType, ListContainer.ListTypesForUMA);
+    recordEnum('ToggleFileListType', listType, ListContainer.ListTypesForUMA);
   }
 
   /**

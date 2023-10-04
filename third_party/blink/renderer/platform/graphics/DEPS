@@ -9,11 +9,9 @@ include_rules = [
     "+base/no_destructor.h",
     "+base/strings/string_number_conversions.h",
     "+base/strings/string_split.h",
-    "+base/strings/string_util.h",
     "+base/task/task_traits.h",
     "+base/threading/sequenced_task_runner_handle.h",
     "+base/threading/thread_restrictions.h",
-    "+base/barrier_closure.h",
     "+cc",
     "+components/paint_preview/common",
     "+components/viz/client",
@@ -30,6 +28,7 @@ include_rules = [
     "+gpu/command_buffer/common/capabilities.h",
     "+gpu/command_buffer/common/mailbox.h",
     "+gpu/command_buffer/common/mailbox_holder.h",
+    "+gpu/command_buffer/common/shared_image_capabilities.h",
     "+gpu/command_buffer/common/shared_image_trace_utils.h",
     "+gpu/command_buffer/common/shared_image_usage.h",
     "+gpu/command_buffer/common/sync_token.h",
@@ -92,6 +91,9 @@ specific_include_rules = {
   "(graphics_context|skia_utils)\.cc" : [ "+ui/base/ui_base_features.h" ],
   "graphics_context.h": [
     "+third_party/blink/public/mojom/frame/frame_owner_properties.mojom-blink.h",
+  ],
+  "image_frame_generator_test.cc": [
+    "+base/features.h",
   ],
   "rw_buffer_test.cc": [
     "+base/threading/platform_thread.h",

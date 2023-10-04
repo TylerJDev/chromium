@@ -24,6 +24,7 @@
 <translation id="1993104285338243655">စကရင်ပွားခြင်းသို့ ပြောင်းထားသည်</translation>
 <translation id="2031987842108996681">အနီ ချန်နယ်</translation>
 <translation id="2060505056492490888">'<ph name="DOT" />' ကို '<ph name="INVALIDDOMAIN" />' ထဲတွင် နေရာမှားသုံးထားသည်။</translation>
+<translation id="2068711044993563745">အနည်းဆုံးတန်ဖိုး (<ph name="MINIMUM" />) သည် အများဆုံးတန်ဖိုး (<ph name="MAXIMUM" />) ထက် လျှော့နည်းရမည်။</translation>
 <translation id="2148716181193084225">ယနေ့</translation>
 <translation id="2226276347425096477">ကျေးဇူးပြုပြီး ဒီစာသားကို သင်္ကေတ<ph name="MAX_CHARACTERS" /> အထိ သို့မဟုတ် နည်းအောင် တိုပေးပါ (သင်သည် လောလောဆယ်မှာ သင်္ကေတ <ph name="CURRENT_LENGTH" />ခု သုံးထားသည်)။</translation>
 <translation id="2247351761944213033">အပတ် <ph name="WEEKNUMBER" />၊ <ph name="YEAR" /></translation>
@@ -44,6 +45,7 @@
 <translation id="2761667185364618470">သင်သည် ဆက်လုပ်ကိုင် လိုလျှင် ကျေးဇူးပြုပြီး ဒီအကွက်ကို ခြစ်ပါ။</translation>
 <translation id="2908441821576996758">ကျေးဇူးပြုပြီး ကော်မာဖြင့် ခြားထားသည့် အီးမေးလ် လိပ်စာများ စာရင်းကို ထည့်သွင်းပါ။</translation>
 <translation id="3049748772180311791"><ph name="QUANTITY" /> MB</translation>
+<translation id="3053226512517284904">အသံဖြင့် ရှင်းလင်းချက်မီနူး ပြပါ</translation>
 <translation id="3075154866155599887">ကျေးဇူးပြုပြီး မှန်ကန်သည့် တန်ဖိုးကို ထည့်ပေးပါ။ အကွက်မှာ မပြည့်စုံပါ သို့မဟုတ် မမှန်သည့် ရက်စွဲ ပါနေသည်။</translation>
 <translation id="310520048233152454">URL တစ်ခု ရိုက်ထည့်ပါ။</translation>
 <translation id="3220661731597678625">လက်ရှိ အဆင့်</translation>

@@ -5,40 +5,53 @@
 #include "net/websockets/websocket_stream.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "base/compiler_specific.h"
+#include "base/check_op.h"
 #include "base/containers/span.h"
-#include "base/memory/ptr_util.h"
-#include "base/metrics/histogram.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_samples.h"
-#include "base/metrics/statistics_recorder.h"
 #include "base/run_loop.h"
 #include "base/strings/string_piece.h"
+#include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/timer/mock_timer.h"
 #include "base/timer/timer.h"
+#include "net/base/auth.h"
 #include "net/base/features.h"
 #include "net/base/isolation_info.h"
 #include "net/base/net_errors.h"
+#include "net/base/request_priority.h"
+#include "net/base/test_completion_callback.h"
 #include "net/base/url_util.h"
+#include "net/cookies/site_for_cookies.h"
+#include "net/http/http_network_session.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_response_headers.h"
-#include "net/proxy_resolution/proxy_resolution_service.h"
-#include "net/socket/client_socket_handle.h"
+#include "net/log/net_log_with_source.h"
+#include "net/socket/next_proto.h"
 #include "net/socket/socket_test_util.h"
 #include "net/spdy/spdy_test_util_common.h"
+#include "net/ssl/ssl_info.h"
 #include "net/test/cert_test_util.h"
 #include "net/test/gtest_util.h"
 #include "net/test/test_data_directory.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/http2_header_block.h"
 #include "net/third_party/quiche/src/quiche/spdy/core/spdy_protocol.h"
+#include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
+#include "net/url_request/url_request.h"
+#include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_test_util.h"
-#include "net/websockets/websocket_basic_handshake_stream.h"
 #include "net/websockets/websocket_frame.h"
+#include "net/websockets/websocket_handshake_request_info.h"
+#include "net/websockets/websocket_handshake_response_info.h"
+#include "net/websockets/websocket_handshake_stream_base.h"
 #include "net/websockets/websocket_stream_create_test_base.h"
 #include "net/websockets/websocket_test_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -98,15 +111,26 @@ static IsolationInfo CreateIsolationInfo() {
                                origin, SiteForCookies::FromOrigin(origin));
 }
 
-class WebSocketStreamCreateTest : public TestWithParam<HandshakeStreamType>,
-                                  public WebSocketStreamCreateTestBase {
+class WebSocketStreamCreateTest
+    : public TestWithParam<std::tuple<HandshakeStreamType, bool>>,
+      public WebSocketStreamCreateTestBase {
  protected:
-  WebSocketStreamCreateTest() : stream_type_(GetParam()) {
+  WebSocketStreamCreateTest()
+      : stream_type_(std::get<HandshakeStreamType>(GetParam())),
+        spdy_util_(/*use_priority_header=*/true) {
     // Make sure these tests all pass with connection partitioning enabled. The
     // disabled case is less interesting, and is tested more directly at lower
     // layers.
-    feature_list_.InitAndEnableFeature(
-        features::kPartitionConnectionsByNetworkIsolationKey);
+    if (PriorityHeaderEnabled()) {
+      feature_list_.InitWithFeatures(
+          {features::kPartitionConnectionsByNetworkIsolationKey,
+           net::features::kPriorityHeader},
+          {});
+    } else {
+      feature_list_.InitWithFeatures(
+          {features::kPartitionConnectionsByNetworkIsolationKey},
+          {net::features::kPriorityHeader});
+    }
   }
 
   ~WebSocketStreamCreateTest() override {
@@ -373,6 +397,8 @@ class WebSocketStreamCreateTest : public TestWithParam<HandshakeStreamType>,
                            std::move(timer_));
   }
 
+  bool PriorityHeaderEnabled() const { return std::get<bool>(GetParam()); }
+
  private:
   void AddWrite(const spdy::SpdySerializedFrame* frame) {
     writes_.emplace_back(ASYNC, frame->data(), frame->size(),
@@ -409,14 +435,16 @@ class WebSocketStreamCreateTest : public TestWithParam<HandshakeStreamType>,
 
 INSTANTIATE_TEST_SUITE_P(All,
                          WebSocketStreamCreateTest,
-                         Values(BASIC_HANDSHAKE_STREAM));
+                         testing::Combine(Values(BASIC_HANDSHAKE_STREAM),
+                                          testing::Bool()));
 
 using WebSocketMultiProtocolStreamCreateTest = WebSocketStreamCreateTest;
 
 INSTANTIATE_TEST_SUITE_P(All,
                          WebSocketMultiProtocolStreamCreateTest,
-                         Values(BASIC_HANDSHAKE_STREAM,
-                                HTTP2_HANDSHAKE_STREAM));
+                         testing::Combine(Values(BASIC_HANDSHAKE_STREAM,
+                                                 HTTP2_HANDSHAKE_STREAM),
+                                          testing::Bool()));
 
 // There are enough tests of the Sec-WebSocket-Extensions header that they
 // deserve their own test fixture.
@@ -438,8 +466,9 @@ class WebSocketStreamCreateExtensionTest
 
 INSTANTIATE_TEST_SUITE_P(All,
                          WebSocketStreamCreateExtensionTest,
-                         Values(BASIC_HANDSHAKE_STREAM,
-                                HTTP2_HANDSHAKE_STREAM));
+                         testing::Combine(Values(BASIC_HANDSHAKE_STREAM,
+                                                 HTTP2_HANDSHAKE_STREAM),
+                                          testing::Bool()));
 
 // Common code to construct expectations for authentication tests that receive
 // the auth challenge on one connection and then create a second connection to
@@ -495,7 +524,9 @@ class WebSocketStreamCreateBasicAuthTest : public WebSocketStreamCreateTest {
   }
 
   static std::string RequestExpectation(base::StringPiece base64_user_pass) {
-    static const char request2format[] =
+    // Copy base64_user_pass to a std::string in case it is not nul-terminated.
+    std::string base64_user_pass_string(base64_user_pass);
+    return base::StringPrintf(
         "GET / HTTP/1.1\r\n"
         "Host: www.example.org\r\n"
         "Connection: Upgrade\r\n"
@@ -511,8 +542,8 @@ class WebSocketStreamCreateBasicAuthTest : public WebSocketStreamCreateTest {
         "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
         "Sec-WebSocket-Extensions: permessage-deflate; "
         "client_max_window_bits\r\n"
-        "\r\n";
-    return base::StringPrintf(request2format, base64_user_pass.data());
+        "\r\n",
+        base64_user_pass_string.c_str());
   }
 
   static const char kUnauthorizedResponse[];
@@ -522,7 +553,8 @@ class WebSocketStreamCreateBasicAuthTest : public WebSocketStreamCreateTest {
 
 INSTANTIATE_TEST_SUITE_P(All,
                          WebSocketStreamCreateBasicAuthTest,
-                         Values(BASIC_HANDSHAKE_STREAM));
+                         testing::Combine(Values(BASIC_HANDSHAKE_STREAM),
+                                          testing::Bool()));
 
 class WebSocketStreamCreateDigestAuthTest : public WebSocketStreamCreateTest {
  protected:
@@ -534,7 +566,8 @@ class WebSocketStreamCreateDigestAuthTest : public WebSocketStreamCreateTest {
 
 INSTANTIATE_TEST_SUITE_P(All,
                          WebSocketStreamCreateDigestAuthTest,
-                         Values(BASIC_HANDSHAKE_STREAM));
+                         testing::Combine(Values(BASIC_HANDSHAKE_STREAM),
+                                          testing::Bool()));
 
 const char WebSocketStreamCreateBasicAuthTest::kUnauthorizedResponse[] =
     "HTTP/1.1 401 Unauthorized\r\n"

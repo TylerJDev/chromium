@@ -11,9 +11,10 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
-#include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "components/autofill/content/browser/scoped_autofill_managers_observation.h"
+#include "components/autofill/core/browser/autofill_manager.h"
 #include "components/autofill/core/common/password_generation_util.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/password_manager/content/browser/content_credential_manager.h"
@@ -99,7 +100,8 @@ class ChromePasswordManagerClient
     : public password_manager::PasswordManagerClient,
       public content::WebContentsObserver,
       public content::WebContentsUserData<ChromePasswordManagerClient>,
-      public autofill::mojom::PasswordGenerationDriver {
+      public autofill::mojom::PasswordGenerationDriver,
+      public autofill::AutofillManager::Observer {
  public:
   static void CreateForWebContents(content::WebContents* contents);
   static void BindPasswordGenerationDriver(
@@ -150,7 +152,7 @@ class ChromePasswordManagerClient
   // Returns a pointer to the DeviceAuthenticator which is created on demand.
   // This is currently only implemented for Android, Mac and Windows. On all
   // other platforms this will always be null.
-  scoped_refptr<device_reauth::DeviceAuthenticator> GetDeviceAuthenticator()
+  std::unique_ptr<device_reauth::DeviceAuthenticator> GetDeviceAuthenticator()
       override;
   void GeneratePassword(
       autofill::password_generation::PasswordGenerationType type) override;
@@ -341,6 +343,11 @@ class ChromePasswordManagerClient
   void PrimaryPageChanged(content::Page& page) override;
   void WebContentsDestroyed() override;
 
+  // autofill::AutofillManager::Observer:
+  void OnFieldTypesDetermined(autofill::AutofillManager& manager,
+                              autofill::FormGlobalId form_id,
+                              FieldTypeSource source) override;
+
   password_manager::ContentPasswordManagerDriverFactory* GetDriverFactory()
       const;
 
@@ -475,6 +482,10 @@ class ChromePasswordManagerClient
   std::unique_ptr<PasswordMigrationWarningStartupLauncher>
       password_migration_warning_startup_launcher_;
 #endif  // BUILDFLAG(IS_ANDROID)
+
+  // Observes `AutofillManager`s of the `WebContents` that `this` belongs to.
+  autofill::ScopedAutofillManagersObservation autofill_managers_observation_{
+      this};
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };

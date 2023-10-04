@@ -20,11 +20,11 @@
 #include "chrome/browser/ash/crosapi/browser_manager.h"
 #include "chrome/browser/ash/printing/cups_printers_manager.h"
 #include "chrome/browser/platform_util.h"
-#include "chrome/browser/web_applications/web_app_id.h"
 #include "chrome/common/extensions/api/autotest_private.h"
 #include "chromeos/services/machine_learning/public/mojom/machine_learning_service.mojom-forward.h"
 #include "chromeos/services/machine_learning/public/mojom/model.mojom.h"
 #include "chromeos/ui/base/window_state_type.h"
+#include "components/webapps/common/web_app_id.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_function_histogram_value.h"
@@ -37,6 +37,10 @@
 #include "ui/snapshot/screenshot_grabber.h"
 
 class GoogleServiceAuthError;
+
+namespace ash {
+class UserContext;
+}
 
 namespace crostini {
 enum class CrostiniResult;
@@ -372,6 +376,8 @@ class AutotestPrivateGetCryptohomeRecoveryDataFunction
  private:
   ~AutotestPrivateGetCryptohomeRecoveryDataFunction() override;
   ResponseAction Run() override;
+  void RunWithContext(const std::string& auth_token,
+                      std::unique_ptr<ash::UserContext> context);
 };
 
 class AutotestPrivateWaitForSystemWebAppsInstallFunction
@@ -708,24 +714,6 @@ class AutotestPrivateRefreshRemoteCommandsFunction : public ExtensionFunction {
  private:
   ~AutotestPrivateRefreshRemoteCommandsFunction() override;
   ResponseAction Run() override;
-};
-
-class AutotestPrivateBootstrapMachineLearningServiceFunction
-    : public ExtensionFunction {
- public:
-  AutotestPrivateBootstrapMachineLearningServiceFunction();
-  DECLARE_EXTENSION_FUNCTION("autotestPrivate.bootstrapMachineLearningService",
-                             AUTOTESTPRIVATE_BOOTSTRAPMACHINELEARNINGSERVICE)
-
- private:
-  ~AutotestPrivateBootstrapMachineLearningServiceFunction() override;
-  ResponseAction Run() override;
-
-  // Callbacks for a basic Mojo call to MachineLearningService.LoadModel.
-  void ModelLoaded(chromeos::machine_learning::mojom::LoadModelResult result);
-  void OnMojoDisconnect();
-
-  mojo::Remote<chromeos::machine_learning::mojom::Model> model_;
 };
 
 class AutotestPrivateLoadSmartDimComponentFunction : public ExtensionFunction {
@@ -1246,8 +1234,8 @@ class AutotestPrivateInstallPWAForCurrentURLFunction
   // Called when a PWA is loaded from a URL.
   void PWALoaded();
   // Called when a PWA is installed.
-  void PWAInstalled(const web_app::AppId& app_id);
-  // Called when intalling a PWA times out.
+  void PWAInstalled(const webapps::AppId& app_id);
+  // Called when installing a PWA times out.
   void PWATimeout();
 
   std::unique_ptr<PWABannerObserver> banner_observer_;
@@ -1828,6 +1816,17 @@ class AutotestPrivateGetCurrentInputMethodDescriptorFunction
 
  private:
   ~AutotestPrivateGetCurrentInputMethodDescriptorFunction() override;
+  ResponseAction Run() override;
+};
+
+class AutotestPrivateSetArcInteractiveStateFunction : public ExtensionFunction {
+ public:
+  AutotestPrivateSetArcInteractiveStateFunction();
+  DECLARE_EXTENSION_FUNCTION("autotestPrivate.setArcInteractiveState",
+                             AUTOTESTPRIVATE_SETARCINTERACTIVESTATE)
+
+ private:
+  ~AutotestPrivateSetArcInteractiveStateFunction() override;
   ResponseAction Run() override;
 };
 

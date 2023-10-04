@@ -55,6 +55,9 @@ class ASH_EXPORT NotificationCenterTray : public TrayBackgroundView,
   // Called when UnifiedSystemTray's preferred visibility changes.
   void OnSystemTrayVisibilityChanged(bool system_tray_visible);
 
+  // Callback called when this TrayBackgroundView is pressed.
+  void OnTrayButtonPressed();
+
   NotificationListView* GetNotificationListView();
 
   // True if the bubble is shown.
@@ -71,6 +74,7 @@ class ASH_EXPORT NotificationCenterTray : public TrayBackgroundView,
   std::u16string GetAccessibleNameForTray() override;
   void HandleLocaleChange() override;
   void HideBubbleWithView(const TrayBubbleView* bubble_view) override;
+  void HideBubble(const TrayBubbleView* bubble_view) override;
   void ClickedOutsideBubble() override;
   void UpdateTrayItemColor(bool is_active) override;
   void CloseBubble() override;

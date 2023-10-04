@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "base/check.h"
@@ -56,6 +57,11 @@ LocalFrameToken AutofillTestEnvironment::NextLocalFrameToken() {
       ++local_frame_token_counter_high_, ++local_frame_token_counter_low_));
 }
 
+RemoteFrameToken AutofillTestEnvironment::NextRemoteFrameToken() {
+  return RemoteFrameToken(base::UnguessableToken::CreateForTesting(
+      ++remote_frame_token_counter_high_, ++remote_frame_token_counter_low_));
+}
+
 FormRendererId AutofillTestEnvironment::NextFormRendererId() {
   return FormRendererId(++form_renderer_id_counter_);
 }
@@ -63,6 +69,9 @@ FormRendererId AutofillTestEnvironment::NextFormRendererId() {
 FieldRendererId AutofillTestEnvironment::NextFieldRendererId() {
   return FieldRendererId(++field_renderer_id_counter_);
 }
+
+AutofillUnitTestEnvironment::AutofillUnitTestEnvironment(const Options& options)
+    : AutofillTestEnvironment(options) {}
 
 AutofillBrowserTestEnvironment::AutofillBrowserTestEnvironment(
     const Options& options)
@@ -76,6 +85,24 @@ LocalFrameToken MakeLocalFrameToken(RandomizeFrame randomize) {
     return LocalFrameToken(
         base::UnguessableToken::CreateForTesting(98765, 43210));
   }
+}
+
+RemoteFrameToken MakeRemoteFrameToken(RandomizeFrame randomize) {
+  if (*randomize) {
+    return RemoteFrameToken(
+        AutofillTestEnvironment::GetCurrent().NextRemoteFrameToken());
+  } else {
+    return RemoteFrameToken(
+        base::UnguessableToken::CreateForTesting(12345, 67890));
+  }
+}
+
+FormData CreateFormDataForFrame(FormData form, LocalFrameToken frame_token) {
+  form.host_frame = frame_token;
+  for (FormFieldData& field : form.fields) {
+    field.host_frame = frame_token;
+  }
+  return form;
 }
 
 FormData WithoutValues(FormData form) {
@@ -112,22 +139,14 @@ FormFieldData CreateTestFormField(std::string_view label,
                                   std::string_view value,
                                   std::string_view type) {
   FormFieldData field;
-  CreateTestFormField(label, name, value, type, &field);
+  field.host_frame = MakeLocalFrameToken();
+  field.unique_renderer_id = MakeFieldRendererId();
+  field.label = base::UTF8ToUTF16(label);
+  field.name = base::UTF8ToUTF16(name);
+  field.value = base::UTF8ToUTF16(value);
+  field.form_control_type = StringToFormControlType(type);
+  field.is_focusable = true;
   return field;
-}
-
-void CreateTestFormField(std::string_view label,
-                         std::string_view name,
-                         std::string_view value,
-                         std::string_view type,
-                         FormFieldData* field) {
-  field->host_frame = MakeLocalFrameToken();
-  field->unique_renderer_id = MakeFieldRendererId();
-  field->label = base::UTF8ToUTF16(label);
-  field->name = base::UTF8ToUTF16(name);
-  field->value = base::UTF8ToUTF16(value);
-  field->form_control_type = type;
-  field->is_focusable = true;
 }
 
 FormFieldData CreateTestFormField(std::string_view label,
@@ -135,20 +154,10 @@ FormFieldData CreateTestFormField(std::string_view label,
                                   std::string_view value,
                                   std::string_view type,
                                   std::string_view autocomplete) {
-  FormFieldData field;
-  CreateTestFormField(label, name, value, type, autocomplete, &field);
+  FormFieldData field = CreateTestFormField(label, name, value, type);
+  field.autocomplete_attribute = autocomplete;
+  field.parsed_autocomplete = ParseAutocompleteAttribute(autocomplete);
   return field;
-}
-
-void CreateTestFormField(std::string_view label,
-                         std::string_view name,
-                         std::string_view value,
-                         std::string_view type,
-                         std::string_view autocomplete,
-                         FormFieldData* field) {
-  CreateTestFormField(label, name, value, type, field);
-  field->autocomplete_attribute = autocomplete;
-  field->parsed_autocomplete = ParseAutocompleteAttribute(autocomplete);
 }
 
 FormFieldData CreateTestFormField(std::string_view label,
@@ -157,23 +166,13 @@ FormFieldData CreateTestFormField(std::string_view label,
                                   std::string_view type,
                                   std::string_view autocomplete,
                                   uint64_t max_length) {
-  FormFieldData field;
-  CreateTestFormField(label, name, value, type, autocomplete, max_length,
-                      &field);
-  return field;
-}
-
-void CreateTestFormField(std::string_view label,
-                         std::string_view name,
-                         std::string_view value,
-                         std::string_view type,
-                         std::string_view autocomplete,
-                         uint64_t max_length,
-                         FormFieldData* field) {
+  FormFieldData field = CreateTestFormField(label, name, value, type);
   // First, set the `max_length`, as the `parsed_autocomplete` is set based on
   // this value.
-  field->max_length = max_length;
-  CreateTestFormField(label, name, value, type, autocomplete, field);
+  field.max_length = max_length;
+  field.autocomplete_attribute = autocomplete;
+  field.parsed_autocomplete = ParseAutocompleteAttribute(autocomplete);
+  return field;
 }
 
 FormFieldData CreateTestSelectField(std::string_view label,

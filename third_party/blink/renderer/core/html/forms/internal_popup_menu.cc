@@ -51,8 +51,9 @@ namespace {
 // TODO crbug.com/516675 Add stretch to serialization
 
 const char* FontStyleToString(FontSelectionValue slope) {
-  if (slope == ItalicSlopeValue())
+  if (slope == kItalicSlopeValue) {
     return "italic";
+  }
   return "normal";
 }
 
@@ -108,18 +109,16 @@ ScrollbarPart ScrollbarPartFromPseudoId(PseudoId id) {
   return kNoPart;
 }
 
-scoped_refptr<const ComputedStyle> StyleForHoveredScrollbarPart(
-    HTMLSelectElement& element,
-    const ComputedStyle* style,
-    Scrollbar* scrollbar,
-    PseudoId target_id) {
+const ComputedStyle* StyleForHoveredScrollbarPart(HTMLSelectElement& element,
+                                                  const ComputedStyle* style,
+                                                  Scrollbar* scrollbar,
+                                                  PseudoId target_id) {
   ScrollbarPart part = ScrollbarPartFromPseudoId(target_id);
   if (part == kNoPart)
     return nullptr;
   scrollbar->SetHoveredPart(part);
-  scoped_refptr<const ComputedStyle> part_style =
-      element.UncachedStyleForPseudoElement(
-          StyleRequest(target_id, To<CustomScrollbar>(scrollbar), part, style));
+  const ComputedStyle* part_style = element.UncachedStyleForPseudoElement(
+      StyleRequest(target_id, To<CustomScrollbar>(scrollbar), part, style));
   return part_style;
 }
 
@@ -325,10 +324,9 @@ void InternalPopupMenu::WriteDocument(SharedBuffer* data) {
     }
     // For Pseudo-class styles, Style should be calculated via that status.
     if (temp_scrollbar) {
-      scoped_refptr<const ComputedStyle> part_style =
-          StyleForHoveredScrollbarPart(owner_element,
-                                       owner_element.GetComputedStyle(),
-                                       temp_scrollbar, target.first);
+      const ComputedStyle* part_style = StyleForHoveredScrollbarPart(
+          owner_element, owner_element.GetComputedStyle(), temp_scrollbar,
+          target.first);
       if (part_style) {
         AppendOwnerElementPseudoStyles(target.second + ":hover", data,
                                        *part_style);
@@ -447,7 +445,7 @@ void InternalPopupMenu::AddElementStyle(ItemIterationContext& context,
     AddProperty("fontSize", font_description.ComputedPixelSize(), data);
   }
   // Our UA stylesheet has font-weight:normal for OPTION.
-  if (NormalWeightValue() != font_description.Weight()) {
+  if (kNormalWeightValue != font_description.Weight()) {
     AddProperty("fontWeight", font_description.Weight().ToString(), data);
   }
   if (base_font.Family() != font_description.Family()) {

@@ -98,7 +98,8 @@ class SharesheetBubbleViewBrowserTest
   }
 
  protected:
-  raw_ptr<views::Widget, ExperimentalAsh> sharesheet_widget_;
+  raw_ptr<views::Widget, DanglingUntriaged | ExperimentalAsh>
+      sharesheet_widget_;
 
  private:
   base::test::ScopedFeatureList scoped_feature_list_;
@@ -119,8 +120,9 @@ class SharesheetBubbleViewPolicyBrowserTest
  public:
   class MockFilesController : public policy::DlpFilesControllerAsh {
    public:
-    explicit MockFilesController(const policy::DlpRulesManager& rules_manager)
-        : DlpFilesControllerAsh(rules_manager) {}
+    explicit MockFilesController(const policy::DlpRulesManager& rules_manager,
+                                 Profile* profile)
+        : DlpFilesControllerAsh(rules_manager, profile) {}
     ~MockFilesController() override = default;
 
     MOCK_METHOD(bool,
@@ -128,6 +130,18 @@ class SharesheetBubbleViewPolicyBrowserTest
                 (const apps::AppUpdate&, const apps::IntentPtr&),
                 (override));
   };
+
+  void TearDownOnMainThread() override {
+    // Make sure the rules manager does not return a freed files controller.
+    ON_CALL(*rules_manager_, GetDlpFilesController)
+        .WillByDefault(testing::Return(nullptr));
+
+    // The files controller must be destroyed before the profile since it's
+    // holding a pointer to it.
+    mock_files_controller_.reset();
+
+    SharesheetBubbleViewBrowserTest::TearDownOnMainThread();
+  }
 
   void SetupRulesManager(bool is_dlp_blocked) {
     policy::DlpRulesManagerFactory::GetInstance()->SetTestingFactory(
@@ -139,10 +153,6 @@ class SharesheetBubbleViewPolicyBrowserTest
 
     ON_CALL(*rules_manager_, IsFilesPolicyEnabled)
         .WillByDefault(testing::Return(true));
-    mock_files_controller_ =
-        std::make_unique<MockFilesController>(*rules_manager_);
-    ON_CALL(*rules_manager_, GetDlpFilesController)
-        .WillByDefault(testing::Return(mock_files_controller_.get()));
 
     EXPECT_CALL(*mock_files_controller_.get(), IsLaunchBlocked)
         .WillOnce(testing::Return(is_dlp_blocked));
@@ -210,12 +220,18 @@ class SharesheetBubbleViewPolicyBrowserTest
     auto dlp_rules_manager =
         std::make_unique<testing::NiceMock<policy::MockDlpRulesManager>>();
     rules_manager_ = dlp_rules_manager.get();
+
+    mock_files_controller_ = std::make_unique<MockFilesController>(
+        *rules_manager_, Profile::FromBrowserContext(context));
+    ON_CALL(*rules_manager_, GetDlpFilesController)
+        .WillByDefault(testing::Return(mock_files_controller_.get()));
+
     return dlp_rules_manager;
   }
 
   apps::AppServiceTest app_service_test_;
-  raw_ptr<policy::MockDlpRulesManager, ExperimentalAsh> rules_manager_ =
-      nullptr;
+  raw_ptr<policy::MockDlpRulesManager, DanglingUntriaged | ExperimentalAsh>
+      rules_manager_ = nullptr;
   std::unique_ptr<MockFilesController> mock_files_controller_ = nullptr;
 };
 

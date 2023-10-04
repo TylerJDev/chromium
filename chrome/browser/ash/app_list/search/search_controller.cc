@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "ash/constants/ash_pref_names.h"
+#include "ash/public/cpp/app_list/app_list_controller.h"
 #include "ash/public/cpp/app_list/app_list_features.h"
 #include "ash/public/cpp/app_list/app_list_metrics.h"
 #include "ash/public/cpp/app_list/app_list_types.h"
@@ -29,6 +30,7 @@
 #include "chrome/browser/ash/app_list/search/search_metrics_manager.h"
 #include "chrome/browser/ash/app_list/search/search_provider.h"
 #include "chrome/browser/ash/app_list/search/search_session_metrics_manager.h"
+#include "chrome/browser/ash/app_list/search/types.h"
 #include "chrome/browser/metrics/structured/event_logging_features.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/prefs/pref_service.h"
@@ -85,6 +87,32 @@ void SearchController::Initialize() {
       std::make_unique<AppDiscoveryMetricsManager>(profile_);
 }
 
+std::vector<ash::AppListSearchControlCategory>
+SearchController::GetToggleableCategories() const {
+  // Use a set to deduplicate and sort the elements in order.
+  std::set<ash::AppListSearchControlCategory> category_set;
+  for (auto& provider : providers_) {
+    // Cannot toggle is not an actual search category.
+    if (provider->control_category() ==
+        ash::AppListSearchControlCategory::kCannotToggle) {
+      continue;
+    }
+
+    // Image search results only become available after the user acknowledges a
+    // privacy notice - the user will be able to toggle the feature only after
+    // image search results become available.
+    if (provider->control_category() ==
+            ash::AppListSearchControlCategory::kImages &&
+        !ash::AppListController::Get()->IsImageSearchToggleable()) {
+      continue;
+    }
+
+    category_set.insert(provider->control_category());
+  }
+  return std::vector<ash::AppListSearchControlCategory>(category_set.begin(),
+                                                        category_set.end());
+}
+
 void SearchController::OnBurnInPeriodElapsed() {
   ranker_manager_->OnBurnInPeriodElapsed();
   Publish();
@@ -130,6 +158,13 @@ void SearchController::StartSearch(const std::u16string& query) {
 
   // Search all providers.
   for (const auto& provider : providers_) {
+    // Does not start the search of a provider if its control category is
+    // disabled.
+    if (ash::features::IsLauncherSearchControlEnabled() &&
+        !IsControlCategoryEnabled(profile_, provider->control_category())) {
+      continue;
+    }
+
     provider->Start(truncated_query);
   }
 }

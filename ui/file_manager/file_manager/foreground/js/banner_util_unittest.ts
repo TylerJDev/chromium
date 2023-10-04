@@ -8,7 +8,7 @@ import {VolumeManagerCommon} from '../../common/js/volume_manager_types.js';
 import {VolumeInfo} from '../../externs/volume_info.js';
 
 import {isAllowedVolume, isBelowThreshold} from './banner_controller.js';
-import {AllowedVolumeOrType, MinDiskThreshold} from './ui/banners/types.js';
+import type {AllowedVolumeOrType, MinDiskThreshold} from './ui/banners/types.js';
 
 let allowedVolumes: AllowedVolumeOrType[] = [];
 
@@ -18,8 +18,8 @@ let allowedVolumes: AllowedVolumeOrType[] = [];
 function createAndSetVolumeInfo(
     volumeType: VolumeManagerCommon.VolumeType, volumeId: string|null = null) {
   class FakeVolumeInfo {
-    public volumeType: VolumeManagerCommon.VolumeType;
-    public volumeId: string|null;
+    volumeType: VolumeManagerCommon.VolumeType;
+    volumeId: string|null;
     constructor() {
       this.volumeType = volumeType;
       this.volumeId = volumeId;

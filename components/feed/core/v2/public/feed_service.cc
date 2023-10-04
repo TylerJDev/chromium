@@ -15,6 +15,7 @@
 #include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
+#include "components/country_codes/country_codes.h"
 #include "components/feed/core/common/pref_names.h"
 #include "components/feed/core/shared_prefs/pref_names.h"
 #include "components/feed/core/v2/feed_network_impl.h"
@@ -146,6 +147,11 @@ class FeedService::StreamDelegateImpl : public FeedStream::Delegate {
                "feed-screenshot-mode");
   }
   bool IsOffline() override { return net::NetworkChangeNotifier::IsOffline(); }
+
+  std::string GetCountry() override {
+    return country_codes::GetCurrentCountryCode();
+  }
+
   DisplayMetrics GetDisplayMetrics() override {
     return service_delegate_->GetDisplayMetrics();
   }
@@ -167,9 +173,6 @@ class FeedService::StreamDelegateImpl : public FeedStream::Delegate {
   // behavior is unchanged there.
   bool IsSigninAllowed() override {
     return profile_prefs_->GetBoolean(::prefs::kSigninAllowed);
-  }
-  bool IsSyncOn() override {
-    return identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSync);
   }
   void RegisterExperiments(const Experiments& experiments) override {
     service_delegate_->RegisterExperiments(experiments);

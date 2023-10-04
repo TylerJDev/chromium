@@ -5,9 +5,11 @@
 import {TestRunner} from 'test_runner';
 import {ElementsTestRunner} from 'elements_test_runner';
 
+import * as SDK from 'devtools/core/sdk/sdk.js';
+import * as Elements from 'devtools/panels/elements/elements.js';
+
 (async function() {
   TestRunner.addResult(`Tests that keyframes are shown in styles pane.\n`);
-  await TestRunner.loadLegacyModule('elements');
   await TestRunner.showPanel('elements');
   await TestRunner.loadHTML(`
       <style>
@@ -30,7 +32,7 @@ import {ElementsTestRunner} from 'elements_test_runner';
   async function step1() {
     TestRunner.addResult('=== Before key modification ===');
     await ElementsTestRunner.dumpSelectedElementStyles(true);
-    var section = UI.panels.elements.stylesWidget.sectionBlocks[1].sections[1];
+    var section = Elements.ElementsPanel.ElementsPanel.instance().stylesWidget.sectionBlocks[1].sections[1];
     section.startEditingSelector();
     section.selectorElement.textContent = '1%';
     section.selectorElement.dispatchEvent(TestRunner.createKeyEvent('Enter'));
@@ -40,7 +42,7 @@ import {ElementsTestRunner} from 'elements_test_runner';
   async function step2() {
     TestRunner.addResult('=== After key modification ===');
     await ElementsTestRunner.dumpSelectedElementStyles(true);
-    SDK.domModelUndoStack.undo();
+    SDK.DOMModel.DOMModelUndoStack.instance().undo();
     ElementsTestRunner.waitForStyles('element', step3, true);
   }
 
@@ -48,14 +50,14 @@ import {ElementsTestRunner} from 'elements_test_runner';
     TestRunner.addResult('=== After undo ===');
     await ElementsTestRunner.dumpSelectedElementStyles(true);
 
-    SDK.domModelUndoStack.redo();
+    SDK.DOMModel.DOMModelUndoStack.instance().redo();
     ElementsTestRunner.waitForStyles('element', step4, true);
   }
 
   async function step4() {
     TestRunner.addResult('=== After redo ===');
     await ElementsTestRunner.dumpSelectedElementStyles(true);
-    var section = UI.panels.elements.stylesWidget.sectionBlocks[1].sections[1];
+    var section = Elements.ElementsPanel.ElementsPanel.instance().stylesWidget.sectionBlocks[1].sections[1];
     section.startEditingSelector();
     section.selectorElement.textContent = '1% /*';
     section.selectorElement.dispatchEvent(TestRunner.createKeyEvent('Enter'));

@@ -334,12 +334,11 @@ IN_PROC_BROWSER_TEST_F(RequestStorageAccessForBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(RequestStorageAccessForBrowserTest,
-                       RsaForOriginDisabledByDefault) {
+                       RsaForOriginEnabledByDefault) {
   NavigateToPageWithFrame(kHostA);
-  // Ensure that the proposed extension is not available unless explicitly
-  // enabled.
+  // Ensure that the proposed extension is enabled by default
   EXPECT_TRUE(EvalJs(GetPrimaryMainFrame(),
-                     "\"requestStorageAccessFor\" in document === false")
+                     "\"requestStorageAccessFor\" in document === true")
                   .ExtractBool());
 }
 
@@ -415,7 +414,7 @@ class RequestStorageAccessForWithFirstPartySetsBrowserTest
   void SetUpCommandLine(base::CommandLine* command_line) override {
     RequestStorageAccessForBaseBrowserTest::SetUpCommandLine(command_line);
     command_line->AppendSwitchASCII(
-        network::switches::kUseFirstPartySet,
+        network::switches::kUseRelatedWebsiteSet,
         base::StrCat({R"({"primary": "https://)", kHostA,
                       R"(", "associatedSites": ["https://)", kHostC, R"("])",
                       R"(, "serviceSites": ["https://)", kHostB, R"("]})"}));
@@ -896,7 +895,7 @@ class RequestStorageAccessForWithCHIPSBrowserTest
   void SetUpCommandLine(base::CommandLine* command_line) override {
     RequestStorageAccessForBaseBrowserTest::SetUpCommandLine(command_line);
     command_line->AppendSwitchASCII(
-        network::switches::kUseFirstPartySet,
+        network::switches::kUseRelatedWebsiteSet,
         base::StrCat({R"({"primary": "https://)", kHostA,
                       R"(", "associatedSites": ["https://)", kHostC, R"("])",
                       R"(, "serviceSites": ["https://)", kHostB, R"("]})"}));

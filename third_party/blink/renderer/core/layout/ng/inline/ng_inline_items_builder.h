@@ -10,7 +10,7 @@
 #include "third_party/blink/renderer/core/layout/ng/inline/empty_offset_mapping_builder.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_offset_mapping_builder.h"
-#include "third_party/blink/renderer/core/layout/ng/svg/svg_inline_node_data.h"
+#include "third_party/blink/renderer/core/layout/svg/svg_inline_node_data.h"
 #include "third_party/blink/renderer/platform/fonts/font_height.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -53,7 +53,7 @@ class NGInlineItemsBuilderTemplate {
       : block_flow_(block_flow),
         items_(items),
         text_chunk_offsets_(chunk_offsets),
-        is_text_combine_(block_flow_->IsLayoutNGTextCombine()) {}
+        is_text_combine_(block_flow_->IsLayoutTextCombine()) {}
   ~NGInlineItemsBuilderTemplate();
 
   LayoutBlockFlow* GetLayoutBlockFlow() const { return block_flow_; }
@@ -150,7 +150,7 @@ class NGInlineItemsBuilderTemplate {
   void ClearNeedsLayout(LayoutObject*);
   void UpdateShouldCreateBoxFragment(LayoutInline*);
 
-  // In public to modify VectorTraits<BidiContext> in WTF namespace.
+  // The following structs are public to modify VectorTraits in WTF namespace.
   struct BidiContext {
     DISALLOW_NEW();
 
@@ -160,6 +160,22 @@ class NGInlineItemsBuilderTemplate {
     Member<LayoutObject> node;
     UChar enter;
     UChar exit;
+  };
+
+  // Keep track of inline boxes to compute ShouldCreateBoxFragment.
+  struct BoxInfo {
+    DISALLOW_NEW();
+
+    Member<const ComputedStyle> style;
+    unsigned item_index;
+    bool should_create_box_fragment;
+    FontHeight text_metrics;
+
+    void Trace(Visitor* visitor) const { visitor->Trace(style); }
+
+    BoxInfo(unsigned item_index, const NGInlineItem& item);
+    bool ShouldCreateBoxFragmentForChild(const BoxInfo& child) const;
+    void SetShouldCreateBoxFragment(HeapVector<NGInlineItem>* items);
   };
 
  private:
@@ -174,21 +190,7 @@ class NGInlineItemsBuilderTemplate {
   // white space is collapsed.
   OffsetMappingBuilder mapping_builder_;
 
-  // Keep track of inline boxes to compute ShouldCreateBoxFragment.
-  struct BoxInfo {
-    DISALLOW_NEW();
-
-    const ComputedStyle& style;
-    unsigned item_index;
-    bool should_create_box_fragment;
-    FontHeight text_metrics;
-
-    BoxInfo(unsigned item_index, const NGInlineItem& item);
-    bool ShouldCreateBoxFragmentForChild(const BoxInfo& child) const;
-    void SetShouldCreateBoxFragment(HeapVector<NGInlineItem>* items);
-  };
-  Vector<BoxInfo> boxes_;
-
+  HeapVector<BoxInfo> boxes_;
   HeapVector<BidiContext> bidi_context_;
 
   const SvgTextChunkOffsets* text_chunk_offsets_;
@@ -298,5 +300,9 @@ WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
     blink::NGInlineItemsBuilder::BidiContext)
 WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
     blink::NGInlineItemsBuilderForOffsetMapping::BidiContext)
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::NGInlineItemsBuilder::BoxInfo)
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::NGInlineItemsBuilderForOffsetMapping::BoxInfo)
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_INLINE_NG_INLINE_ITEMS_BUILDER_H_

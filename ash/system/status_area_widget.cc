@@ -23,6 +23,7 @@
 #include "ash/system/accessibility/dictation_button_tray.h"
 #include "ash/system/accessibility/select_to_speak/select_to_speak_tray.h"
 #include "ash/system/eche/eche_tray.h"
+#include "ash/system/focus_mode/focus_mode_tray.h"
 #include "ash/system/holding_space/holding_space_tray.h"
 #include "ash/system/ime_menu/ime_menu_tray.h"
 #include "ash/system/media/media_tray.h"
@@ -89,6 +90,9 @@ void StatusAreaWidget::Initialize() {
   if (features::IsVideoConferenceEnabled()) {
     video_conference_tray_ =
         AddTrayButton(std::make_unique<VideoConferenceTray>(shelf_));
+  }
+  if (features::IsFocusModeEnabled()) {
+    focus_mode_tray_ = AddTrayButton(std::make_unique<FocusModeTray>(shelf_));
   }
   holding_space_tray_ =
       AddTrayButton(std::make_unique<HoldingSpaceTray>(shelf_));
@@ -170,12 +174,6 @@ void StatusAreaWidget::Initialize() {
 
 StatusAreaWidget::~StatusAreaWidget() {
   Shell::Get()->session_controller()->RemoveObserver(this);
-  // If QsRevamp flag is enabled, `notification_center_tray_` may be null in
-  // some unittests. During the test environment tear-down, removing the
-  // observer will lead to a crash.
-  if (features::IsQsRevampEnabled() && notification_center_tray_) {
-    notification_center_tray_->RemoveObserver(this);
-  }
 
   // If QsRevamp flag is enabled, reset `animation_controller_` before
   // destroying `notification_center_tray_` so that we don't run into a UaF.
@@ -298,6 +296,7 @@ void StatusAreaWidget::LogVisiblePodCountMetric() {
       case TrayBackgroundViewCatalogName::kVirtualKeyboardStatusArea:
       case TrayBackgroundViewCatalogName::kWmMode:
       case TrayBackgroundViewCatalogName::kVideoConferenceTray:
+      case TrayBackgroundViewCatalogName::kFocusMode:
         if (!tray_button->GetVisible()) {
           continue;
         }
@@ -713,9 +712,12 @@ void StatusAreaWidget::SetOpenShelfPodBubble(
     // widget.
     DCHECK(open_shelf_pod_bubble->IsAnchoredToStatusArea());
 
-    // There should not be 2 tray bubbles that are open at the same time (with
-    // the exception of message center bubble mentioned above).
-    DCHECK(!open_shelf_pod_bubble_);
+    // There should be only one shelf pod bubble open at a time, so we will
+    // close the current bubble for the new one to come in.
+    if (open_shelf_pod_bubble_) {
+      open_shelf_pod_bubble_->CloseBubbleView();
+      open_shelf_pod_bubble_ = nullptr;
+    }
   }
 
   open_shelf_pod_bubble_ = open_shelf_pod_bubble;
@@ -723,12 +725,14 @@ void StatusAreaWidget::SetOpenShelfPodBubble(
       /*bubble_shown=*/open_shelf_pod_bubble_);
 }
 
+void StatusAreaWidget::OnViewIsDeleting(views::View* observed_view) {
+  CHECK(observed_view == notification_center_tray_);
+  notification_center_tray_->RemoveObserver(this);
+}
+
 void StatusAreaWidget::OnViewVisibilityChanged(views::View* observed_view,
                                                views::View* starting_view) {
-  if (observed_view != notification_center_tray_) {
-    return;
-  }
-
+  CHECK(observed_view == notification_center_tray_);
   UpdateDateTrayRoundedCorners();
 }
 

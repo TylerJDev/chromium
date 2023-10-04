@@ -17,7 +17,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/autofill_private.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
@@ -25,6 +25,7 @@
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/geo/autofill_country.h"
 #include "components/autofill/core/browser/ui/country_combobox_model.h"
+#include "components/autofill/core/browser/webdata/autofill_table.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/prefs/pref_service.h"
@@ -94,24 +95,9 @@ autofill_private::AddressEntry ProfileToAddressEntry(
   // Add all address fields to the entry.
   address.guid = profile.guid();
 
-  // TODO(crbug.com/1441904): provide all available fields instead of the hard
-  // coded list of fields.
-  std::vector<autofill::ServerFieldType> field_types = {
-      autofill::NAME_FULL,
-      autofill::NAME_HONORIFIC_PREFIX,
-      autofill::COMPANY_NAME,
-      autofill::ADDRESS_HOME_STREET_ADDRESS,
-      autofill::ADDRESS_HOME_STATE,
-      autofill::ADDRESS_HOME_CITY,
-      autofill::ADDRESS_HOME_DEPENDENT_LOCALITY,
-      autofill::ADDRESS_HOME_ZIP,
-      autofill::ADDRESS_HOME_SORTING_CODE,
-      autofill::ADDRESS_HOME_COUNTRY,
-      autofill::PHONE_HOME_WHOLE_NUMBER,
-      autofill::EMAIL_ADDRESS};
-
   base::ranges::transform(
-      field_types, back_inserter(address.fields), [&profile](auto field_type) {
+      autofill::AutofillTable::GetStoredTypesForAutofillProfile(),
+      back_inserter(address.fields), [&profile](auto field_type) {
         autofill_private::AddressField field;
         field.type = autofill_private::ParseServerFieldType(
             FieldTypeToStringPiece(field_type));
@@ -210,6 +196,10 @@ autofill_private::CreditCardEntry CreditCardToCreditCardEntry(
       credit_card.record_type() == autofill::CreditCard::RecordType::kLocalCard
           ? credit_card.guid()
           : credit_card.server_id();
+  if (credit_card.record_type() ==
+      autofill::CreditCard::RecordType::kMaskedServerCard) {
+    card.instrument_id = base::NumberToString(credit_card.instrument_id());
+  }
   card.name = base::UTF16ToUTF8(
       credit_card.GetRawInfo(autofill::CREDIT_CARD_NAME_FULL));
   card.card_number =
@@ -277,6 +267,8 @@ autofill_private::IbanEntry IbanToIbanEntry(
   iban_entry.metadata.emplace();
   iban_entry.metadata->summary_label =
       base::UTF16ToUTF8(iban.GetIdentifierStringForAutofillDisplay());
+  iban_entry.metadata->is_local =
+      iban.record_type() == autofill::Iban::RecordType::kLocalIban;
 
   return iban_entry;
 }
@@ -290,8 +282,12 @@ AddressEntryList GenerateAddressList(
   const std::vector<autofill::AutofillProfile*>& profiles =
       personal_data.GetProfilesForSettings();
   std::vector<std::u16string> labels;
+  // TODO(crbug.com/1487119): Replace by `profiles` when
+  // `GetProfilesForSettings` starts returning a list of const AutofillProfile*.
   autofill::AutofillProfile::CreateDifferentiatingLabels(
-      profiles, g_browser_process->GetApplicationLocale(), &labels);
+      std::vector<const autofill::AutofillProfile*>(profiles.begin(),
+                                                    profiles.end()),
+      g_browser_process->GetApplicationLocale(), &labels);
   DCHECK_EQ(labels.size(), profiles.size());
 
   AddressEntryList list;
@@ -351,21 +347,10 @@ absl::optional<api::autofill_private::AccountInfo> GetAccountInfo(
   api::autofill_private::AccountInfo api_account;
   api_account.email = account->email;
   api_account.is_sync_enabled_for_autofill_profiles =
-      personal_data.IsSyncEnabledFor(syncer::UserSelectableType::kAutofill);
+      personal_data.IsSyncFeatureEnabledForAutofill();
   api_account.is_eligible_for_address_account_storage =
       personal_data.IsEligibleForAddressAccountStorage();
   return std::move(api_account);
-}
-
-void AuthenticateUser(
-    scoped_refptr<device_reauth::DeviceAuthenticator> device_authenticator,
-    const std::u16string& prompt_message,
-    CallbackAfterSuccessfulUserAuth callback) {
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  CHECK(device_authenticator);
-  device_authenticator->AuthenticateWithMessage(prompt_message,
-                                                std::move(callback));
-#endif
 }
 
 }  // namespace extensions::autofill_util

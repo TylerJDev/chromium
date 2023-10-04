@@ -45,6 +45,7 @@ import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.test.util.ToolbarUnitTestUtils;
 import org.chromium.chrome.test.util.browser.Features;
 import org.chromium.chrome.test.util.browser.Features.DisableFeatures;
+import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.components.security_state.ConnectionSecurityLevel;
 import org.chromium.components.security_state.SecurityStateModel;
 import org.chromium.components.security_state.SecurityStateModelJni;
@@ -111,15 +112,14 @@ public final class ToolbarSecurityIconTest {
         mocker.mock(org.chromium.chrome.browser.toolbar.LocationBarModelJni.TEST_HOOKS,
                 mLocationBarModelJni);
 
-        String exampleUrl = JUnitTestGURLs.EXAMPLE_URL;
-        GURL exampleGurl = JUnitTestGURLs.getGURL(exampleUrl);
-        doReturn(exampleGurl)
+        GURL exampleUrl = JUnitTestGURLs.EXAMPLE_URL;
+        doReturn(exampleUrl)
                 .when(mLocationBarModelJni)
                 .getUrlOfVisibleNavigationEntry(Mockito.anyLong(), Mockito.any());
-        doReturn(exampleUrl)
+        doReturn(exampleUrl.getSpec())
                 .when(mLocationBarModelJni)
                 .getFormattedFullURL(Mockito.anyLong(), Mockito.any());
-        doReturn(exampleUrl)
+        doReturn(exampleUrl.getSpec())
                 .when(mLocationBarModelJni)
                 .getURLForDisplay(Mockito.anyLong(), Mockito.any());
         doReturn((new Random()).nextLong()).when(mLocationBarModelJni).init(Mockito.any());
@@ -166,11 +166,11 @@ public final class ToolbarSecurityIconTest {
         doReturn(ConnectionSecurityLevel.SECURE)
                 .when(mLocationBarModel)
                 .getSecurityLevelFromStateModel(any());
-        doReturn("https://example.com").when(mTrustedCdn).getPublisherUrl();
+        doReturn(new GURL("https://example.com")).when(mTrustedCdn).getPublisherUrl();
         assertEquals("Wrong security level returned for HTTPS publisher URL",
                 ConnectionSecurityLevel.SECURE,
                 mLocationBarModel.getSecurityLevel(mTab, !IS_OFFLINE_PAGE));
-        doReturn("http://example.com").when(mTrustedCdn).getPublisherUrl();
+        doReturn(new GURL("http://example.com")).when(mTrustedCdn).getPublisherUrl();
         assertEquals("Wrong security level returned for HTTP publisher URL",
                 ConnectionSecurityLevel.WARNING,
                 mLocationBarModel.getSecurityLevel(mTab, !IS_OFFLINE_PAGE));
@@ -188,6 +188,7 @@ public final class ToolbarSecurityIconTest {
     @SmallTest
     @UiThreadTest
     @Feature({"Omnibox"})
+    @DisableFeatures(ChromeFeatureList.RED_INTERSTITIAL_FACELIFT)
     public void testGetSecurityIconResource() {
         for (int securityLevel : SECURITY_LEVELS) {
             assertEquals("Wrong phone resource for security level " + securityLevel,
@@ -244,6 +245,20 @@ public final class ToolbarSecurityIconTest {
                         IS_SMALL_DEVICE, !IS_OFFLINE_PAGE, !IS_PAINT_PREVIEW));
         assertEquals(R.drawable.omnibox_https_valid,
                 mLocationBarModel.getSecurityIconResource(ConnectionSecurityLevel.SECURE,
+                        !IS_SMALL_DEVICE, !IS_OFFLINE_PAGE, !IS_PAINT_PREVIEW));
+    }
+
+    @Test
+    @SmallTest
+    @UiThreadTest
+    @Feature({"Omnibox"})
+    @EnableFeatures(ChromeFeatureList.RED_INTERSTITIAL_FACELIFT)
+    public void testDangerousSecurityIconResourceRedInterstitialFaceliftEnabled() {
+        assertEquals(R.drawable.omnibox_dangerous,
+                mLocationBarModel.getSecurityIconResource(ConnectionSecurityLevel.DANGEROUS,
+                        IS_SMALL_DEVICE, !IS_OFFLINE_PAGE, !IS_PAINT_PREVIEW));
+        assertEquals(R.drawable.omnibox_dangerous,
+                mLocationBarModel.getSecurityIconResource(ConnectionSecurityLevel.DANGEROUS,
                         !IS_SMALL_DEVICE, !IS_OFFLINE_PAGE, !IS_PAINT_PREVIEW));
     }
 

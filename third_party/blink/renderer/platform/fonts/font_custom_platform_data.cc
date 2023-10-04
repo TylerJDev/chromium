@@ -46,6 +46,7 @@
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
 #include "third_party/skia/include/core/SkTypeface.h"
+#include "v8/include/v8.h"
 
 namespace {
 
@@ -94,7 +95,13 @@ FontCustomPlatformData::FontCustomPlatformData(sk_sp<SkTypeface> typeface,
                                                size_t data_size)
     : base_typeface_(std::move(typeface)), data_size_(data_size) {}
 
-FontCustomPlatformData::~FontCustomPlatformData() = default;
+FontCustomPlatformData::~FontCustomPlatformData() {
+  if (v8::Isolate* isolate = v8::Isolate::TryGetCurrent()) {
+    // Safe cast since WebFontDecoder has max decompressed size of 128MB.
+    isolate->AdjustAmountOfExternalAllocatedMemory(
+        -static_cast<int64_t>(data_size_));
+  }
+}
 
 FontPlatformData FontCustomPlatformData::GetFontPlatformData(
     float size,
@@ -143,8 +150,8 @@ FontPlatformData FontCustomPlatformData::GetFontPlatformData(
       weight_coordinate = {
           kWghtTag,
           SkFloatToScalar(wght_range.clampToRange(selection_request.weight))};
-      synthetic_bold = bold && wght_range.maximum < BoldThreshold() &&
-                       selection_request.weight >= BoldThreshold();
+      synthetic_bold = bold && wght_range.maximum < kBoldThreshold &&
+                       selection_request.weight >= kBoldThreshold;
     }
 
     SkFontArguments::VariationPosition::Coordinate width_coordinate = {
@@ -179,8 +186,8 @@ FontPlatformData FontCustomPlatformData::GetFontPlatformData(
       slant_coordinate = {
           kSlntTag,
           SkFloatToScalar(slnt_range.clampToRange(-selection_request.slope))};
-      synthetic_italic = italic && slnt_range.maximum < ItalicSlopeValue() &&
-                         selection_request.slope >= ItalicSlopeValue();
+      synthetic_italic = italic && slnt_range.maximum < kItalicSlopeValue &&
+                         selection_request.slope >= kItalicSlopeValue;
     }
 
     variation.push_back(weight_coordinate);
@@ -309,8 +316,15 @@ scoped_refptr<FontCustomPlatformData> FontCustomPlatformData::Create(
     ots_parse_message = decoder.GetErrorString();
     return nullptr;
   }
+  size_t data_size = decoder.DecodedSize();
+  // The new instance of SkData is created while decoding. It stores data
+  // from decoded font resource. GC is not aware of this allocation, so we
+  // need to inform it.
+  if (v8::Isolate* isolate = v8::Isolate::TryGetCurrent()) {
+    isolate->AdjustAmountOfExternalAllocatedMemory(data_size);
+  }
   return base::AdoptRef(
-      new FontCustomPlatformData(std::move(typeface), decoder.DecodedSize()));
+      new FontCustomPlatformData(std::move(typeface), data_size));
 }
 
 bool FontCustomPlatformData::MayBeIconFont() const {

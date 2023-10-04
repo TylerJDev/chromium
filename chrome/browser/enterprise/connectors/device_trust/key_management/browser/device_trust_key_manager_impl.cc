@@ -13,6 +13,7 @@
 #include "base/task/thread_pool.h"
 #include "chrome/browser/enterprise/connectors/device_trust/key_management/browser/key_rotation_launcher.h"
 #include "chrome/browser/enterprise/connectors/device_trust/key_management/browser/metrics_utils.h"
+#include "chrome/browser/enterprise/connectors/device_trust/key_management/core/persistence/key_persistence_delegate.h"
 #include "chrome/browser/enterprise/connectors/device_trust/key_management/core/signing_key_pair.h"
 #include "chrome/browser/enterprise/connectors/device_trust/key_management/core/signing_key_util.h"
 #include "crypto/unexportable_key.h"
@@ -84,15 +85,33 @@ RotationStatusToPermanentFailure(KeyRotationCommand::Status status,
   }
 }
 
+// Given the `result` from a LoadKey operation, determine whether key creation
+// should be kicked-off or not.
+bool ShouldTriggerKeyCreation(LoadPersistedKeyResult result) {
+  switch (result) {
+    // On Success, don't try to create a new key.
+    case LoadPersistedKeyResult::kSuccess:
+    // Unknown failures are treated as retriable.
+    case LoadPersistedKeyResult::kUnknown:
+      return false;
+    case LoadPersistedKeyResult::kNotFound:
+    case LoadPersistedKeyResult::kMalformedKey:
+      return true;
+  }
+}
+
 }  // namespace
 
 DeviceTrustKeyManagerImpl::DeviceTrustKeyManagerImpl(
-    std::unique_ptr<KeyRotationLauncher> key_rotation_launcher)
+    std::unique_ptr<KeyRotationLauncher> key_rotation_launcher,
+    std::unique_ptr<KeyLoader> key_loader)
     : key_rotation_launcher_(std::move(key_rotation_launcher)),
+      key_loader_(std::move(key_loader)),
       background_task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskPriority::USER_BLOCKING,
            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN})) {
   DCHECK(key_rotation_launcher_);
+  DCHECK(key_loader_);
 }
 
 DeviceTrustKeyManagerImpl::~DeviceTrustKeyManagerImpl() = default;
@@ -231,32 +250,25 @@ void DeviceTrustKeyManagerImpl::AddPendingRequest(
 void DeviceTrustKeyManagerImpl::LoadKey(bool create_on_fail) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   state_ = InitializationState::kLoadingKey;
-  background_task_runner_->PostTaskAndReplyWithResult(
-      FROM_HERE, base::BindOnce(&LoadPersistedKey),
-      base::BindOnce(&DeviceTrustKeyManagerImpl::OnKeyLoaded,
-                     weak_factory_.GetWeakPtr(), create_on_fail));
+  key_loader_->LoadKey(base::BindOnce(&DeviceTrustKeyManagerImpl::OnKeyLoaded,
+                                      weak_factory_.GetWeakPtr(),
+                                      create_on_fail));
 }
 
 void DeviceTrustKeyManagerImpl::OnKeyLoaded(
     bool create_on_fail,
-    scoped_refptr<SigningKeyPair> loaded_key_pair) {
+    KeyLoader::DTCLoadKeyResult load_key_result) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (loaded_key_pair && !loaded_key_pair->is_empty()) {
-    key_pair_ = std::move(loaded_key_pair);
-
-    // Kick off key synchronization in the background as non-blocking.
-    key_rotation_launcher_->SynchronizePublicKey(
-        key_pair_,
-        base::BindOnce(&DeviceTrustKeyManagerImpl::OnSynchronizationFinished,
-                       weak_factory_.GetWeakPtr()));
+  sync_key_response_code_ = load_key_result.status_code;
+  if (load_key_result.key_pair && !load_key_result.key_pair->is_empty()) {
+    key_pair_ = std::move(load_key_result.key_pair);
   } else {
     key_pair_.reset();
-    sync_key_response_code_ = absl::nullopt;
   }
 
   state_ = InitializationState::kDefault;
-  LogKeyLoadingResult(GetLoadedKeyMetadata());
+  LogKeyLoadingResult(GetLoadedKeyMetadata(), load_key_result.result);
 
   // Do this check after caching the previous key as failure to rotate will
   // restore it in persistence.
@@ -268,7 +280,8 @@ void DeviceTrustKeyManagerImpl::OnKeyLoaded(
     return;
   }
 
-  if (!IsFullyInitialized() && create_on_fail) {
+  if (!IsFullyInitialized() && create_on_fail &&
+      ShouldTriggerKeyCreation(load_key_result.result)) {
     // Key loading failed, so we can kick-off the key creation. This is
     // guarded by a flag to make sure not to loop infinitely over:
     // create succeeds -> load fails -> create again...
@@ -281,11 +294,6 @@ void DeviceTrustKeyManagerImpl::OnKeyLoaded(
   // successfully answered to. If a key was not loaded, then might as well
   // respond with a failure instead of keeping them waiting even longer.
   ResumePendingCallbacks();
-}
-
-void DeviceTrustKeyManagerImpl::OnSynchronizationFinished(
-    absl::optional<int> response_code) {
-  sync_key_response_code_ = response_code;
 }
 
 void DeviceTrustKeyManagerImpl::StartKeyRotationInner(

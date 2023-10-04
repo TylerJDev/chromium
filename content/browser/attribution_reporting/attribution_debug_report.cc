@@ -144,7 +144,7 @@ absl::optional<DebugDataType> GetReportDataType(EventLevelResult result,
       return DataTypeIfCookieSet(
           DebugDataType::kTriggerEventNoMatchingConfigurations,
           is_debug_cookie_set);
-    case EventLevelResult::kDroppedForNoise:
+    case EventLevelResult::kNeverAttributedSource:
     case EventLevelResult::kFalselyAttributedSource:
       return DataTypeIfCookieSet(DebugDataType::kTriggerEventNoise,
                                  is_debug_cookie_set);
@@ -337,8 +337,7 @@ base::Value::Dict GetReportDataBody(DebugDataType data_type,
     case DebugDataType::kTriggerUnknownError:
     case DebugDataType::kOsSourceDelegated:
     case DebugDataType::kOsTriggerDelegated:
-      NOTREACHED();
-      return base::Value::Dict();
+      NOTREACHED_NORETURN();
   }
 
   return data_body;
@@ -413,8 +412,7 @@ base::Value::Dict GetReportDataBody(DebugDataType data_type,
     case DebugDataType::kSourceDestinationRateLimit:
     case DebugDataType::kOsSourceDelegated:
     case DebugDataType::kOsTriggerDelegated:
-      NOTREACHED();
-      return base::Value::Dict();
+      NOTREACHED_NORETURN();
   }
 
   return data_body;

@@ -138,7 +138,7 @@ class TestSystemProfileProvider : public metrics::MetricsProvider {
 class TestStructuredMetricsRecorder : public StructuredMetricsRecorder {
  public:
   explicit TestStructuredMetricsRecorder(
-      raw_ptr<metrics::MetricsProvider> system_profile_provider)
+      metrics::MetricsProvider* system_profile_provider)
       : StructuredMetricsRecorder(/*write_delay=*/base::Seconds(0),
                                   system_profile_provider) {}
 
@@ -1093,6 +1093,7 @@ class TestProcessor : public EventsProcessorInterface {
 
   // no-op
   void OnEventsRecord(Event* event) override {}
+  void OnEventRecorded(StructuredEventProto* event) override {}
 
   void OnProvideIndependentMetrics(
       ChromeUserMetricsExtension* uma_proto) override {

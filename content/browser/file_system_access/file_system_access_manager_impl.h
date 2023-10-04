@@ -154,6 +154,8 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
       const std::vector<uint8_t>& bits,
       mojo::PendingReceiver<blink::mojom::FileSystemAccessTransferToken> token)
       override;
+  void Clone(mojo::PendingReceiver<storage::mojom::FileSystemAccessContext>
+                 receiver) override;
 
   // FileSystemAccessEntryFactory:
   blink::mojom::FileSystemAccessEntryPtr CreateFileEntryFromPath(
@@ -186,18 +188,30 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
                         const storage::FileSystemURL& url,
                         const SharedHandleState& handle_state);
 
-  // Attempts to take a lock of `lock_type` on `url`. Returns the lock if
-  // successful. The lock is released when the returned object is destroyed.
-  scoped_refptr<FileSystemAccessLockManager::Lock> TakeLock(
+  // Attempts to take a lock of `lock_type` on `url`. Returns a handle to the
+  // lock if successful. The lock is released when there are no handles to it.
+  scoped_refptr<FileSystemAccessLockManager::LockHandle> TakeLock(
       const storage::FileSystemURL& url,
       FileSystemAccessLockManager::LockType lock_type);
 
-  // Creates a new shared lock type.
-  [[nodiscard]] FileSystemAccessLockManager::LockType CreateSharedLockType()
-      const;
+  // Creates a new shared lock type for testing.
+  [[nodiscard]] FileSystemAccessLockManager::LockType
+  CreateSharedLockTypeForTesting() const;
 
   // Gets the exclusive lock type.
   [[nodiscard]] FileSystemAccessLockManager::LockType GetExclusiveLockType()
+      const;
+
+  // Gets the shared lock type for SyncAccessHandle's `readonly` mode.
+  [[nodiscard]] FileSystemAccessLockManager::LockType GetSAHReadOnlyLockType()
+      const;
+
+  // Gets the shared lock type for SyncAccessHandle's `readwrite-unsafe` mode.
+  [[nodiscard]] FileSystemAccessLockManager::LockType
+  GetSAHReadwriteUnsafeLockType() const;
+
+  // Gets the shared lock type for WritableFileStream's default `siloed` mode.
+  [[nodiscard]] FileSystemAccessLockManager::LockType GetWFSSiloedLockType()
       const;
 
   // Gets the `ancestor_lock_type_` for testing.
@@ -207,21 +221,22 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   // Creates a new FileSystemAccessFileWriterImpl for a given target and
   // swap file URLs. Assumes the passed in URLs are valid and represent files.
   mojo::PendingRemote<blink::mojom::FileSystemAccessFileWriter>
-  CreateFileWriter(const BindingContext& binding_context,
-                   const storage::FileSystemURL& url,
-                   const storage::FileSystemURL& swap_url,
-                   scoped_refptr<FileSystemAccessLockManager::Lock> lock,
-                   scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
-                   const SharedHandleState& handle_state,
-                   bool auto_close);
+  CreateFileWriter(
+      const BindingContext& binding_context,
+      const storage::FileSystemURL& url,
+      const storage::FileSystemURL& swap_url,
+      scoped_refptr<FileSystemAccessLockManager::LockHandle> lock,
+      scoped_refptr<FileSystemAccessLockManager::LockHandle> swap_lock,
+      const SharedHandleState& handle_state,
+      bool auto_close);
   // Returns a weak pointer to a newly created FileSystemAccessFileWriterImpl.
   // Useful for tests
   base::WeakPtr<FileSystemAccessFileWriterImpl> CreateFileWriter(
       const BindingContext& binding_context,
       const storage::FileSystemURL& url,
       const storage::FileSystemURL& swap_url,
-      scoped_refptr<FileSystemAccessLockManager::Lock> lock,
-      scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
+      scoped_refptr<FileSystemAccessLockManager::LockHandle> lock,
+      scoped_refptr<FileSystemAccessLockManager::LockHandle> swap_lock,
       const SharedHandleState& handle_state,
       mojo::PendingReceiver<blink::mojom::FileSystemAccessFileWriter> receiver,
       bool has_transient_user_activation,
@@ -239,7 +254,7 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
           blink::mojom::FileSystemAccessCapacityAllocationHost>
           capacity_allocation_host_receiver,
       int64_t file_size,
-      scoped_refptr<FileSystemAccessLockManager::Lock> lock,
+      scoped_refptr<FileSystemAccessLockManager::LockHandle> lock,
       base::ScopedClosureRunner on_close_callback);
 
   // Create a transfer token for a specific file or directory.
@@ -629,6 +644,16 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
 
   absl::optional<FileSystemChooser::ResultEntry>
       auto_file_picker_result_for_test_ GUARDED_BY_CONTEXT(sequence_checker_);
+
+  // The shared lock type for SyncAccessHandle's `readonly` mode.
+  FileSystemAccessLockManager::LockType sah_read_only_lock_type_ =
+      lock_manager_->CreateSharedLockType();
+  // The shared lock type for SyncAccessHandle's `readwrite-unsafe` mode.
+  FileSystemAccessLockManager::LockType sah_readwrite_unsafe_lock_type_ =
+      lock_manager_->CreateSharedLockType();
+  // The shared lock type for WritableFileStream's default `siloed` mode.
+  FileSystemAccessLockManager::LockType wfs_siloed_lock_type_ =
+      lock_manager_->CreateSharedLockType();
 
   base::WeakPtrFactory<FileSystemAccessManagerImpl> weak_factory_
       GUARDED_BY_CONTEXT(sequence_checker_){this};

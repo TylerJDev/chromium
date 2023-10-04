@@ -10,6 +10,7 @@
 #include "build/buildflag.h"
 #include "build/chromeos_buildflags.h"
 #include "components/signin/public/base/signin_pref_names.h"
+#include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/base/test_signin_client.h"
 #include "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
@@ -73,9 +74,9 @@ class SigninManagerTest : public testing::Test,
       : client_(&prefs_),
         identity_test_env_(/*test_url_loader_factory=*/nullptr,
                            /*pref_service=*/&prefs_,
-                           signin::AccountConsistencyMethod::kDice,
                            &client_),
         observer_(identity_test_env_.identity_manager()) {
+    scoped_feature_list_.InitAndDisableFeature(switches::kUnoDesktop);
     RecreateSigninManager();
   }
 
@@ -192,6 +193,7 @@ class SigninManagerTest : public testing::Test,
   IdentityTestEnvironment identity_test_env_;
   std::unique_ptr<SigninManager> signin_manager_;
   FakeIdentityManagerObserver observer_;
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 TEST_P(

@@ -17,8 +17,9 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/policy/policy_ui_handler.h"
 #include "chrome/browser/ui/webui/webui_util.h"
+#include "chrome/common/channel_info.h"
 #include "chrome/common/url_constants.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "components/grit/policy_resources.h"
 #include "components/grit/policy_resources_map.h"
 #include "components/policy/core/common/features.h"
@@ -115,6 +116,7 @@ void CreateAndAddPolicyUIHtmlSource(Profile* profile) {
     {"labelUsername", IDS_POLICY_LABEL_USERNAME},
     {"labelManagedBy", IDS_POLICY_LABEL_MANAGED_BY},
     {"labelVersion", IDS_POLICY_LABEL_VERSION},
+    {"moreActions", IDS_POLICY_MORE_ACTIONS},
     {"noPoliciesSet", IDS_POLICY_NO_POLICIES_SET},
     {"offHoursActive", IDS_POLICY_OFFHOURS_ACTIVE},
     {"offHoursNotActive", IDS_POLICY_OFFHOURS_NOT_ACTIVE},
@@ -140,6 +142,7 @@ void CreateAndAddPolicyUIHtmlSource(Profile* profile) {
 #if !BUILDFLAG(IS_CHROMEOS)
     {"uploadReport", IDS_UPLOAD_REPORT},
 #endif  // !BUILDFLAG(IS_CHROMEOS)
+    {"viewLogs", IDS_VIEW_POLICY_LOGS},
   };
   source->AddLocalizedStrings(kStrings);
 
@@ -172,7 +175,8 @@ void CreateAndAddPolicyUIHtmlSource(Profile* profile) {
 
   // Test page should only load if testing is enabled and the profile is not
   // managed by cloud.
-  if (policy::utils::IsPolicyTestingEnabled(profile->GetPrefs()) &&
+  if (policy::utils::IsPolicyTestingEnabled(profile->GetPrefs(),
+                                            chrome::GetChannel()) &&
       !policy::ManagementServiceFactory::GetForProfile(profile)
            ->HasManagementAuthority(
                policy::EnterpriseManagementAuthority::CLOUD)) {

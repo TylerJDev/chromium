@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import {assertEquals, assertFalse, assertLT, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {eventToPromise} from 'chrome://webui-test/test_util.js';
 
 /**
@@ -79,8 +80,8 @@ suite('CertificateViewer', function() {
 
     // Cert hash should still be shown.
     assertEquals(
-        '78 71 88 FF A5 CC A4 82 12 ED 29 1E 62 CB 03 E1\n' +
-            '1C 1F 82 79 DF 07 FE B1 D2 B0 E0 2E 0E 4A A9 E4',
+        '787188ffa5cca48212ed291e62cb03e1' +
+            '1c1f8279df07feb1d2b0e02e0e4aa9e4',
         document.querySelector('#sha256').textContent);
   });
 });

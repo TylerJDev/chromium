@@ -4716,8 +4716,9 @@ class CheckRawPtrUsageTest(unittest.TestCase):
         # Non-C++ files are allowed.
         MockAffectedFile('test20/renderer/foo.md', ['raw_ptr<int>']),
 
-        # Mentions in a comment are allowed.
-        MockAffectedFile('test30/renderer/foo.cc', ['//raw_ptr<int>']),
+        # Renderer code is generally allowed (except specifically
+        # disallowed directories).
+        MockAffectedFile('test30/renderer/foo.cc', ['raw_ptr<int>']),
     ]
     mock_output_api = MockOutputApi()
     errors = PRESUBMIT.CheckRawPtrUsage(mock_input_api, mock_output_api)
@@ -4726,18 +4727,53 @@ class CheckRawPtrUsageTest(unittest.TestCase):
   def testDisallowedCases(self):
     mock_input_api = MockInputApi()
     mock_input_api.files = [
-        MockAffectedFile('test1/renderer/foo.h', ['raw_ptr<int>']),
-        MockAffectedFile('test2/renderer/foo.cc', ['raw_ptr<int>']),
-        MockAffectedFile('test3/blink/public/web/foo.cc', ['raw_ptr<int>']),
+        MockAffectedFile('test1/third_party/blink/renderer/core/foo.h',
+                         ['raw_ptr<int>']),
+        MockAffectedFile(
+            'test2/third_party/blink/renderer/platform/heap/foo.cc',
+            ['raw_ptr<int>']),
+        MockAffectedFile(
+            'test3/third_party/blink/renderer/platform/wtf/foo.cc',
+            ['raw_ptr<int>']),
+        MockAffectedFile('test4/blink/public/web/foo.cc', ['raw_ptr<int>']),
     ]
     mock_output_api = MockOutputApi()
     errors = PRESUBMIT.CheckRawPtrUsage(mock_input_api, mock_output_api)
     self.assertEqual(len(mock_input_api.files), len(errors))
     for error in errors:
       self.assertTrue(
-          'raw_ptr<T> should not be used in Renderer-only code' in
+          'raw_ptr<T> should not be used in this renderer code' in
           error.message)
 
+class CheckAdvancedMemorySafetyChecksUsageTest(unittest.TestCase):
+  def testAllowedCases(self):
+    mock_input_api = MockInputApi()
+    mock_input_api.files = [
+        # Non-C++ files are allowed.
+        MockAffectedFile(
+          'test20/renderer/foo.md', ['ADVANCED_MEMORY_SAFETY_CHECKS()']),
+
+        # Mentions in a comment are allowed.
+        MockAffectedFile(
+          'test30/renderer/foo.cc', ['//ADVANCED_MEMORY_SAFETY_CHECKS()']),
+    ]
+    mock_output_api = MockOutputApi()
+    errors = PRESUBMIT.CheckAdvancedMemorySafetyChecksUsage(
+      mock_input_api, mock_output_api)
+    self.assertFalse(errors)
+
+  def testDisallowedCases(self):
+    mock_input_api = MockInputApi()
+    mock_input_api.files = [
+        MockAffectedFile('test1/foo.h', ['ADVANCED_MEMORY_SAFETY_CHECKS()']),
+        MockAffectedFile('test2/foo.cc', ['ADVANCED_MEMORY_SAFETY_CHECKS()']),
+    ]
+    mock_output_api = MockOutputApi()
+    errors = PRESUBMIT.CheckAdvancedMemorySafetyChecksUsage(mock_input_api, mock_output_api)
+    self.assertEqual(1, len(errors))
+    self.assertTrue(
+        'ADVANCED_MEMORY_SAFETY_CHECKS() macro is managed by' in
+        errors[0].message)
 
 class AssertPythonShebangTest(unittest.TestCase):
     def testError(self):
@@ -5049,6 +5085,153 @@ class CheckNoAbbreviationInPngFileNameTest(unittest.TestCase):
     ]
     results = PRESUBMIT.CheckNoAbbreviationInPngFileName(input_api, MockOutputApi())
     self.assertEqual(0, len(results))
+
+class CheckDanglingUntriagedTest(unittest.TestCase):
+  def testError(self):
+    """Test patch adding dangling pointers are reported"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.change.DescriptionText = lambda: "description"
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="raw_ptr<T>",
+        new_contents="raw_ptr<T, DanglingUntriaged>",
+      )
+    ]
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api, mock_output_api)
+    self.assertEqual(len(msgs), 1)
+    self.assertEqual(len(msgs[0].message), 10)
+    self.assertEqual(
+      msgs[0].message[0],
+      "Unexpected new occurrences of `DanglingUntriaged` detected. Please",
+    )
+
+class CheckDanglingUntriagedTest(unittest.TestCase):
+  def testError(self):
+    """Test patch adding dangling pointers are reported"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.change.DescriptionText = lambda: "description"
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="raw_ptr<T>",
+        new_contents="raw_ptr<T, DanglingUntriaged>",
+      )
+    ]
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api,
+                        mock_output_api)
+    self.assertEqual(len(msgs), 1)
+    self.assertEqual(len(msgs[0].message), 11)
+    self.assertEqual(
+      msgs[0].message[0],
+      "Unexpected new occurrences of `DanglingUntriaged` detected. Please",
+    )
+
+  def testNonCppFile(self):
+    """Test patch adding dangling pointers are not reported in non C++ files"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.change.DescriptionText = lambda: "description"
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/README.md",
+        old_contents="",
+        new_contents="The DanglingUntriaged annotation means",
+      )
+    ]
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api,
+                        mock_output_api)
+    self.assertEqual(len(msgs), 0)
+
+  def testDeveloperAcknowledgeInCommitDescription(self):
+    """Test patch adding dangling pointers, but acknowledged by the developers
+    aren't reported"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="raw_ptr<T>",
+        new_contents="raw_ptr<T, DanglingUntriaged>",
+      )
+    ]
+    mock_input_api.change.DescriptionText = lambda: (
+      "DanglingUntriaged-notes: Sorry about this!")
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api,
+                        mock_output_api)
+    self.assertEqual(len(msgs), 0)
+
+  def testDeveloperAcknowledgeInCommitFooter(self):
+    """Test patch adding dangling pointers, but acknowledged by the developers
+    aren't reported"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="raw_ptr<T>",
+        new_contents="raw_ptr<T, DanglingUntriaged>",
+      )
+    ]
+    mock_input_api.change.DescriptionText = lambda: "description"
+    mock_input_api.change.footers["DanglingUntriaged-notes"] = ["Sorry!"]
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api,
+                        mock_output_api)
+    self.assertEqual(len(msgs), 0)
+
+  def testCongrats(self):
+    """Test the presubmit congrats users removing dangling pointers"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="raw_ptr<T, DanglingUntriaged>",
+        new_contents="raw_ptr<T>",
+      )
+    ]
+    mock_input_api.change.DescriptionText = lambda: (
+      "This patch fixes some DanglingUntriaged pointers!")
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api,
+                        mock_output_api)
+    self.assertEqual(len(msgs), 1)
+    self.assertTrue(
+      "DanglingUntriaged pointers removed: 1" in msgs[0].message)
+    self.assertTrue("Thank you!" in msgs[0].message)
+
+  def testRenameFile(self):
+    """Patch that we do not warn about DanglingUntriaged when moving files"""
+    mock_input_api = MockInputApi()
+    mock_output_api = MockOutputApi()
+
+    mock_input_api.files = [
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="raw_ptr<T, DanglingUntriaged>",
+        new_contents="",
+        action="D",
+      ),
+      MockAffectedFile(
+        local_path="foo/foo.cc",
+        old_contents="",
+        new_contents="raw_ptr<T, DanglingUntriaged>",
+        action="A",
+      ),
+    ]
+    mock_input_api.change.DescriptionText = lambda: (
+      "This patch moves files")
+    msgs = PRESUBMIT.CheckDanglingUntriaged(mock_input_api,
+                        mock_output_api)
+    self.assertEqual(len(msgs), 0)
+
 
 if __name__ == '__main__':
   unittest.main()

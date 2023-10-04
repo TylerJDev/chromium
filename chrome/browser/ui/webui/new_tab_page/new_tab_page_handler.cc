@@ -170,7 +170,6 @@ new_tab_page::mojom::ThemePtr MakeTheme(
   most_visited->use_white_tile_icon =
       color_utils::IsDark(most_visited->background_color);
   most_visited->is_dark = !color_utils::IsDark(text_color);
-  most_visited->use_title_pill = false;
   theme->text_color = text_color;
   theme->is_dark = !color_utils::IsDark(text_color);
   theme->theme_realbox_icons =
@@ -187,7 +186,6 @@ new_tab_page::mojom::ThemePtr MakeTheme(
           new_tab_page::mojom::NtpBackgroundImageSource::kThirdPartyTheme;
     }
     theme->is_custom_background = false;
-    most_visited->use_title_pill = false;
     auto theme_id = theme_service->GetThemeID();
     background_image->url = GURL(base::StrCat(
         {"chrome-untrusted://theme/IDR_THEME_NTP_BACKGROUND?", theme_id}));
@@ -867,9 +865,6 @@ void NewTabPageHandler::IncrementCustomizeChromeButtonOpenCount() {
 void NewTabPageHandler::MaybeShowCustomizeChromeFeaturePromo() {
   CHECK(profile_);
   CHECK(profile_->GetPrefs());
-  const auto customize_chrome_button_open_count =
-      profile_->GetPrefs()->GetInteger(
-          prefs::kNtpCustomizeChromeButtonOpenCount);
 
   // If a sign-in dialog is being currently displayed, the promo should not be
   // shown to avoid conflict. The sign-in dialog would be shown as soon as the
@@ -877,9 +872,22 @@ void NewTabPageHandler::MaybeShowCustomizeChromeFeaturePromo() {
   bool is_signin_modal_dialog_open =
       customize_chrome_feature_promo_helper_->IsSigninModalDialogOpen(
           web_contents_.get());
-  if (customize_chrome_button_open_count == 0 && !is_signin_modal_dialog_open) {
+  if (is_signin_modal_dialog_open) {
+    return;
+  }
+
+  if (features::IsChromeRefresh2023()) {
     customize_chrome_feature_promo_helper_
         ->MaybeShowCustomizeChromeFeaturePromo(web_contents_.get());
+  } else {
+    const auto customize_chrome_button_open_count =
+        profile_->GetPrefs()->GetInteger(
+            prefs::kNtpCustomizeChromeButtonOpenCount);
+
+    if (customize_chrome_button_open_count == 0) {
+      customize_chrome_feature_promo_helper_
+          ->MaybeShowCustomizeChromeFeaturePromo(web_contents_.get());
+    }
   }
 }
 

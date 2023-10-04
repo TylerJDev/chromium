@@ -6,9 +6,9 @@
 
 #include <memory>
 
+#include "base/check_is_test.h"
 #include "base/feature_list.h"
 #include "base/trace_event/trace_event.h"
-#include "build/build_config.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
 #include "components/policy/core/browser/configuration_policy_pref_store.h"
 #include "components/policy/core/common/policy_service.h"
@@ -45,7 +45,7 @@ void PrefServiceSyncableFactory::SetRecommendedPolicies(
 }
 
 void PrefServiceSyncableFactory::SetPrefModelAssociatorClient(
-    PrefModelAssociatorClient* pref_model_associator_client) {
+    scoped_refptr<PrefModelAssociatorClient> pref_model_associator_client) {
   pref_model_associator_client_ = pref_model_associator_client;
 }
 
@@ -65,16 +65,12 @@ std::unique_ptr<PrefServiceSyncable> PrefServiceSyncableFactory::CreateSyncable(
     // DualLayerUserPrefStore is used as the main user pref store, and sync is
     // hooked up directly to the underlying account store.
 
-    // `account_pref_store_` not being set implies
-    // SyncableEnablePersistentStoreForAccountPreferences flag is disabled. An
-    // in-memory store used in this case instead.
-    CHECK(account_pref_store_ ||
-          !base::FeatureList::IsEnabled(
-              syncer::kSyncEnablePersistentStorageForAccountPreferences));
+    // In some tests, `account_pref_store_` may not have been set.
+    // TODO(crbug.com/1486805): Fix all the usages.
     if (!account_pref_store_) {
+      CHECK_IS_TEST();
       account_pref_store_ = base::MakeRefCounted<InMemoryPrefStore>();
     }
-
     auto dual_layer_user_pref_store =
         base::MakeRefCounted<sync_preferences::DualLayerUserPrefStore>(
             user_prefs_, account_pref_store_, pref_model_associator_client_);

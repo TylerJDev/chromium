@@ -31,7 +31,7 @@
                   "checkout_lacros_sdk",
                   "chromeos"
                 ],
-                "config": "chromium"
+                "config": "chromium_no_telemetry_dependencies"
               },
               "skylab_upload_location": {
                 "gs_bucket": "chromium-ci-skylab"
@@ -45,6 +45,12 @@
           "bucket": "ci",
           "builder": "lacros-amd64-generic-rel-skylab",
           "project": "chromium"
+        }
+      ],
+      "mirroring_builder_group_and_names": [
+        {
+          "builder": "lacros-amd64-generic-rel-skylab",
+          "group": "tryserver.chromium.chromiumos"
         }
       ]
     }
@@ -63,5 +69,8 @@
     ]
   },
   "builder_group": "chromium.chromiumos",
-  "recipe": "chromium"
+  "recipe": "chromium",
+  "sheriff_rotations": [
+    "chromium"
+  ]
 }

@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 #include "base/test/test_future.h"
+#include "chrome/browser/apps/app_service/app_registry_cache_waiter.h"
 #include "chrome/browser/lacros/browser_test_util.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/web_applications/test/web_app_browsertest_util.h"
 #include "chrome/browser/ui/web_applications/web_app_controller_browsertest.h"
-#include "chrome/browser/web_applications/test/app_registry_cache_waiter.h"
 #include "chrome/browser/web_applications/web_app_id_constants.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
@@ -49,7 +49,7 @@ IN_PROC_BROWSER_TEST_F(LacrosWebAppBrowserTest, AppInfo) {
 
   const GURL app_url =
       https_server()->GetURL("/web_apps/file_handler_index.html");
-  const AppId app_id = InstallWebAppFromManifest(browser(), app_url);
+  const webapps::AppId app_id = InstallWebAppFromManifest(browser(), app_url);
   EXPECT_EQ(provider().registrar_unsafe().GetAppFileHandlers(app_id)->size(),
             1U);
 
@@ -58,7 +58,7 @@ IN_PROC_BROWSER_TEST_F(LacrosWebAppBrowserTest, AppInfo) {
   // Wait for item to exist in shelf.
   ASSERT_TRUE(browser_test_util::WaitForShelfItem(app_id, /*exists=*/true));
 
-  AppReadinessWaiter(profile(), kOsSettingsAppId).Await();
+  apps::AppReadinessWaiter(profile(), kOsSettingsAppId).Await();
 
   // Settings should not yet exist in the shelf.
   ASSERT_TRUE(browser_test_util::WaitForShelfItem(kOsSettingsAppId,
@@ -102,7 +102,7 @@ IN_PROC_BROWSER_TEST_F(LacrosWebAppBrowserTest, Shortcut) {
 
   const GURL app_url =
       https_server()->GetURL("/web_app_shortcuts/shortcuts.html");
-  const AppId app_id = InstallWebAppFromManifest(browser(), app_url);
+  const webapps::AppId app_id = InstallWebAppFromManifest(browser(), app_url);
   EXPECT_EQ(
       provider().registrar_unsafe().GetAppShortcutsMenuItemInfos(app_id).size(),
       6U);

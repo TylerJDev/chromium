@@ -26,6 +26,9 @@ class DestinationDragHandler: ObservableObject {
   /// happens to end.
   @Published var dragOnDestinations = false
 
+  /// Stores all currently existing item providers weakly.
+  var providers: [WeakItemProviderContainer] = []
+
   init(destinationModel: DestinationCustomizationModel) {
     self.destinationModel = destinationModel
   }
@@ -59,6 +62,17 @@ class DestinationDragHandler: ObservableObject {
   /// Returns a new drop delegate for the entire destination list.
   func newDestinationListDropDelegate() -> DestinationListDropDelegate {
     return DestinationListDropDelegate(handler: self)
+  }
+
+  /// Returns a new item provider for the drag interaction.
+  func newItemProvider(forDestination destination: OverflowMenuDestination) -> NSItemProvider {
+    let itemProvider = DidEndItemProvider(object: destination.name as NSString)
+    itemProvider.delegate = self
+    // When VoiceOver is enabled, sometimes the system requests 2 providers
+    // before deallocating one, so storing all existing providers is required
+    // to know when all providers have been destroyed.
+    providers.append(WeakItemProviderContainer(provider: itemProvider))
+    return itemProvider
   }
 
   /// Performs a drop into a list. Should be passed to `List`'s `.onInsert`
@@ -143,5 +157,39 @@ class DestinationDragHandler: ObservableObject {
       // Set up the correct state for if a drag re-enters the destinations list.
       handler.dragOnDestinations = true
     }
+  }
+}
+
+extension DestinationDragHandler: DidEndItemProviderDelegate {
+  func didEndItemProviderDidEnd(_ provider: DidEndItemProvider) {
+    providers = providers.filter { container in
+      container.provider != nil && container.provider != provider
+    }
+    if providers.isEmpty {
+      endDrag()
+    }
+  }
+}
+
+protocol DidEndItemProviderDelegate: AnyObject {
+  /// Alerts the delegate when the item provider is being deinitialized.
+  func didEndItemProviderDidEnd(_ provider: DidEndItemProvider)
+}
+
+/// A custom item provider class that alerts its delegate when it is about to
+/// be de-initialized.
+class DidEndItemProvider: NSItemProvider {
+  weak var delegate: DidEndItemProviderDelegate?
+  deinit {
+    delegate?.didEndItemProviderDidEnd(self)
+  }
+}
+
+/// Container class that holds a weak `DidEndItemProvider`, allowing for
+/// collections to hold this weakly.
+class WeakItemProviderContainer {
+  weak var provider: DidEndItemProvider?
+  init(provider: DidEndItemProvider?) {
+    self.provider = provider
   }
 }

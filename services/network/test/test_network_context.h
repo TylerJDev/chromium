@@ -339,8 +339,14 @@ class TestNetworkContext : public mojom::NetworkContext {
   void ResourceSchedulerClientVisibilityChanged(
       const base::UnguessableToken& client_token,
       bool visible) override {}
-  void VerifyIpProtectionAuthTokenGetterForTesting(
-      VerifyIpProtectionAuthTokenGetterForTestingCallback callback) override {}
+  void FlushCachedClientCertIfNeeded(
+      const net::HostPortPair& host,
+      const scoped_refptr<net::X509Certificate>& certificate) override {}
+  void VerifyIpProtectionConfigGetterForTesting(
+      VerifyIpProtectionConfigGetterForTestingCallback callback) override {}
+  void InvalidateIpProtectionConfigCacheTryAgainAfterTime() override {}
+  void SetCookieDeprecationLabel(
+      const absl::optional<std::string>& label) override {}
 };
 
 }  // namespace network

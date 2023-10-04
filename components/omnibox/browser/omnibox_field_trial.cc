@@ -13,6 +13,7 @@
 #include "base/feature_list.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/field_trial_params.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
@@ -162,8 +163,8 @@ std::string GetValueForRuleInContextFromVariationParams(
 }
 
 OmniboxFieldTrial::MLConfig& GetMLConfigInternal() {
-  static OmniboxFieldTrial::MLConfig s_config;
-  return s_config;
+  static base::NoDestructor<OmniboxFieldTrial::MLConfig> s_config;
+  return *s_config;
 }
 
 bool IsKoreanLocale(const std::string& locale) {
@@ -553,6 +554,18 @@ bool OmniboxFieldTrial::IsActionsUISimplificationEnabled() {
   return base::FeatureList::IsEnabled(omnibox::kOmniboxActionsUISimplification);
 }
 
+const base::FeatureParam<bool>
+    OmniboxFieldTrial::kActionsUISimplificationIncludeRealbox(
+        &omnibox::kOmniboxActionsUISimplification,
+        "ActionsUISimplificationIncludeRealbox",
+        true);
+
+const base::FeatureParam<bool>
+    OmniboxFieldTrial::kActionsUISimplificationTrimExtra(
+        &omnibox::kOmniboxActionsUISimplification,
+        "ActionsUISimplificationTrimExtra",
+        true);
+
 bool OmniboxFieldTrial::IsFuzzyUrlSuggestionsEnabled() {
   return base::FeatureList::IsEnabled(omnibox::kOmniboxFuzzyUrlSuggestions);
 }
@@ -675,6 +688,10 @@ const base::FeatureParam<double>
         &omnibox::kSquareSuggestIcons,
         "OmniboxSquareSuggestIconEntitiesScale",
         0.8722);
+const base::FeatureParam<bool> OmniboxFieldTrial::kSquareSuggestIconWeather(
+    &omnibox::kSquareSuggestIcons,
+    "OmniboxSquareSuggestIconWeather",
+    true);
 
 bool OmniboxFieldTrial::IsUniformRowHeightEnabled() {
   return base::FeatureList::IsEnabled(omnibox::kUniformRowHeight);
@@ -699,6 +716,11 @@ bool OmniboxFieldTrial::IsChromeRefreshSuggestIconsEnabled() {
 bool OmniboxFieldTrial::IsChromeRefreshActionChipIconsEnabled() {
   return omnibox::IsOmniboxCr23CustomizeGuardedFeatureEnabled(
       omnibox::kCr2023ActionChipsIcons);
+}
+
+bool OmniboxFieldTrial::IsChromeRefreshActionChipShapeEnabled() {
+  return omnibox::IsOmniboxCr23CustomizeGuardedFeatureEnabled(
+      omnibox::kCr2023ActionChips);
 }
 
 bool OmniboxFieldTrial::IsChromeRefreshSuggestHoverFillShapeEnabled() {
@@ -739,11 +761,8 @@ const base::FeatureParam<int> OmniboxFieldTrial::kFontSizeNonTouchUI(
     13);
 
 bool OmniboxFieldTrial::IsCr23LayoutEnabled() {
-  static const bool enabled =
-      features::GetChromeRefresh2023Level() ==
-          features::ChromeRefresh2023Level::kLevel2 ||
-      base::FeatureList::IsEnabled(omnibox::kExpandedLayout);
-  return enabled;
+  return omnibox::IsOmniboxCr23CustomizeGuardedFeatureEnabled(
+      omnibox::kExpandedLayout);
 }
 
 bool OmniboxFieldTrial::IsChromeRefreshSteadyStateBackgroundColorEnabled() {
@@ -822,18 +841,6 @@ const char OmniboxFieldTrial::kOnDeviceHeadModelLocaleConstraint[] =
 int OmniboxFieldTrial::kDefaultMinimumTimeBetweenSuggestQueriesMs = 100;
 
 namespace OmniboxFieldTrial {
-
-// Autocomplete stability.
-
-const base::FeatureParam<bool>
-    kAutocompleteStabilityUpdateResultDebounceFromLastRun(
-        &omnibox::kUpdateResultDebounce,
-        "AutocompleteStabilityUpdateResultDebounceFromLastRun",
-        false);
-const base::FeatureParam<int> kAutocompleteStabilityUpdateResultDebounceDelay(
-    &omnibox::kUpdateResultDebounce,
-    "AutocompleteStabilityUpdateResultDebounceDelay",
-    200);
 
 // Local history zero-prefix (aka zero-suggest) and prefix suggestions:
 
@@ -1150,8 +1157,16 @@ const base::FeatureParam<bool> kRealboxSecondaryZeroSuggestCounterfactual(
 const base::FeatureParam<bool> kOmniboxModernizeVisualUpdateMergeClipboardOnNTP(
     &omnibox::kOmniboxModernizeVisualUpdate,
     "modernize_visual_update_merge_clipboard_on_ntp",
-    false);
+    true);
 // <- Android UI Revamp
+// ---------------------------------------------------------
+// Touch Down Trigger For Prefetch ->
+const base::FeatureParam<int>
+    kTouchDownTriggerForPrefetchMaxPrefetchesPerOmniboxSession(
+        &omnibox::kOmniboxTouchDownTriggerForPrefetch,
+        "max_prefetches_per_omnibox_session",
+        5);
+// <- Touch Down Trigger For Prefetch
 // ---------------------------------------------------------
 
 }  // namespace OmniboxFieldTrial

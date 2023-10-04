@@ -31,9 +31,19 @@ std::string ToResultHistogram(WallpaperType type) {
       return "Ash.Wallpaper.Daily.Result2";
     case WallpaperType::kDailyGooglePhotos:
       return "Ash.Wallpaper.DailyGooglePhotos.Result2";
-    default:
-      // TODO(b/285387348): Implement other WallpaperType.
-      NOTIMPLEMENTED_LOG_ONCE();
+    case WallpaperType::kPolicy:
+      return "Ash.Wallpaper.Policy.Result2";
+    case WallpaperType::kThirdParty:
+      return "Ash.Wallpaper.ThirdParty.Result2";
+    case WallpaperType::kDefault:
+      return "Ash.Wallpaper.Default.Result2";
+    case WallpaperType::kDevice:
+      return "Ash.Wallpaper.Device.Result2";
+    case WallpaperType::kOobe:
+      return "Ash.Wallpaper.Oobe.Result2";
+    case WallpaperType::kOneShot:
+    case WallpaperType::kCount:
+      NOTREACHED();
       return "";
   }
 }
@@ -57,6 +67,8 @@ void WallpaperMetricsManager::OnOnlineWallpaperSet(
     const std::string& collection_id = params.collection_id;
     DCHECK(!collection_id.empty());
     const int collection_id_hash = base::PersistentHash(collection_id);
+    DVLOG(3) << __PRETTY_FUNCTION__ << " collection_id=" << collection_id
+             << " hash=" << collection_id_hash;
     base::UmaHistogramSparse("Ash.Wallpaper.Collection", collection_id_hash);
   }
 }

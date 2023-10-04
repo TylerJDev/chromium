@@ -42,26 +42,29 @@ FilesPolicyDialog::FilesPolicyDialog(size_t file_count,
 FilesPolicyDialog::~FilesPolicyDialog() = default;
 
 views::Widget* FilesPolicyDialog::CreateWarnDialog(
-    OnDlpRestrictionCheckedCallback callback,
+    OnDlpRestrictionCheckedWithJustificationCallback callback,
     const std::vector<DlpConfidentialFile>& files,
     dlp::FileAction action,
     gfx::NativeWindow modal_parent,
-    absl::optional<DlpFileDestination> destination) {
+    absl::optional<DlpFileDestination> destination,
+    FilesPolicyWarnSettings settings) {
   if (factory_) {
     return factory_->CreateWarnDialog(std::move(callback), files, action,
-                                      modal_parent, destination);
+                                      modal_parent, destination,
+                                      std::move(settings));
   }
 
   views::Widget* widget = views::DialogDelegate::CreateDialogWidget(
-      std::make_unique<FilesPolicyWarnDialog>(
-          std::move(callback), files, action, modal_parent, destination),
+      std::make_unique<FilesPolicyWarnDialog>(std::move(callback), files,
+                                              action, modal_parent, destination,
+                                              std::move(settings)),
       /*context=*/nullptr, /*parent=*/modal_parent);
   widget->Show();
   return widget;
 }
 
 views::Widget* FilesPolicyDialog::CreateErrorDialog(
-    const std::map<DlpConfidentialFile, Policy>& files,
+    const std::map<DlpConfidentialFile, BlockReason>& files,
     dlp::FileAction action,
     gfx::NativeWindow modal_parent) {
   if (factory_) {
@@ -129,6 +132,7 @@ void FilesPolicyDialog::AddConfidentialRow(const gfx::ImageSkia& icon,
   AddRowIcon(icon, row);
 
   views::Label* title_label = AddRowTitle(title, row);
+  title_label->SetID(PolicyDialogBase::kConfidentialRowTitleViewId);
   title_label->SetFontList(
       ash::TypographyProvider::Get()->ResolveTypographyToken(
           ash::TypographyToken::kCrosBody1));

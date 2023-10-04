@@ -1017,6 +1017,11 @@ void FileSystemAccessManagerImpl::DeserializeHandle(
   }
 }
 
+void FileSystemAccessManagerImpl::Clone(
+    mojo::PendingReceiver<storage::mojom::FileSystemAccessContext> receiver) {
+  BindInternalsReceiver(std::move(receiver));
+}
+
 blink::mojom::FileSystemAccessEntryPtr
 FileSystemAccessManagerImpl::CreateFileEntryFromPath(
     const BindingContext& binding_context,
@@ -1086,7 +1091,7 @@ FileSystemAccessManagerImpl::CreateDirectoryHandle(
       result.InitWithNewPipeAndPassReceiver());
   return result;
 }
-scoped_refptr<FileSystemAccessLockManager::Lock>
+scoped_refptr<FileSystemAccessLockManager::LockHandle>
 FileSystemAccessManagerImpl::TakeLock(
     const storage::FileSystemURL& url,
     FileSystemAccessLockManager::LockType lock_type) {
@@ -1094,7 +1099,7 @@ FileSystemAccessManagerImpl::TakeLock(
   return lock_manager_->TakeLock(url, lock_type);
 }
 FileSystemAccessLockManager::LockType
-FileSystemAccessManagerImpl::CreateSharedLockType() const {
+FileSystemAccessManagerImpl::CreateSharedLockTypeForTesting() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return lock_manager_->CreateSharedLockType();
 }
@@ -1102,6 +1107,21 @@ FileSystemAccessLockManager::LockType
 FileSystemAccessManagerImpl::GetExclusiveLockType() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return lock_manager_->GetExclusiveLockType();
+}
+FileSystemAccessLockManager::LockType
+FileSystemAccessManagerImpl::GetSAHReadOnlyLockType() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return sah_read_only_lock_type_;
+}
+FileSystemAccessLockManager::LockType
+FileSystemAccessManagerImpl::GetSAHReadwriteUnsafeLockType() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return sah_readwrite_unsafe_lock_type_;
+}
+FileSystemAccessLockManager::LockType
+FileSystemAccessManagerImpl::GetWFSSiloedLockType() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return wfs_siloed_lock_type_;
 }
 FileSystemAccessLockManager::LockType
 FileSystemAccessManagerImpl::GetAncestorLockTypeForTesting() const {
@@ -1114,8 +1134,8 @@ FileSystemAccessManagerImpl::CreateFileWriter(
     const BindingContext& binding_context,
     const storage::FileSystemURL& url,
     const storage::FileSystemURL& swap_url,
-    scoped_refptr<FileSystemAccessLockManager::Lock> lock,
-    scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
+    scoped_refptr<FileSystemAccessLockManager::LockHandle> lock,
+    scoped_refptr<FileSystemAccessLockManager::LockHandle> swap_lock,
     const SharedHandleState& handle_state,
     bool auto_close) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -1138,8 +1158,8 @@ FileSystemAccessManagerImpl::CreateFileWriter(
     const BindingContext& binding_context,
     const storage::FileSystemURL& url,
     const storage::FileSystemURL& swap_url,
-    scoped_refptr<FileSystemAccessLockManager::Lock> lock,
-    scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
+    scoped_refptr<FileSystemAccessLockManager::LockHandle> lock,
+    scoped_refptr<FileSystemAccessLockManager::LockHandle> swap_lock,
     const SharedHandleState& handle_state,
     mojo::PendingReceiver<blink::mojom::FileSystemAccessFileWriter> receiver,
     bool has_transient_user_activation,
@@ -1167,7 +1187,7 @@ FileSystemAccessManagerImpl::CreateAccessHandleHost(
     mojo::PendingReceiver<blink::mojom::FileSystemAccessCapacityAllocationHost>
         capacity_allocation_host_receiver,
     int64_t file_size,
-    scoped_refptr<FileSystemAccessLockManager::Lock> lock,
+    scoped_refptr<FileSystemAccessLockManager::LockHandle> lock,
     base::ScopedClosureRunner on_close_callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 

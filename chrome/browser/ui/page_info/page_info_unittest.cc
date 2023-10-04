@@ -31,6 +31,7 @@
 #include "chrome/test/base/scoped_testing_local_state.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
+#include "components/browsing_data/core/features.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_constraints.h"
@@ -86,6 +87,7 @@ using content::SSLStatus;
 using testing::_;
 using testing::AnyNumber;
 using testing::Invoke;
+using testing::Mock;
 using testing::NiceMock;
 using testing::Return;
 using testing::SetArgPointee;
@@ -205,7 +207,12 @@ class PageInfoTest : public ChromeRenderViewHostTestHarness {
     // TODO(crbug.com/1430440): SetCookiesInfo is called twice on creation, once
     // when the observation of web_contents starts and once when PageInfoUI is
     // initialized. Clean this up after it is fixed.
-    EXPECT_CALL(*mock_ui, SetCookieInfo(_)).Times(2);
+    int set_cookie_info_calls =
+        base::FeatureList::IsEnabled(
+            browsing_data::features::kMigrateStorageToBDM)
+            ? 1
+            : 2;
+    EXPECT_CALL(*mock_ui, SetCookieInfo(_)).Times(set_cookie_info_calls);
 #else
     EXPECT_CALL(*mock_ui, SetCookieInfo(_));
 #endif
@@ -231,7 +238,6 @@ class PageInfoTest : public ChromeRenderViewHostTestHarness {
     mock_ui_->set_permission_info_callback_ = base::BindRepeating(
         &PageInfoTest::SetPermissionInfo, base::Unretained(this));
   }
-
 
   void ClearPageInfo() { page_info_.reset(nullptr); }
 
@@ -336,23 +342,17 @@ class PageInfoTest : public ChromeRenderViewHostTestHarness {
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
-bool PermissionInfoListContainsPermission(const PermissionInfoList& permissions,
-                                          ContentSettingsType content_type) {
-  for (const auto& permission : permissions) {
-    if (permission.type == content_type)
-      return true;
-  }
-  return false;
-}
-
 void ExpectPermissionInfoList(
-    const std::set<ContentSettingsType>& expected_permissions,
-    const PermissionInfoList& permissions) {
-  EXPECT_EQ(expected_permissions.size(), permissions.size());
-  for (ContentSettingsType type : expected_permissions) {
-    EXPECT_TRUE(PermissionInfoListContainsPermission(permissions, type))
-        << "expected: " << static_cast<int>(type);
-  }
+    const std::set<ContentSettingsType>& expected_types,
+    const PermissionInfoList& permissions,
+    const base::Location& location = FROM_HERE) {
+  std::set<ContentSettingsType> actual_types;
+  base::ranges::transform(permissions,
+                          std::inserter(actual_types, actual_types.end()),
+                          [](const auto& p) { return p.type; });
+
+  EXPECT_THAT(actual_types, expected_types)
+      << "(expected at " << location.ToString() << ")";
 }
 
 }  // namespace
@@ -1470,6 +1470,21 @@ TEST_F(PageInfoTest, ShowInfoBarWhenAllowingThirdPartyCookies) {
   SetDefaultUIExpectations(mock_ui());
   NavigateAndCommit(url());
 
+  // When `kMigrateStorageToBDM` is enabled calls to `PresentSiteDataInternal`
+  // from `PresentSiteData` are synchronous vs. async when it's disabled due to
+  // the UpdateIgnoredEmptyStorageKeys binding the call. This makes calls to
+  // `SetCookieInfo` appear as they're called.
+  if (base::FeatureList::IsEnabled(
+          browsing_data::features::kMigrateStorageToBDM)) {
+    // This call is needed to satisfy the default expectations after navigation.
+    page_info();
+    Mock::VerifyAndClearExpectations(mock_ui());
+    // `SetCookieInfo` is called once through `OnStatusChanged` and another time
+    // through `OnThirdPartyToggleClicked` which calls `OnStatusChanged` down
+    // its call chain.
+    EXPECT_CALL(*mock_ui(), SetCookieInfo(_)).Times(2);
+  }
+
   page_info()->OnStatusChanged(CookieControlsStatus::kEnabled,
                                CookieControlsEnforcement::kNoEnforcement,
                                base::Time());
@@ -1485,6 +1500,14 @@ TEST_F(PageInfoTest, ShowInfoBarWhenAllowingThirdPartyCookies) {
 TEST_F(PageInfoTest, ShowInfoBarWhenBlockingThirdPartyCookies) {
   SetDefaultUIExpectations(mock_ui());
   NavigateAndCommit(url());
+
+  // As above, expectations need to be cleared.
+  if (base::FeatureList::IsEnabled(
+          browsing_data::features::kMigrateStorageToBDM)) {
+    page_info();
+    Mock::VerifyAndClearExpectations(mock_ui());
+    EXPECT_CALL(*mock_ui(), SetCookieInfo(_)).Times(2);
+  }
 
   page_info()->OnStatusChanged(CookieControlsStatus::kDisabledForSite,
                                CookieControlsEnforcement::kNoEnforcement,
@@ -1784,8 +1807,9 @@ TEST_F(PageInfoTest, SafetyTipTimeOpenMetrics) {
 // Tests that the SubresourceFilter setting is omitted correctly.
 TEST_F(PageInfoTest, SubresourceFilterSetting_MatchesActivation) {
   auto showing_setting = [](const PermissionInfoList& permissions) {
-    return PermissionInfoListContainsPermission(permissions,
-                                                ContentSettingsType::ADS);
+    return base::Contains(
+        permissions, ContentSettingsType::ADS,
+        [](const auto& permission) { return permission.type; });
   };
 
   // By default, the setting should not appear at all.

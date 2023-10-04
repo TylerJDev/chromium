@@ -8,6 +8,7 @@
 <translation id="1056898198331236512">Viðvörun</translation>
 <translation id="1060368002126861100">Til að opna skrár með <ph name="APP_NAME" /> skaltu fyrst afrita þær í skráamöppu Windows.</translation>
 <translation id="1062407476771304334">Skipta út</translation>
+<translation id="1119383441774809183">Sýna textaskilaboð</translation>
 <translation id="1119447706177454957">Innri villa</translation>
 <translation id="1120073797882051782">Hangul Romaja</translation>
 <translation id="112387589102719461">Enska (bandarísk) með Dvorak-forritunarlyklaborði</translation>
@@ -171,6 +172,7 @@
 <translation id="23721837607121582">Sækja snjallprófíl, netkerfi <ph name="NETWORK_INDEX" /> af <ph name="NETWORK_COUNT" />, <ph name="NETWORK_NAME" /></translation>
 <translation id="2377319039870049694">Skipta yfir í listayfirlit</translation>
 <translation id="2377590462528165447"><ph name="NUMBER_OF_ITEMS" /> möppum deilt með Linux</translation>
+<translation id="2379576081295865700">Athugar geymslurými… 1 atriði fannst</translation>
 <translation id="2383454254762599978">Færa í ruslið</translation>
 <translation id="2387458720915042159">Gerð tengingar staðgengilsþjóns</translation>
 <translation id="2389832672041313158">Búrmíska/Myanmar</translation>
@@ -277,6 +279,7 @@
 <translation id="3264582393905923483">Samhengi</translation>
 <translation id="3272909651715601089">Ekki tókst að opna „<ph name="PATH" />“</translation>
 <translation id="3280431534455935878">Verið að undirbúa</translation>
+<translation id="3280719573299097127">Þú ert að nota net með mældri notkun. Hlé hefur verið gert á samstillingu skráa.</translation>
 <translation id="3280987981688031357">Vínylplata</translation>
 <translation id="3290356915286466215">Ótryggt</translation>
 <translation id="3291218047831493686">Tengstu þessu neti til að breyta stillingum SIM-láss</translation>
@@ -630,6 +633,7 @@
 <translation id="5838451609423551646">Fjarlægja allar færslur úr vali.</translation>
 <translation id="5838825566232597749">Bandarískt alþjóðlegt Workman</translation>
 <translation id="5845721951356578987">Hjúkrunarfræðingur</translation>
+<translation id="5858478190805449225">Kveikt á rafhlöðusparnaðarstillingu. Reyndu aftur þegar slökkt er á rafhlöðusparnaðarstillingu.</translation>
 <translation id="5860491529813859533">Kveikja</translation>
 <translation id="5861477046012235702">Leikjaspilari</translation>
 <translation id="5864471791310927901">DHCP-uppfletting mistókst</translation>
@@ -664,6 +668,7 @@
 <translation id="6164412158936057769">Fiðrildi</translation>
 <translation id="6165508094623778733">Frekari upplýsingar</translation>
 <translation id="6170470584681422115">Samloka</translation>
+<translation id="6177854567773392726">Athugar geymslurými… <ph name="ITEMS_FOUND" /> atriði fundust</translation>
 <translation id="6181912134988520389">Veittu <ph name="VM_NAME" /> aðgang að skrám á Google Drive. Breytingar samstillast við önnur tæki.</translation>
 <translation id="6187719147498869044">Ungverska</translation>
 <translation id="6198252989419008588">Breyta PIN-númeri</translation>
@@ -895,7 +900,6 @@
 <translation id="7911118814695487383">Linux</translation>
 <translation id="7920501309908018401">Skrárnar þínar á „Drifið mitt“ samstillast sjálfkrafa við Chromebook svo þú hafir aðgang að þeim án nettengingar.</translation>
 <translation id="7925247922861151263">AAA-prófun mistókst</translation>
-<translation id="7925686952655276919">Ekki nota farsímagögn fyrir samstillingu</translation>
 <translation id="7928710562641958568">Losa tæki</translation>
 <translation id="7933875256234974853">Undirbýr samstillingu Drive-skráa...</translation>
 <translation id="7943385054491506837">Bandarískt Colemak</translation>
@@ -918,6 +922,7 @@
 <translation id="8087576439476816834">Sækja, <ph name="PROFILE_NAME" /></translation>
 <translation id="8106045200081704138">Deilt með mér</translation>
 <translation id="8116072619078571545">Klakavatn</translation>
+<translation id="8120392982188717723">Leyfa samstillingu á neti með mældri notkun</translation>
 <translation id="8124093710070495550">Vandamál með samstillingu</translation>
 <translation id="8128733386027980860">Enska (bresk) með Dvorak-lyklaborði</translation>
 <translation id="8137331602592933310">„<ph name="FILENAME" />“ hefur verið deilt með þér. Þú getur ekki eytt því vegna þess að þú ert ekki eigandinn.</translation>
@@ -1009,6 +1014,7 @@
 <translation id="8698877009525468705">Skráin inniheldur trúnaðarmál og er háð takmörkunum stjórnandareglu.</translation>
 <translation id="8712637175834984815">Ég skil</translation>
 <translation id="8713112442029511308">Maltneska</translation>
+<translation id="8714138378966541668">Læst af þjónustuaðila</translation>
 <translation id="8714406895390098252">Bíllaus</translation>
 <translation id="8719721339511222681"><ph name="ENTRY_NAME" /> valið.</translation>
 <translation id="872537912056138402">Króatískt</translation>
@@ -1046,6 +1052,7 @@
 <translation id="9038620279323455325">Skrá með heitið „<ph name="FILE_NAME" />“ er þegar til staðar. Veldu annað heiti.</translation>
 <translation id="9046895021617826162">Tenging mistókst</translation>
 <translation id="9065512565307033593">Ef þú staðfestir ekki verður slökkt á netaðganginum þínum.</translation>
+<translation id="9083722265619106011">{0,plural, =1{1 viðvörun.}one{<ph name="COUNT" /> viðvörun.}other{<ph name="COUNT" /> viðvaranir.}}</translation>
 <translation id="908378762078012445">Rússneska með AATSEEL-hljóðritunarlyklaborði</translation>
 <translation id="9086302186042011942">Samstillir</translation>
 <translation id="9099674669267916096">Síðufjöldi</translation>

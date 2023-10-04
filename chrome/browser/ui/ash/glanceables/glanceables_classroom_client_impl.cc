@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,9 +25,7 @@
 #include "base/time/clock.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
-#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ash/glanceables/glanceables_classroom_course_work_item.h"
-#include "chrome/browser/ui/singleton_tabs.h"
 #include "content/public/browser/browser_thread.h"
 #include "google_apis/classroom/classroom_api_course_work_response_types.h"
 #include "google_apis/classroom/classroom_api_courses_response_types.h"
@@ -39,7 +38,6 @@
 #include "google_apis/gaia/gaia_constants.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "url/gurl.h"
 
 namespace ash {
 namespace {
@@ -64,15 +62,17 @@ constexpr char kOwnCoursesFilterValue[] = "me";
 // the specified course.
 constexpr char kAllStudentSubmissionsParameterValue[] = "-";
 
-// TODO(b/282013130): Update the traffic annotation tag once all "[TBD]" items
-// are ready.
 constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotationTag =
     net::DefineNetworkTrafficAnnotation("glanceables_classroom_integration", R"(
         semantics {
           sender: "Glanceables keyed service"
           description: "Provide ChromeOS users quick access to their "
                        "classroom items without opening the app or website"
-          trigger: "[TBD] Depends on UI surface and pre-fetching strategy"
+          trigger: "User presses the calendar pill in shelf, which triggers "
+                   "opening the calendar, classroom (if available) and tasks "
+                   "widgets. This specific client implementation "
+                   "is responsible for fetching user's classroom data from "
+                   "Google Classroom API."
           internal {
             contacts {
               email: "chromeos-launcher@google.com"
@@ -84,12 +84,16 @@ constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotationTag =
           data: "The request is authenticated with an OAuth2 access token "
                 "identifying the Google account"
           destination: GOOGLE_OWNED_SERVICE
-          last_reviewed: "2023-05-12"
+          last_reviewed: "2023-08-21"
         }
         policy {
           cookies_allowed: NO
-          setting: "[TBD] This feature cannot be disabled in settings"
-          policy_exception_justification: "WIP, guarded by `GlanceablesV2` flag"
+          setting: "This feature cannot be disabled in settings"
+          chrome_policy {
+            GlanceablesEnabled {
+              GlanceablesEnabled: false
+            }
+          }
         }
     )");
 
@@ -215,13 +219,11 @@ bool GlanceablesClassroomClientImpl::CourseWorkRequest::RespondIfComplete() {
 }
 
 GlanceablesClassroomClientImpl::GlanceablesClassroomClientImpl(
-    Profile* profile,
     base::Clock* clock,
     const GlanceablesClassroomClientImpl::CreateRequestSenderCallback&
         create_request_sender_callback,
     bool use_best_effort_prefetch_task_runner)
-    : profile_(profile),
-      clock_(clock),
+    : clock_(clock),
       create_request_sender_callback_(create_request_sender_callback),
       number_of_assignments_prioritized_for_display_(3) {
   if (features::IsGlanceablesV2ClassroomTeacherViewEnabled()) {
@@ -246,7 +248,11 @@ void GlanceablesClassroomClientImpl::IsStudentRoleActive(
   FetchStudentCourses(base::BindOnce(
       [](IsRoleEnabledCallback callback, bool success,
          const CourseList& courses) {
-        std::move(callback).Run(!courses.empty());
+        const bool is_active = !courses.empty();
+        base::UmaHistogramBoolean(
+            "Ash.Glanceables.Api.Classroom.IsStudentRoleActiveResult",
+            is_active);
+        std::move(callback).Run(is_active);
       },
       std::move(callback)));
 }
@@ -492,15 +498,6 @@ void GlanceablesClassroomClientImpl::GetGradedTeacherAssignments(
       base::Unretained(this), std::move(due_predicate),
       std::move(submissions_state_predicate), std::move(sort_comparator),
       /*allow_submissions_refresh=*/true, std::move(callback)));
-}
-
-void GlanceablesClassroomClientImpl::OpenUrl(const GURL& url) const {
-  if (!url.is_valid()) {
-    return;
-  }
-
-  // TODO(b/283370862): consider opening PWA if installed.
-  ShowSingletonTabOverwritingNTP(profile_, url);
 }
 
 void GlanceablesClassroomClientImpl::OnGlanceablesBubbleClosed() {
@@ -1014,6 +1011,26 @@ void GlanceablesClassroomClientImpl::OnStudentDataFetched(
   }
 
   PruneInvalidCourseWork(student_courses_.courses(), student_course_work_);
+
+  if (!student_data_fetch_had_failure_) {
+    for (const auto& course : student_courses_.courses()) {
+      const auto iter = student_course_work_.find(course->id);
+      if (iter == student_course_work_.end()) {
+        continue;
+      }
+
+      base::UmaHistogramCounts1000(
+          "Ash.Glanceables.Api.Classroom.CourseWorkItemsPerStudentCourseCount",
+          iter->second.size());
+      base::UmaHistogramCounts1000(
+          "Ash.Glanceables.Api.Classroom."
+          "StudentSubmissionsPerStudentCourseCount",
+          std::accumulate(iter->second.begin(), iter->second.end(), 0,
+                          [](int count, const auto& x) {
+                            return count + x.second.total_submissions();
+                          }));
+    }
+  }
 
   std::list<DataFetchCallback> callbacks;
   callbacks_waiting_for_student_data_.swap(callbacks);

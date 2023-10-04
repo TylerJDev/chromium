@@ -4,7 +4,6 @@
 
 #include "ash/wm/overview/overview_item_view.h"
 
-#include <algorithm>
 #include <memory>
 
 #include "ash/strings/grit/ash_strings.h"
@@ -12,17 +11,17 @@
 #include "ash/wm/overview/overview_constants.h"
 #include "ash/wm/overview/overview_grid.h"
 #include "ash/wm/overview/overview_item.h"
+#include "ash/wm/snap_group/snap_group.h"
+#include "ash/wm/snap_group/snap_group_controller.h"
 #include "ash/wm/window_mini_view_header_view.h"
 #include "ash/wm/window_preview_view.h"
 #include "base/containers/contains.h"
 #include "chromeos/constants/chromeos_features.h"
-#include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/aura/window.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/compositor/layer.h"
-#include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/size_conversions.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/views/animation/animation_builder.h"
@@ -87,7 +86,7 @@ OverviewItemView::OverviewItemView(
               chromeos::features::IsJellyrollEnabled()
                   ? CloseButton::Type::kMediumFloating
                   : CloseButton::Type::kLargeFloating))) {
-  DCHECK(overview_item_);
+  CHECK(overview_item_);
   // This should not be focusable. It's also to avoid accessibility error when
   // |window->GetTitle()| is empty.
   SetFocusBehavior(FocusBehavior::NEVER);
@@ -98,24 +97,32 @@ OverviewItemView::OverviewItemView(
       l10n_util::GetStringUTF16(IDS_APP_ACCNAME_CLOSE));
   close_button_->SetFocusBehavior(views::View::FocusBehavior::ACCESSIBLE_ONLY);
 
-  // Call this last as it calls |Layout()| which relies on the some of the other
-  // elements existing.
-  SetShowPreview(show_preview);
   // Do not show header if the current overview item is the drop target widget.
-  if (overview_item_->overview_grid()->IsDropTargetWindow(
-          overview_item_->GetWindow())) {
+  if (overview_item_->overview_grid()->IsDropTargetItem(overview_item_)) {
     header_view()->SetVisible(false);
     current_header_visibility_ = HeaderVisibility::kInvisible;
   }
 
   header_view()->UpdateIconView(window);
+  if (!chromeos::features::IsJellyrollEnabled()) {
+    header_view()->SetPaintToLayer();
+    header_view()->layer()->SetFillsBoundsOpaquely(false);
+  }
+
+  // Call this last as it calls `Layout()` which relies on the some of the other
+  // elements existing.
+  SetShowPreview(show_preview);
 }
 
 OverviewItemView::~OverviewItemView() = default;
 
 void OverviewItemView::SetHeaderVisibility(HeaderVisibility visibility,
                                            bool animate) {
-  DCHECK(header_view()->layer());
+  if (chromeos::features::IsJellyrollEnabled()) {
+    return;
+  }
+
+  CHECK(header_view()->layer());
   if (visibility == current_header_visibility_) {
     return;
   }
@@ -132,6 +139,11 @@ void OverviewItemView::SetHeaderVisibility(HeaderVisibility visibility,
   // If there is not a `close_button_`, then we are done.
   if (!close_button_) {
     return;
+  }
+
+  if (!close_button_->layer()) {
+    close_button_->SetPaintToLayer();
+    close_button_->layer()->SetFillsBoundsOpaquely(false);
   }
 
   // If the whole header is fading out and there is a `close_button_`, then
@@ -156,11 +168,27 @@ void OverviewItemView::SetHeaderVisibility(HeaderVisibility visibility,
   close_button_->SetEnabled(close_button_visible);
 }
 
+void OverviewItemView::SetCloseButtonVisible(bool visible) {
+  CHECK(chromeos::features::IsJellyrollEnabled());
+
+  if (!close_button_->layer()) {
+    close_button_->SetPaintToLayer();
+    close_button_->layer()->SetFillsBoundsOpaquely(false);
+  }
+
+  AnimateLayerOpacity(close_button_->layer(), visible);
+  close_button_->SetEnabled(visible);
+}
+
 void OverviewItemView::HideCloseInstantlyAndThenShowItSlowly() {
   DCHECK(close_button_);
   DCHECK_NE(HeaderVisibility::kInvisible, current_header_visibility_);
+
+  if (!close_button_->layer()) {
+    close_button_->SetPaintToLayer();
+    close_button_->layer()->SetFillsBoundsOpaquely(false);
+  }
   ui::Layer* layer = close_button_->layer();
-  DCHECK(layer);
 
   views::AnimationBuilder()
       .SetPreemptionStrategy(ui::LayerAnimator::REPLACE_QUEUED_ANIMATIONS)
@@ -251,36 +279,59 @@ gfx::Size OverviewItemView::GetPreviewViewSize() const {
   return gfx::ToRoundedSize(target_size);
 }
 
-void OverviewItemView::RefreshItemVisuals() {}
+void OverviewItemView::RefreshItemVisuals() {
+  // Set the rounded corners to accommodate for the customized rounded corners
+  // needed for the overview group item.
+  if (SnapGroupController* snap_group_controller = SnapGroupController::Get()) {
+    const aura::Window* window = overview_item_->GetWindow();
+    if (SnapGroup* snap_group =
+            snap_group_controller->GetSnapGroupForGivenWindow(window)) {
+      SetRoundedCornersRadius(
+          window == snap_group->window1()
+              ? gfx::RoundedCornersF(
+                    /*upper_left=*/kOverviewItemCornerRadius,
+                    /*upper_right=*/0, /*lower_right=*/0,
+                    /*lower_left=*/kOverviewItemCornerRadius)
+              : gfx::RoundedCornersF(
+                    /*upper_left=*/0,
+                    /*upper_right=*/kOverviewItemCornerRadius,
+                    /*lower_right=*/kOverviewItemCornerRadius,
+                    /*lower_left=*/0));
+    }
+  }
+
+  RefreshHeaderViewRoundedCorners();
+  RefreshPreviewRoundedCorners(/*show=*/true);
+}
 
 views::View* OverviewItemView::GetView() {
   return this;
 }
 
-void OverviewItemView::MaybeActivateHighlightedView() {
+void OverviewItemView::MaybeActivateFocusedView() {
   if (overview_item_)
-    overview_item_->OnHighlightedViewActivated();
+    overview_item_->OnFocusedViewActivated();
 }
 
-void OverviewItemView::MaybeCloseHighlightedView(bool primary_action) {
+void OverviewItemView::MaybeCloseFocusedView(bool primary_action) {
   if (overview_item_ && primary_action)
-    overview_item_->OnHighlightedViewClosed();
+    overview_item_->OnFocusedViewClosed();
 }
 
-void OverviewItemView::MaybeSwapHighlightedView(bool right) {}
+void OverviewItemView::MaybeSwapFocusedView(bool right) {}
 
-bool OverviewItemView::MaybeActivateHighlightedViewOnOverviewExit(
+bool OverviewItemView::MaybeActivateFocusedViewOnOverviewExit(
     OverviewSession* overview_session) {
   DCHECK(overview_session);
   overview_session->SelectWindow(overview_item_);
   return true;
 }
 
-void OverviewItemView::OnViewHighlighted() {
+void OverviewItemView::OnFocusableViewFocused() {
   UpdateFocusState(/*focus=*/true);
 }
 
-void OverviewItemView::OnViewUnhighlighted() {
+void OverviewItemView::OnFocusableViewBlurred() {
   UpdateFocusState(/*focus=*/false);
 }
 
@@ -304,15 +355,6 @@ bool OverviewItemView::OnMouseDragged(const ui::MouseEvent& event) {
   if (!overview_item_)
     return views::View::OnMouseDragged(event);
   overview_item_->HandleMouseEvent(event);
-  return true;
-}
-
-bool OverviewItemView::OnMouseWheel(const ui::MouseWheelEvent& event) {
-  if (!overview_item_) {
-    return false;
-  }
-  overview_item_->overview_grid()->HandleMouseWheelScrollEvent(
-      event.y_offset());
   return true;
 }
 
@@ -360,7 +402,7 @@ void OverviewItemView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
 
 void OverviewItemView::OnThemeChanged() {
   WindowMiniView::OnThemeChanged();
-  UpdateFocusState(IsViewHighlighted());
+  UpdateFocusState(is_focused());
 }
 
 BEGIN_METADATA(OverviewItemView, WindowMiniView)

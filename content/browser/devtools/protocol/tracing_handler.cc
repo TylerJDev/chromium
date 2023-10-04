@@ -220,11 +220,11 @@ void FillFrameData(base::trace_event::TracedValue* data,
 absl::optional<base::trace_event::MemoryDumpLevelOfDetail>
 StringToMemoryDumpLevelOfDetail(const std::string& str) {
   if (str == Tracing::MemoryDumpLevelOfDetailEnum::Detailed)
-    return {base::trace_event::MemoryDumpLevelOfDetail::DETAILED};
+    return {base::trace_event::MemoryDumpLevelOfDetail::kDetailed};
   if (str == Tracing::MemoryDumpLevelOfDetailEnum::Background)
-    return {base::trace_event::MemoryDumpLevelOfDetail::BACKGROUND};
+    return {base::trace_event::MemoryDumpLevelOfDetail::kBackground};
   if (str == Tracing::MemoryDumpLevelOfDetailEnum::Light)
-    return {base::trace_event::MemoryDumpLevelOfDetail::LIGHT};
+    return {base::trace_event::MemoryDumpLevelOfDetail::kLight};
   return {};
 }
 
@@ -576,15 +576,6 @@ TracingHandler::~TracingHandler() = default;
 std::vector<TracingHandler*> TracingHandler::ForAgentHost(
     DevToolsAgentHostImpl* host) {
   return host->HandlersByName<TracingHandler>(Tracing::Metainfo::domainName);
-}
-
-void TracingHandler::SetRenderer(int process_host_id,
-                                 RenderFrameHostImpl* frame_host) {
-  if (!frame_host) {
-    return;
-  }
-  video_consumer_->SetFrameSinkId(
-      frame_host->GetRenderWidgetHost()->GetFrameSinkId());
 }
 
 void TracingHandler::Wire(UberDispatcher* dispatcher) {
@@ -973,6 +964,12 @@ void TracingHandler::OnRecordingEnabled(std::unique_ptr<StartCallback> callback,
   if (screenshot_enabled) {
     // Reset number of screenshots received, each time tracing begins.
     number_of_screenshots_from_video_consumer_ = 0;
+    if (WebContents* wc = host_ ? host_->GetWebContents() : nullptr) {
+      auto* frame_host =
+          static_cast<RenderFrameHostImpl*>(wc->GetPrimaryMainFrame());
+      video_consumer_->SetFrameSinkId(
+          frame_host->GetRenderWidgetHost()->GetFrameSinkId());
+    }
     video_consumer_->SetMinAndMaxFrameSize(kMinFrameSize, kMaxFrameSize);
     video_consumer_->StartCapture();
   }
@@ -1020,8 +1017,8 @@ void TracingHandler::RequestMemoryDump(
   }
 
   auto determinism = deterministic.value_or(false)
-                         ? base::trace_event::MemoryDumpDeterminism::FORCE_GC
-                         : base::trace_event::MemoryDumpDeterminism::NONE;
+                         ? base::trace_event::MemoryDumpDeterminism::kForceGc
+                         : base::trace_event::MemoryDumpDeterminism::kNone;
 
   auto on_memory_dump_finished =
       base::BindOnce(&TracingHandler::OnMemoryDumpFinished,
@@ -1029,7 +1026,7 @@ void TracingHandler::RequestMemoryDump(
 
   memory_instrumentation::MemoryInstrumentation::GetInstance()
       ->RequestGlobalDumpAndAppendToTrace(
-          base::trace_event::MemoryDumpType::EXPLICITLY_TRIGGERED,
+          base::trace_event::MemoryDumpType::kExplicitlyTriggered,
           *memory_detail, determinism, std::move(on_memory_dump_finished));
 }
 
@@ -1145,11 +1142,16 @@ void TracingHandler::ReadyToCommitNavigation(
   if (!did_initiate_recording_)
     return;
   auto data = std::make_unique<base::trace_event::TracedValue>();
-  FillFrameData(data.get(), navigation_request->GetRenderFrameHost(),
-                navigation_request->GetURL());
+  RenderFrameHostImpl* frame_host = navigation_request->GetRenderFrameHost();
+  FillFrameData(data.get(), frame_host, navigation_request->GetURL());
   TRACE_EVENT_INSTANT1(TRACE_DISABLED_BY_DEFAULT("devtools.timeline"),
                        "FrameCommittedInBrowser", TRACE_EVENT_SCOPE_THREAD,
                        "data", std::move(data));
+  if (frame_host->IsOutermostMainFrame()) {
+    video_consumer_->SetFrameSinkId(navigation_request->GetRenderFrameHost()
+                                        ->GetRenderWidgetHost()
+                                        ->GetFrameSinkId());
+  }
 }
 
 void TracingHandler::FrameDeleted(int frame_tree_node_id) {

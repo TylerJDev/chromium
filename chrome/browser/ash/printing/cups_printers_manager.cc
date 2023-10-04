@@ -17,6 +17,7 @@
 #include "base/sequence_checker.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/timer/timer.h"
 #include "chrome/browser/ash/printing/automatic_usb_printer_configurer.h"
 #include "chrome/browser/ash/printing/cups_printer_status_creator.h"
 #include "chrome/browser/ash/printing/enterprise_printers_provider.h"
@@ -52,11 +53,12 @@
 #include "components/prefs/pref_service.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
-#include "printer_configurer.h"
 #include "printing/printer_query_result.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace ash {
+
+constexpr base::TimeDelta kMetricsDelayTimerInterval = base::Minutes(1);
 
 bool IsIppUri(const chromeos::Uri& uri) {
   return (uri.GetScheme() == chromeos::kIppScheme ||
@@ -82,15 +84,12 @@ using ::chromeos::Printer;
 using ::chromeos::PrinterClass;
 using ::printing::PrinterQueryResult;
 
-void OnRemovedPrinter(const Printer::PrinterProtocol& protocol, bool success) {
+void OnRemovedPrinter(bool success) {
   if (success) {
     PRINTER_LOG(DEBUG) << "Printer removal succeeded.";
   } else {
     PRINTER_LOG(DEBUG) << "Printer removal failed.";
   }
-
-  base::UmaHistogramEnumeration("Printing.CUPS.PrinterRemoved", protocol,
-                                Printer::PrinterProtocol::kProtocolMax);
 }
 
 class CupsPrintersManagerImpl
@@ -120,12 +119,19 @@ class CupsPrintersManagerImpl
         zeroconf_detector_(std::move(zeroconf_detector)),
         ppd_provider_(std::move(ppd_provider)),
         usb_notification_controller_(std::move(usb_notification_controller)),
-        auto_usb_printer_configurer_(this, usb_notification_controller_.get()),
         print_servers_manager_(std::move(print_servers_manager)),
         enterprise_printers_provider_(std::move(enterprise_printers_provider)),
-        event_tracker_(event_tracker) {
-    // Add the |auto_usb_printer_configurer_| as an observer.
-    AddObserver(&auto_usb_printer_configurer_);
+        event_tracker_(event_tracker),
+        nearby_printers_metric_delay_timer_(
+            FROM_HERE,
+            kMetricsDelayTimerInterval,
+            /*receiver=*/this,
+            &CupsPrintersManagerImpl::RecordTotalNearbyNetworkPrinterCounts) {
+    auto_usb_printer_configurer_ =
+        std::make_unique<AutomaticUsbPrinterConfigurer>(
+            this, usb_notification_controller_.get(), ppd_provider_.get(),
+            base::BindRepeating(&CupsPrintersManagerImpl::OnUsbPrinterSetupDone,
+                                weak_ptr_factory_.GetWeakPtr()));
 
     GetNetworkConfigService(
         remote_cros_network_config_.BindNewPipeAndPassReceiver());
@@ -208,6 +214,9 @@ class CupsPrintersManagerImpl
     auto existing = synced_printers_manager_->GetPrinter(printer_id);
     if (existing) {
       event_tracker_->RecordPrinterRemoved(*existing);
+      const Printer::PrinterProtocol protocol = existing->GetProtocol();
+      base::UmaHistogramEnumeration("Printing.CUPS.PrinterRemoved", protocol,
+                                    Printer::PrinterProtocol::kProtocolMax);
     }
     synced_printers_manager_->RemoveSavedPrinter(printer_id);
     // Note that we will rebuild our lists when we get the observer
@@ -230,6 +239,27 @@ class CupsPrintersManagerImpl
   }
 
   // Public API function.
+  void AddLocalPrintersObserver(
+      CupsPrintersManager::LocalPrintersObserver* observer) override {
+    CHECK(ash::features::IsLocalPrinterObservingEnabled());
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
+
+    if (!local_printers_observer_list_.HasObserver(observer)) {
+      local_printers_observer_list_.AddObserver(observer);
+      observer->OnLocalPrintersUpdated();
+    }
+  }
+
+  // Public API function.
+  void RemoveLocalPrintersObserver(
+      CupsPrintersManager::LocalPrintersObserver* observer) override {
+    CHECK(ash::features::IsLocalPrinterObservingEnabled());
+
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
+    local_printers_observer_list_.RemoveObserver(observer);
+  }
+
+  // Public API function.
   bool IsPrinterInstalled(const Printer& printer) const override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
     const auto found = installed_printer_fingerprints_.find(printer.id());
@@ -238,13 +268,6 @@ class CupsPrintersManagerImpl
     }
 
     return found->second == PrinterConfigurer::SetupFingerprint(printer);
-  }
-
-  // Public API function.
-  void PrinterIsNotAutoconfigurable(const Printer& printer) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
-    ppd_resolution_tracker_.MarkPrinterAsNotAutoconfigurable(printer.id());
-    RebuildDetectedLists();
   }
 
   // Public API function.
@@ -317,6 +340,8 @@ class CupsPrintersManagerImpl
         break;
       case kZeroconfDetector:
         zeroconf_detections_ = printers;
+        // Start timer for recording the # of nearby printers.
+        nearby_printers_metric_delay_timer_.Reset();
         break;
       case kPrintServerDetector:
         servers_detections_ = printers;
@@ -367,13 +392,8 @@ class CupsPrintersManagerImpl
     // Uninstall printer if installed completely.
     if (installed_printer_fingerprints_.erase(printer_id)) {
       // The printer was present in `installed_printer_fingerprints_`.
-      absl::optional<chromeos::Printer> printer = GetPrinter(printer_id);
-      if (printer) {
-        const Printer::PrinterProtocol protocol = printer->GetProtocol();
-        DebugDaemonClient::Get()->CupsRemovePrinter(
-            printer_id, base::BindOnce(&OnRemovedPrinter, protocol),
-            base::DoNothing());
-      }
+      DebugDaemonClient::Get()->CupsRemovePrinter(
+          printer_id, base::BindOnce(&OnRemovedPrinter), base::DoNothing());
       return;
     }
 
@@ -459,8 +479,9 @@ class CupsPrintersManagerImpl
       }
     }
 
-    base::UmaHistogramCounts100("Printing.CUPS.TotalNetworkPrintersCount",
-                                total_network_printers_count);
+    base::UmaHistogramCounts100(
+        "Printing.CUPS.TotalNetworkPrintersCount2.SettingsOpened",
+        total_network_printers_count);
     base::UmaHistogramCounts100("Printing.CUPS.NearbyNetworkPrintersCount",
                                 nearby_zeroconf_printers_count);
   }
@@ -659,7 +680,39 @@ class CupsPrintersManagerImpl
     }
   }
 
-  void AddDetectedList(
+  void AddDetectedUsbPrinters(
+      const std::vector<PrinterDetector::DetectedPrinter>& detected_list) {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
+
+    // Update the list of connected printers (skip the saved ones).
+    std::vector<PrinterDetector::DetectedPrinter> printers;
+    for (const PrinterDetector::DetectedPrinter& detected : detected_list) {
+      if (!printers_.IsPrinterInClass(PrinterClass::kSaved,
+                                      detected.printer.id())) {
+        printers.push_back(detected);
+      }
+    }
+    auto_usb_printer_configurer_->UpdateListOfConnectedPrinters(
+        std::move(printers));
+
+    // Update lists of Automatic and Discovered printers.
+    for (const std::string& printer_id :
+         auto_usb_printer_configurer_->ConfiguredPrintersIds()) {
+      if (!printers_.IsPrinterInClass(PrinterClass::kAutomatic, printer_id)) {
+        printers_.Insert(PrinterClass::kAutomatic,
+                         auto_usb_printer_configurer_->Printer(printer_id));
+      }
+    }
+    for (const std::string& printer_id :
+         auto_usb_printer_configurer_->UnconfiguredPrintersIds()) {
+      if (!printers_.IsPrinterInClass(PrinterClass::kDiscovered, printer_id)) {
+        printers_.Insert(PrinterClass::kDiscovered,
+                         auto_usb_printer_configurer_->Printer(printer_id));
+      }
+    }
+  }
+
+  void AddDetectedNetworkPrinters(
       const std::vector<PrinterDetector::DetectedPrinter>& detected_list) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
     for (const PrinterDetector::DetectedPrinter& detected : detected_list) {
@@ -676,36 +729,6 @@ class CupsPrintersManagerImpl
       auto printer = detected.printer;
       if (printer.IsIppEverywhere()) {
         printers_.Insert(PrinterClass::kAutomatic, printer);
-        continue;
-      }
-
-      if (printer.GetProtocol() == Printer::PrinterProtocol::kUsb &&
-          printer.RequiresDriverlessUsb()) {
-        if (ppd_resolution_tracker_.IsMarkedAsNotAutoconfigurable(
-                detected_printer_id)) {
-          LOG(ERROR) << "Printer " << detected_printer_id
-                     << " requires autoconfiguration but has previously failed"
-                     << " setup.";
-          printers_.Insert(PrinterClass::kDiscovered, printer);
-        } else {
-          // This model should attempt autoconfiguration with IPP-USB instead of
-          // looking up a PPD for the USB printer class.
-          printer.SetUri(chromeos::Uri(
-              base::StringPrintf("ippusb://%04x_%04x/ipp/print",
-                                 detected.ppd_search_data.usb_vendor_id,
-                                 detected.ppd_search_data.usb_product_id)));
-          printer.mutable_ppd_reference()->autoconf = true;
-          printers_.Insert(PrinterClass::kAutomatic, printer);
-
-          // Mark PPD resolution as a failure so that it doesn't get retried
-          // later if something goes wrong with driverless setup.
-          if (!ppd_resolution_tracker_.IsResolutionComplete(
-                  detected_printer_id)) {
-            ppd_resolution_tracker_.MarkResolutionPending(detected_printer_id);
-            ppd_resolution_tracker_.MarkResolutionFailed(detected_printer_id);
-          }
-        }
-
         continue;
       }
 
@@ -734,35 +757,9 @@ class CupsPrintersManagerImpl
         printers_.Insert(PrinterClass::kAutomatic, printer);
         continue;
       }
-      if (!printer.supports_ippusb()) {
-        // Detected printer does not supports ipp-over-usb, so we cannot set it
-        // up automatically. We have to move it to the discovered class.
-        if (printer.IsUsbProtocol()) {
-          printer.set_usb_printer_manufacturer(
-              ppd_resolution_tracker_.GetManufacturer(detected_printer_id));
-        }
-        printers_.Insert(PrinterClass::kDiscovered, printer);
-        continue;
-      }
-      // Detected printer supports ipp-over-usb and we could not find a ppd for
-      // it. We can try to set it up automatically (by IPP Everywhere).
-      if (ppd_resolution_tracker_.IsMarkedAsNotAutoconfigurable(
-              detected_printer_id)) {
-        // We have tried to autoconfigure the printer in the past and the
-        // process failed because of the lack of IPP Everywhere support.
-        // The printer must be treated as discovered printer.
-        printer.mutable_ppd_reference()->autoconf = false;
-        printers_.Insert(PrinterClass::kDiscovered, printer);
-        continue;
-      }
-      // We will try to autoconfigure the printer. We have to switch to
-      // the ippusb scheme.
-      printer.SetUri(chromeos::Uri(
-          base::StringPrintf("ippusb://%04x_%04x/ipp/print",
-                             detected.ppd_search_data.usb_vendor_id,
-                             detected.ppd_search_data.usb_product_id)));
-      printer.mutable_ppd_reference()->autoconf = true;
-      printers_.Insert(PrinterClass::kAutomatic, printer);
+
+      // We are not able to set the printer up automatically.
+      printers_.Insert(PrinterClass::kDiscovered, printer);
     }
   }
 
@@ -817,10 +814,23 @@ class CupsPrintersManagerImpl
   void RebuildDetectedLists() {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_);
     ResetNearbyPrintersLists();
-    AddDetectedList(usb_detections_);
-    AddDetectedList(zeroconf_detections_);
-    AddDetectedList(servers_detections_);
+    AddDetectedUsbPrinters(usb_detections_);
+    AddDetectedNetworkPrinters(zeroconf_detections_);
+    AddDetectedNetworkPrinters(servers_detections_);
     NotifyObservers({PrinterClass::kAutomatic, PrinterClass::kDiscovered});
+  }
+
+  void OnUsbPrinterSetupDone(std::string printer_id) {
+    if (auto_usb_printer_configurer_->ConfiguredPrintersIds().contains(
+            printer_id)) {
+      printers_.Insert(PrinterClass::kAutomatic,
+                       auto_usb_printer_configurer_->Printer(printer_id));
+      NotifyObservers({PrinterClass::kAutomatic});
+    } else {
+      printers_.Insert(PrinterClass::kDiscovered,
+                       auto_usb_printer_configurer_->Printer(printer_id));
+      NotifyObservers({PrinterClass::kDiscovered});
+    }
   }
 
   // Callback invoked on completion of PpdProvider::ResolvePpdReference.
@@ -885,6 +895,11 @@ class CupsPrintersManagerImpl
     ResetNearbyPrintersLists();
   }
 
+  void RecordTotalNearbyNetworkPrinterCounts() {
+    base::UmaHistogramCounts100("Printing.CUPS.TotalNetworkPrintersCount2",
+                                zeroconf_detections_.size());
+  }
+
   SEQUENCE_CHECKER(sequence_);
 
   // Source lists for detected printers.
@@ -912,7 +927,7 @@ class CupsPrintersManagerImpl
   std::unique_ptr<UsbPrinterNotificationController>
       usb_notification_controller_;
 
-  AutomaticUsbPrinterConfigurer auto_usb_printer_configurer_;
+  std::unique_ptr<AutomaticUsbPrinterConfigurer> auto_usb_printer_configurer_;
 
   std::unique_ptr<PrintServersManager> print_servers_manager_;
 
@@ -952,8 +967,16 @@ class CupsPrintersManagerImpl
 
   base::ObserverList<CupsPrintersManager::Observer>::Unchecked observer_list_;
 
+  // Maintains list of observers for updates to local printers.
+  base::ObserverList<CupsPrintersManager::LocalPrintersObserver>::Unchecked
+      local_printers_observer_list_;
+
   // Holds the current value of the pref |UserPrintersAllowed|.
   BooleanPrefMember user_printers_allowed_;
+
+  // Timer used to prevent the total nearby printers from immediately recording
+  // each time the mDNS reports printers.
+  base::DelayTimer nearby_printers_metric_delay_timer_;
 
   base::WeakPtrFactory<CupsPrintersManagerImpl> weak_ptr_factory_{this};
 };

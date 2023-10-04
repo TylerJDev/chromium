@@ -56,6 +56,12 @@ BASE_DECLARE_FEATURE(kEnableFollowUIUpdate);
 // Feature flag to enable the live sport card in the Discover feed.
 BASE_DECLARE_FEATURE(kDiscoverFeedSportCard);
 
+// Feature flag to enable the content notifications.
+BASE_DECLARE_FEATURE(kContentPushNotifications);
+
+// Feature flag to enable the Large Fakebox design changes.
+BASE_DECLARE_FEATURE(kIOSLargeFakebox);
+
 // Feature param under `kEnableFeedBackgroundRefresh` to also enable background
 // refresh for the Following feed.
 extern const char kEnableFollowingFeedBackgroundRefresh[];
@@ -240,5 +246,8 @@ bool IsFeedHotStartRefreshDisabled();
 
 // YES when Follow UI Update is enabled.
 bool IsFollowUIUpdateEnabled();
+
+// Returns true when the IOSLargeFakebox feature is enabled.
+bool IsIOSLargeFakeboxEnabled();
 
 #endif  // IOS_CHROME_BROWSER_NTP_FEATURES_H_

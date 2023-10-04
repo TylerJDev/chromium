@@ -837,9 +837,8 @@ TEST_F(ApnMigratorTest, MigrateNetworkCustomApnRemovedDuringMigration) {
   EXPECT_TRUE(GetCustomApns().empty());
 }
 
-TEST_F(
-    ApnMigratorTest,
-    MigrateManagedNetwork_NoLastConnectedAttachApnAndDefaultApn_NonMatchingSelectedApn) {
+TEST_F(ApnMigratorTest,
+       MigrateManagedNetwork_NoLastConnectedDefaultApn_NonMatchingSelectedApn) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(features::kApnRevamp);
 
@@ -959,9 +958,8 @@ TEST_F(
       2);
 }
 
-TEST_F(
-    ApnMigratorTest,
-    MigrateManagedNetwork_NoLastConnectedAttachApnAndDefaultApn_MatchingSelectedApn) {
+TEST_F(ApnMigratorTest,
+       MigrateManagedNetwork_NoLastConnectedDefaultApn_MatchingSelectedApn) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(features::kApnRevamp);
 

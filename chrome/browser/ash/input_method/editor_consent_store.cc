@@ -5,36 +5,14 @@
 #include "chrome/browser/ash/input_method/editor_consent_store.h"
 
 #include "ash/constants/ash_pref_names.h"
-#include "base/logging.h"
 #include "base/types/cxx23_to_underlying.h"
 
 namespace ash::input_method {
-namespace {
-
-constexpr int kConsentWindowDisplayUpperLimit = 3;
-
-ConsentStatus GetConsentStatusFromInteger(int consent_status) {
-  switch (consent_status) {
-    case base::to_underlying(ConsentStatus::kUnset):
-      return ConsentStatus::kUnset;
-    case base::to_underlying(ConsentStatus::kApproved):
-      return ConsentStatus::kApproved;
-    case base::to_underlying(ConsentStatus::kDeclined):
-      return ConsentStatus::kDeclined;
-    case base::to_underlying(ConsentStatus::kImplicitlyDeclined):
-      return ConsentStatus::kImplicitlyDeclined;
-    case base::to_underlying(ConsentStatus::kPending):
-      return ConsentStatus::kPending;
-    default:
-      LOG(ERROR) << "Invalid consent status: " << consent_status;
-      return ConsentStatus::kInvalid;
-  }
-}
-
-}  // namespace
 
 EditorConsentStore::EditorConsentStore(PrefService* pref_service)
-    : pref_service_(pref_service) {}
+    : pref_service_(pref_service) {
+  InitializePrefChangeRegistrar(pref_service);
+}
 
 EditorConsentStore::~EditorConsentStore() = default;
 
@@ -65,27 +43,46 @@ void EditorConsentStore::ProcessConsentAction(ConsentAction consent_action) {
 
     if (consent_action == ConsentAction::kDeclined) {
       SetConsentStatus(ConsentStatus::kDeclined);
-      return;
+      OverrideUserPref(/*new_pref_value=*/false);
     }
-
-    if (consent_action == ConsentAction::kDismissed) {
-      SetConsentStatus(ConsentStatus::kPending);
-      IncrementConsentWindowDismissCount();
-    }
-
-    if (GetConsentWindowDismissCount() >= kConsentWindowDisplayUpperLimit) {
-      SetConsentStatus(ConsentStatus::kImplicitlyDeclined);
-    }
-    return;
   }
 }
 
-int EditorConsentStore::GetConsentWindowDismissCount() {
-  return pref_service_->GetInteger(prefs::kOrcaConsentWindowDismissCount);
+void EditorConsentStore::ProcessPromoCardAction(
+    PromoCardAction promo_card_action) {
+  if (promo_card_action == PromoCardAction::kDeclined) {
+    OverrideUserPref(/*new_pref_value=*/false);
+  }
 }
 
-void EditorConsentStore::IncrementConsentWindowDismissCount() {
-  pref_service_->SetInteger(prefs::kOrcaConsentWindowDismissCount,
-                            GetConsentWindowDismissCount() + 1);
+void EditorConsentStore::OnUserPrefChanged() {
+  ConsentStatus current_consent_status = GetConsentStatus();
+  // If the user has previously (implicitly) declined the consent status and
+  // now switches the toggle on, then reset the consent status.
+  if (pref_service_->GetBoolean(ash::prefs::kOrcaEnabled) &&
+      current_consent_status == ConsentStatus::kDeclined) {
+    SetConsentStatus(ConsentStatus::kUnset);
+  }
 }
+
+void EditorConsentStore::OverrideUserPref(bool new_pref_value) {
+  pref_service_->SetBoolean(prefs::kOrcaEnabled, new_pref_value);
+}
+
+void EditorConsentStore::InitializePrefChangeRegistrar(
+    PrefService* pref_service) {
+  pref_change_registrar_ = std::make_unique<PrefChangeRegistrar>();
+  pref_change_registrar_->Init(pref_service);
+  pref_change_registrar_->Add(
+      ash::prefs::kOrcaEnabled,
+      base::BindRepeating(&EditorConsentStore::OnUserPrefChanged,
+                          weak_ptr_factory_.GetWeakPtr()));
+}
+
+void EditorConsentStore::SetPrefService(PrefService* pref_service) {
+  pref_service_ = pref_service;
+  pref_change_registrar_.reset();
+  InitializePrefChangeRegistrar(pref_service_);
+}
+
 }  // namespace ash::input_method

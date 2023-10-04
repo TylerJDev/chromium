@@ -287,6 +287,10 @@ class Browser : public TabStripModelObserver,
 #if BUILDFLAG(IS_CHROMEOS)
     // The id from the restore data to restore the browser window.
     int32_t restore_id = kDefaultRestoreId;
+
+    // If set, the browser should be created on the display given by
+    // `display_id`.
+    absl::optional<int64_t> display_id;
 #endif
 
 #if BUILDFLAG(IS_LINUX)
@@ -319,6 +323,10 @@ class Browser : public TabStripModelObserver,
     // Only applied when not in forced app mode. True if the browser can be
     // maximizable.
     bool can_maximize = true;
+
+    // Only applied when not in forced app mode. True if the browser can enter
+    // fullscreen.
+    bool can_fullscreen = true;
 
     // Document Picture in Picture options, specific to TYPE_PICTURE_IN_PICTURE.
     absl::optional<blink::mojom::PictureInPictureWindowOptions> pip_options;
@@ -500,9 +508,7 @@ class Browser : public TabStripModelObserver,
   std::u16string GetWindowTitleForCurrentTab(bool include_app_name) const;
 
   // Gets the window title of the tab at |index|.
-  // Disables additional formatting when |include_app_name| is false or if the
-  // window is an app window.
-  std::u16string GetWindowTitleForTab(bool include_app_name, int index) const;
+  std::u16string GetWindowTitleForTab(int index) const;
 
   // Gets the window title for the current tab, to display in a menu. If the
   // title is too long to fit in the required space, the tab title will be

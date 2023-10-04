@@ -53,6 +53,14 @@ absl::optional<V8GPUFeatureName::Enum> ToV8FeatureNameEnum(WGPUFeatureName f) {
       return V8GPUFeatureName::Enum::kBgra8UnormStorage;
     case WGPUFeatureName_ChromiumExperimentalDp4a:
       return V8GPUFeatureName::Enum::kChromiumExperimentalDp4A;
+    case WGPUFeatureName_ChromiumExperimentalReadWriteStorageTexture:
+      return V8GPUFeatureName::Enum::
+          kChromiumExperimentalReadWriteStorageTexture;
+    case WGPUFeatureName_ChromiumExperimentalSubgroups:
+      return V8GPUFeatureName::Enum::kChromiumExperimentalSubgroups;
+    case WGPUFeatureName_ChromiumExperimentalSubgroupUniformControlFlow:
+      return V8GPUFeatureName::Enum::
+          kChromiumExperimentalSubgroupUniformControlFlow;
     case WGPUFeatureName_ShaderF16:
       return V8GPUFeatureName::Enum::kShaderF16;
     case WGPUFeatureName_Float32Filterable:
@@ -97,6 +105,7 @@ GPUAdapter::GPUAdapter(
   WGPUAdapterProperties properties = {};
   GetProcs().adapterGetProperties(handle_, &properties);
   is_fallback_adapter_ = properties.adapterType == WGPUAdapterType_CPU;
+  adapter_type_ = properties.adapterType;
   backend_type_ = properties.backendType;
   is_compatibility_mode_ = properties.compatibilityMode;
 
@@ -234,9 +243,8 @@ void GPUAdapter::OnRequestDeviceCallback(ScriptState* script_state,
 ScriptPromise GPUAdapter::requestDevice(ScriptState* script_state,
                                         GPUDeviceDescriptor* descriptor) {
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
-      script_state,
-      ExceptionContext(ExceptionContext::Context::kOperationInvoke,
-                       "GPUAdapter", "requestDevice"));
+      script_state, ExceptionContext(ExceptionContextType::kOperationInvoke,
+                                     "GPUAdapter", "requestDevice"));
   ScriptPromise promise = resolver->Promise();
 
   WGPUDeviceDescriptor dawn_desc = {};
@@ -324,7 +332,8 @@ ScriptPromise GPUAdapter::requestAdapterInfo(
     // versions of all available adapter info values, including some that are
     // only available when the flag is enabled.
     adapter_info = MakeGarbageCollected<GPUAdapterInfo>(
-        vendor_, architecture_, device_, description_, driver_);
+        vendor_, architecture_, device_, description_, driver_,
+        FromDawnEnum(backend_type_), FromDawnEnum(adapter_type_));
   } else {
     // TODO(dawn:1427): If unmask_hints are given ask the user for consent to
     // expose more information and, if given, include device_ and description_

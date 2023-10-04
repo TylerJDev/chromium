@@ -76,6 +76,29 @@ proto::OutputConfig GetTestOutputConfigForMultiClassClassifier(
   return model_metadata.output_config();
 }
 
+proto::OutputConfig GetTestOutputConfigForMultiClassClassifier(
+    int top_k_outputs,
+    const float* per_class_thresholds,
+    size_t per_class_thresholds_length) {
+  proto::SegmentationModelMetadata model_metadata;
+  MetadataWriter writer(&model_metadata);
+
+  std::array<const char*, 4> labels{kShareUser, kNewTabUser, kVoiceUser,
+                                    kShoppingUser};
+  std::vector<std::pair<std::string, int64_t>> ttl_for_labels{
+      {kShareUser, kShareUserTTL},
+      {kNewTabUser, kNewTabUserTTL},
+      {kVoiceUser, kVoiceUserTTL},
+      {kShoppingUser, kShoppingUserTTL},
+  };
+  writer.AddOutputConfigForMultiClassClassifier(
+      labels.begin(), labels.size(), top_k_outputs, per_class_thresholds,
+      per_class_thresholds_length);
+  writer.AddPredictedResultTTLInOutputConfig(ttl_for_labels, kDefaultTTL,
+                                             proto::TimeUnit::DAY);
+  return model_metadata.output_config();
+}
+
 proto::OutputConfig GetTestOutputConfigForBinnedClassifier() {
   proto::SegmentationModelMetadata model_metadata;
   MetadataWriter writer(&model_metadata);
@@ -194,6 +217,31 @@ TEST(PostProcessorTest,
                                                      /*threshold=*/0.1),
           /*timestamp=*/base::Time::Now(), /*model_version=*/1));
   EXPECT_THAT(top_k_labels, testing::ElementsAre(kShoppingUser, kShareUser));
+}
+
+TEST(PostProcessorTest, MultiClassClassifierWithPerClassThresholds) {
+  PostProcessor post_processor;
+  // Set a different threshold for each class:
+  // kShareUser = 0.1
+  // kNewTabUser = 0.2
+  // kVoiceUser = 0.7
+  // kShoppingUser = 0.9
+  std::array<float, 4> per_class_thresholds = {0.1f, 0.2f, 0.7f, 0.9f};
+  // Get results for the following scores:
+  // kShareUser = 0.5 (Greater than 0.1, included)
+  // kNewTabUser = 0.2 (Same as 0.2, included)
+  // kVoiceUser = 0.4 (Lower than 0.7, excluded)
+  // kShoppingUser = 0.7 (Lower than 0.9, excluded)
+  std::vector<std::string> top_k_labels = post_processor.GetClassifierResults(
+      metadata_utils::CreatePredictionResult(
+          /*model_scores=*/{0.5, 0.2, 0.4, 0.7},
+          GetTestOutputConfigForMultiClassClassifier(
+              /*top_k-outputs=*/4,
+              /*per_class_thresholds = */ per_class_thresholds.begin(),
+              per_class_thresholds.size()),
+          /*timestamp=*/base::Time::Now(), /*model_version=*/1));
+  // Return labels greater or equal than its threshold sorted by score.
+  EXPECT_THAT(top_k_labels, testing::ElementsAre(kShareUser, kNewTabUser));
 }
 
 TEST(PostProcessorTest, BinnedClassifierScoreGreaterThanHighUserThreshold) {
@@ -321,6 +369,85 @@ TEST(PostProcessorTest, GetRawResult) {
   EXPECT_EQ(pred_result.SerializeAsString(), result.result.SerializeAsString());
   EXPECT_EQ(PredictionStatus::kSucceeded, result.status);
   EXPECT_NEAR(0.1, *result.GetResultForLabel("Output1"), 0.001);
+}
+
+TEST(PostProcessorTest, IsClassificationModel) {
+  proto::PredictionResult pred_result1 = metadata_utils::CreatePredictionResult(
+      /*model_scores=*/{0.1, 0.2, 0.3},
+      GetTestOutputConfigForGenericClassifier(),
+      /*timestamp=*/base::Time::Now(), /*model_version=*/1);
+  EXPECT_FALSE(PostProcessor().IsClassificationResult(pred_result1));
+
+  proto::PredictionResult pred_result2 = metadata_utils::CreatePredictionResult(
+      /*model_scores=*/{0, 0, 0, 0},
+      GetTestOutputConfigForMultiClassClassifier(/*top_k-outputs=*/2,
+                                                 /*threshold=*/0.5),
+      /*timestamp=*/base::Time::Now(), /*model_version=*/1);
+  EXPECT_TRUE(PostProcessor().IsClassificationResult(pred_result2));
+}
+
+TEST(PostProcessorTest, BinaryConfigMissingLabel) {
+  proto::PredictionResult pred_result = metadata_utils::CreatePredictionResult(
+      /*model_scores=*/{0.1, 0.2, 0.3},
+      GetTestOutputConfigForBinaryClassifier(),
+      /*timestamp=*/base::Time::Now(), /*model_version=*/1);
+  pred_result.mutable_output_config()
+      ->mutable_predictor()
+      ->mutable_binary_classifier()
+      ->clear_negative_label();
+  ClassificationResult result =
+      PostProcessor().GetPostProcessedClassificationResult(
+          pred_result, PredictionStatus::kSucceeded);
+  EXPECT_EQ(PredictionStatus::kFailed, result.status);
+  EXPECT_TRUE(result.ordered_labels.empty());
+}
+
+TEST(PostProcessorTest, MultiClassClassifierMissingLabels) {
+  proto::PredictionResult pred_result = metadata_utils::CreatePredictionResult(
+      /*model_scores=*/{0, 0, 0, 0},
+      GetTestOutputConfigForMultiClassClassifier(/*top_k-outputs=*/2,
+                                                 /*threshold=*/0.5),
+      /*timestamp=*/base::Time::Now(), /*model_version=*/1);
+  pred_result.mutable_output_config()
+      ->mutable_predictor()
+      ->mutable_multi_class_classifier()
+      ->clear_class_labels();
+  ClassificationResult result =
+      PostProcessor().GetPostProcessedClassificationResult(
+          pred_result, PredictionStatus::kSucceeded);
+  EXPECT_EQ(PredictionStatus::kFailed, result.status);
+  EXPECT_TRUE(result.ordered_labels.empty());
+}
+
+TEST(PostProcessorTest, MultiClassClassifierExtraScore) {
+  // Add 5 model scores, but 4 labels.
+  proto::PredictionResult pred_result = metadata_utils::CreatePredictionResult(
+      /*model_scores=*/{0, 0, 0, 0, 0},
+      GetTestOutputConfigForMultiClassClassifier(/*top_k-outputs=*/2,
+                                                 /*threshold=*/0.5),
+      /*timestamp=*/base::Time::Now(), /*model_version=*/1);
+  ClassificationResult result =
+      PostProcessor().GetPostProcessedClassificationResult(
+          pred_result, PredictionStatus::kSucceeded);
+  EXPECT_EQ(PredictionStatus::kFailed, result.status);
+  EXPECT_TRUE(result.ordered_labels.empty());
+}
+
+TEST(PostProcessorTest, BinnedClassifier) {
+  auto pred_result = metadata_utils::CreatePredictionResult(
+      /*model_scores=*/{0.6}, GetTestOutputConfigForBinnedClassifier(),
+      /*timestamp=*/base::Time::Now(), /*model_version=*/1);
+  // Set wrong sorting order for the bin min_range values.
+  pred_result.mutable_output_config()
+      ->mutable_predictor()
+      ->mutable_binned_classifier()
+      ->mutable_bins(0)
+      ->set_min_range(100);
+  ClassificationResult result =
+      PostProcessor().GetPostProcessedClassificationResult(
+          pred_result, PredictionStatus::kSucceeded);
+  EXPECT_EQ(PredictionStatus::kFailed, result.status);
+  EXPECT_TRUE(result.ordered_labels.empty());
 }
 
 }  // namespace segmentation_platform

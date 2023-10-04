@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/gtest_util.h"
@@ -112,6 +113,7 @@ class TestGpuChannelHost : public gpu::GpuChannelHost {
       : GpuChannelHost(0 /* channel_id */,
                        gpu::GPUInfo(),
                        gpu::GpuFeatureInfo(),
+                       gpu::SharedImageCapabilities(),
                        mojo::ScopedMessagePipeHandle(
                            mojo::MessagePipeHandle(mojo::kInvalidHandleValue))),
         gpu_channel_(gpu_channel) {}
@@ -131,12 +133,10 @@ class MockOverlayInfoCbHandler {
 class MockContextProviderCommandBuffer
     : public viz::ContextProviderCommandBuffer {
  public:
-  MockContextProviderCommandBuffer(
-      scoped_refptr<gpu::GpuChannelHost> channel,
-      gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager)
+  explicit MockContextProviderCommandBuffer(
+      scoped_refptr<gpu::GpuChannelHost> channel)
       : viz::ContextProviderCommandBuffer(
             std::move(channel),
-            gpu_memory_buffer_manager,
             content::kGpuStreamIdDefault,
             content::kGpuStreamPriorityDefault,
             gpu::kNullSurfaceHandle,
@@ -371,8 +371,7 @@ class GpuVideoAcceleratorFactoriesImplTest : public testing::Test {
             base::MakeRefCounted<TestGpuChannelHost>(mock_gpu_channel_)),
         mock_context_provider_(
             base::MakeRefCounted<NiceMock<MockContextProviderCommandBuffer>>(
-                gpu_channel_host_,
-                &gpu_memory_buffer_manager_)) {}
+                gpu_channel_host_)) {}
   ~GpuVideoAcceleratorFactoriesImplTest() override = default;
 
   void SetUp() override {
@@ -422,14 +421,13 @@ class GpuVideoAcceleratorFactoriesImplTest : public testing::Test {
         .WillByDefault(Return(&mock_context_gl_));
 
     gpu_command_buffer_proxy_ = new gpu::CommandBufferProxyImpl(
-        gpu_channel_host_, &gpu_memory_buffer_manager_,
-        content::kGpuStreamIdDefault,
+        gpu_channel_host_, content::kGpuStreamIdDefault,
         task_environment_.GetMainThreadTaskRunner());
     gpu_command_buffer_proxy_->Initialize(
         gpu::kNullSurfaceHandle, nullptr, content::kGpuStreamPriorityDefault,
         gpu::ContextCreationAttribs(), GURL());
     ON_CALL(*mock_context_provider_, GetCommandBufferProxy())
-        .WillByDefault(Return(gpu_command_buffer_proxy_));
+        .WillByDefault(Return(gpu_command_buffer_proxy_.get()));
   }
 
   std::unique_ptr<CodecFactory> CreateCodecFactory(
@@ -497,7 +495,8 @@ class GpuVideoAcceleratorFactoriesImplTest : public testing::Test {
   viz::TestGpuMemoryBufferManager gpu_memory_buffer_manager_;
   scoped_refptr<TestGpuChannelHost> gpu_channel_host_;
   scoped_refptr<MockContextProviderCommandBuffer> mock_context_provider_;
-  gpu::CommandBufferProxyImpl* gpu_command_buffer_proxy_;
+  raw_ptr<gpu::CommandBufferProxyImpl, DanglingUntriaged>
+      gpu_command_buffer_proxy_;
 
   FakeVEAProviderImpl fake_vea_provider_;
 

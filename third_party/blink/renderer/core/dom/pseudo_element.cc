@@ -60,7 +60,7 @@ PseudoElement* PseudoElement::Create(Element* parent,
     return MakeGarbageCollected<FirstLetterPseudoElement>(parent);
   } else if (IsTransitionPseudoElement(pseudo_id)) {
     auto* transition =
-        ViewTransitionUtils::GetActiveTransition(parent->GetDocument());
+        ViewTransitionUtils::GetTransition(parent->GetDocument());
     DCHECK(transition);
     return transition->CreatePseudoElement(parent, pseudo_id,
                                            view_transition_name);
@@ -196,15 +196,20 @@ PseudoElement::PseudoElement(Element* parent,
   }
 }
 
-scoped_refptr<const ComputedStyle> PseudoElement::CustomStyleForLayoutObject(
+const ComputedStyle* PseudoElement::CustomStyleForLayoutObject(
     const StyleRecalcContext& style_recalc_context) {
+  // This method is not used for highlight pseudos that require an
+  // originating element.
+  DCHECK(!IsHighlightPseudoElement(pseudo_id_));
   Element* parent = ParentOrShadowHostElement();
   return parent->StyleForPseudoElement(
-      style_recalc_context, StyleRequest(pseudo_id_, parent->GetComputedStyle(),
-                                         view_transition_name_));
+      style_recalc_context,
+      StyleRequest(pseudo_id_, parent->GetComputedStyle(),
+                   /* originating_element_style */ nullptr,
+                   view_transition_name_));
 }
 
-scoped_refptr<const ComputedStyle> PseudoElement::LayoutStyleForDisplayContents(
+const ComputedStyle* PseudoElement::LayoutStyleForDisplayContents(
     const ComputedStyle& style) {
   // For display:contents we should not generate a box, but we generate a non-
   // observable inline box for pseudo elements to be able to locate the

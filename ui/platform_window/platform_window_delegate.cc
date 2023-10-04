@@ -41,12 +41,24 @@ void PlatformWindowDelegate::OnWindowTiledStateChanged(
     WindowTiledEdges new_tiled_edges) {}
 #endif
 
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+void PlatformWindowDelegate::OnFullscreenModeChanged() {}
+#endif
+
 absl::optional<gfx::Size> PlatformWindowDelegate::GetMinimumSizeForWindow() {
   return absl::nullopt;
 }
 
 absl::optional<gfx::Size> PlatformWindowDelegate::GetMaximumSizeForWindow() {
   return absl::nullopt;
+}
+
+bool PlatformWindowDelegate::CanMaximize() {
+  return false;
+}
+
+bool PlatformWindowDelegate::CanFullscreen() {
+  return false;
 }
 
 SkPath PlatformWindowDelegate::GetWindowMaskForWindowShapeInPixels() {

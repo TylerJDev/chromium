@@ -7,6 +7,7 @@
 #include "base/auto_reset.h"
 #include "base/base64.h"
 #include "base/base64url.h"
+#include "base/check_is_test.h"
 #include "base/containers/contains.h"
 #include "base/debug/crash_logging.h"
 #include "base/feature_list.h"
@@ -587,6 +588,26 @@ TemplateURLService::TemplateURLVector TemplateURLService::GetTemplateURLs() {
   TemplateURLVector result;
   for (const auto& turl : template_urls_)
     result.push_back(turl.get());
+  return result;
+}
+
+TemplateURLService::OwnedTemplateURLVector
+TemplateURLService::GetTemplateURLsForChoiceScreen() {
+  OwnedTemplateURLVector result;
+
+  // We call `GetPrepopulatedEngines` instead of
+  // `GetSearchProvidersUsingLoadedEngines` because the latter will return the
+  // list of search engines that might have been modified by the user (by
+  // changing the engine's keyword in settings for example).
+  // Changing this will cause issues in the icon generation behavior that's
+  // handled by `generate_search_engine_icons.py`.
+  std::vector<std::unique_ptr<TemplateURLData>> engines =
+      TemplateURLPrepopulateData::GetPrepopulatedEngines(
+          prefs_, /*default_search_provider_index=*/nullptr,
+          /*include_current_default=*/true, /*template_url_service=*/this);
+  for (const auto& engine : engines) {
+    result.push_back(std::make_unique<TemplateURL>(*engine));
+  }
   return result;
 }
 
@@ -1197,15 +1218,18 @@ absl::optional<syncer::ModelError> TemplateURLService::ProcessSyncChanges(
       // has changed the default search provider on a different machine, and we
       // get the search engine update before the preference update.
       //
-      // In this case, ignore the delete, because we never want to reset the
+      // In this case, postpone the delete, because we never want to reset the
       // default search provider as a result of ACTION_DELETE. If the preference
-      // update arrives later, we may be stuck with an extra search engine entry
-      // in this edge case, but it's better than most alternatives.
+      // update arrives later, the engine will be removed. We still may be stuck
+      // with an extra search engine entry in the edge case (due to storing the
+      // deletion in memory), but it's better than most alternatives.
       //
       // In the past, we tried re-creating the deleted TemplateURL, but it was
       // likely a source of duplicate search engine entries. crbug.com/1022775
       if (existing_turl != GetDefaultSearchProvider()) {
         Remove(existing_turl);
+      } else {
+        postponed_deleted_default_engine_guid_ = existing_turl->sync_guid();
       }
       continue;
     }
@@ -1677,8 +1701,15 @@ void TemplateURLService::RemoveFromMaps(const TemplateURL* template_url) {
   if (template_url->type() == TemplateURL::OMNIBOX_API_EXTENSION)
     return;
 
-  if (!template_url->sync_guid().empty())
+  if (!template_url->sync_guid().empty()) {
     guid_to_turl_.erase(template_url->sync_guid());
+    if (postponed_deleted_default_engine_guid_ == template_url->sync_guid()) {
+      // `template_url` has been updated locally or removed, discard incoming
+      // deletion.
+      postponed_deleted_default_engine_guid_.clear();
+    }
+  }
+
   // |provider_map_| is only initialized after loading has completed.
   if (loaded_) {
     provider_map_->Remove(template_url);
@@ -1900,6 +1931,13 @@ void TemplateURLService::ApplyDefaultSearchChange(
     dsp_change_callback_.Run();
 }
 
+bool TemplateURLService::ApplyDefaultSearchChangeForTesting(
+    const TemplateURLData* data,
+    DefaultSearchManager::Source source) {
+  CHECK_IS_TEST();
+  return ApplyDefaultSearchChangeNoMetrics(data, source);
+}
+
 bool TemplateURLService::ApplyDefaultSearchChangeNoMetrics(
     const TemplateURLData* data,
     DefaultSearchManager::Source source) {
@@ -1959,7 +1997,6 @@ bool TemplateURLService::ApplyDefaultSearchChangeNoMetrics(
     default_search_provider_ = nullptr;
   } else if (source == DefaultSearchManager::FROM_EXTENSION) {
     default_search_provider_ = FindMatchingDefaultExtensionTemplateURL(*data);
-    DCHECK(default_search_provider_);
   } else if (source == DefaultSearchManager::FROM_FALLBACK) {
     default_search_provider_ =
         FindPrepopulatedTemplateURL(data->prepopulate_id);
@@ -2009,12 +2046,26 @@ bool TemplateURLService::ApplyDefaultSearchChangeNoMetrics(
     }
   }
 
-  bool changed = default_search_provider_ != previous_default_search_engine;
-  if (changed) {
-    model_mutated_notification_pending_ = true;
+  if (default_search_provider_ == previous_default_search_engine) {
+    // Default search engine hasn't changed.
+    return false;
   }
 
-  return changed;
+  model_mutated_notification_pending_ = true;
+  if (!postponed_deleted_default_engine_guid_.empty()) {
+    // There was a postponed deletion for the previous default search engine,
+    // remove it now.
+    TemplateURL* existing_turl =
+        GetTemplateURLForGUID(postponed_deleted_default_engine_guid_);
+    if (existing_turl) {
+      // Remove() below CHECKs that the current default search engine is not
+      // deleted.
+      Remove(existing_turl);
+    }
+    postponed_deleted_default_engine_guid_.clear();
+  }
+
+  return true;
 }
 
 TemplateURL* TemplateURLService::Add(std::unique_ptr<TemplateURL> template_url,

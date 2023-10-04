@@ -175,6 +175,10 @@ void RemoveSiteSettingsData(const base::Time& delete_begin,
   host_content_settings_map->ClearSettingsForOneTypeWithPredicate(
       ContentSettingsType::FILE_SYSTEM_ACCESS_CHOOSER_DATA, delete_begin,
       delete_end, HostContentSettingsMap::PatternSourcePredicate());
+
+  host_content_settings_map->ClearSettingsForOneTypeWithPredicate(
+      ContentSettingsType::FILE_SYSTEM_ACCESS_EXTENDED_PERMISSION, delete_begin,
+      delete_end, HostContentSettingsMap::PatternSourcePredicate());
 #endif
 }
 
@@ -227,16 +231,6 @@ int GetUniqueThirdPartyCookiesHostCount(
     const GURL& top_frame_url,
     const browsing_data::LocalSharedObjectsContainer& local_shared_objects,
     const BrowsingDataModel& browsing_data_model) {
-  // TODO(crbug.com/1469304): CHIPS and Partitioned Storage should be excluded
-  // from the site count if they are the only entries available for a
-  // third-party host.
-  constexpr BrowsingDataModel::StorageTypeSet ignored_types_for_block = {
-      BrowsingDataModel::StorageType::kTrustTokens,
-      BrowsingDataModel::StorageType::kSharedStorage,
-      BrowsingDataModel::StorageType::kInterestGroup,
-      BrowsingDataModel::StorageType::kAttributionReporting,
-  };
-
   std::string top_frame_domain =
       net::registry_controlled_domains::GetDomainAndRegistry(
           top_frame_url,
@@ -255,7 +249,8 @@ int GetUniqueThirdPartyCookiesHostCount(
     if ((top_frame_domain.empty() && !IsSameHost(host, top_frame_url.host())) ||
         (!top_frame_domain.empty() && !url::DomainIs(host, top_frame_domain))) {
       for (auto storage_type : entry.data_details->storage_types) {
-        if (!ignored_types_for_block.Has(storage_type)) {
+        if (browsing_data_model.IsBlockedByThirdPartyCookieBlocking(
+                storage_type)) {
           unique_hosts.insert(*entry.data_owner);
           break;
         }

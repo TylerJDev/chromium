@@ -9,8 +9,11 @@
 
 #import "ios/chrome/browser/ntp/set_up_list_item_type.h"
 
-// Enum specifying the type of Content Suggestions a module is showing. Entries
-// should not be renumbered and numeric values should never be reused.
+// Enum specifying the type of Content Suggestions a module is showing.
+// Entries should always keep synced with the IOSMagicStackModuleType histogram
+// enum. Entries should not be renumbered and numeric values should never be
+// reused.
+// LINT.IfChange
 enum class ContentSuggestionsModuleType {
   kMostVisited = 0,
   kShortcuts = 1,
@@ -21,8 +24,13 @@ enum class ContentSuggestionsModuleType {
   kSetUpListAllSet = 6,
   kSafetyCheck = 7,
   kSafetyCheckMultiRow = 8,
-  kMaxValue = kSafetyCheckMultiRow,
+  kSafetyCheckMultiRowOverflow = 9,
+  kTabResumption = 10,
+  kParcelTracking = 11,
+  kParcelTrackingSeeMore = 12,
+  kMaxValue = kParcelTrackingSeeMore,
 };
+// LINT.ThenChange(/tools/metrics/histograms/enums.xml)
 
 // Represents the content suggestions collection view.
 extern NSString* const kContentSuggestionsCollectionIdentifier;
@@ -41,6 +49,19 @@ extern NSString* const
 // Represents the Magic Stack ScrollView.
 extern NSString* const kMagicStackScrollViewAccessibilityIdentifier;
 
+// Represents the Magic Stack UIStackView.
+extern NSString* const kMagicStackViewAccessibilityIdentifier;
+
+// Represents the Edit Button Container in the Magic Stack.
+extern NSString* const kMagicStackEditButtonContainerAccessibilityIdentifier;
+
+// Represents the Edit Button in the Magic Stack.
+extern NSString* const kMagicStackEditButtonAccessibilityIdentifier;
+
+// Represents the "Done" button in the Magic Stack edit half sheet.
+extern NSString* const
+    kMagicStackEditHalfSheetDoneButtonAccessibilityIdentifier;
+
 // Represents the width of the Magic Stack ScrollView for the unique wide
 // layout.
 extern const CGFloat kMagicStackWideWidth;
@@ -55,27 +76,6 @@ extern const CGFloat kMagicStackFaviconWidth;
 // If the value of this constant is updated, please also update the
 // TrendingQueryIndex enum so it can capture a higher max value.
 const int kMaxTrendingQueries = 4;
-
-// Tile Ablation constants.
-// The amount of time between two tile ablation NTP impressions. (User opens
-// NTP, 1 impression. If user goes back to NTP within
-// `kTileAblationImpressionThresholdMinutes` don't count that as an NTP
-// impression.
-extern const int kTileAblationImpressionThresholdMinutes;
-// Minimum and Maximum amount of days the Tile Ablation experiment can run for.
-extern const int kTileAblationMinimumUseThresholdInDays;
-extern const int kTileAblationMaximumUseThresholdInDays;
-// Minimum an Maximum number of impressions until the Tile Ablation experiment
-// ends before the NTP goes back to the normal state.
-extern const int kMinimumImpressionThresholdTileAblation;
-extern const int kMaximumImpressionThresholdTileAblation;
-// Stores the last time an NTP impression was recorded.
-extern NSString* const kLastNTPImpressionRecordedKey;
-// Stores the number of NTP impressions over a period of time.
-extern NSString* const kNumberOfNTPImpressionsRecordedKey;
-// Stores the first NTP impression for the MVT experiment.
-extern NSString* const kFirstImpressionRecordedTileAblationKey;
-extern NSString* const kDoneWithTileAblationKey;
 
 // Returns the matching ContentSuggestionsModuleType for a given
 // SetUpListItemType `type`.

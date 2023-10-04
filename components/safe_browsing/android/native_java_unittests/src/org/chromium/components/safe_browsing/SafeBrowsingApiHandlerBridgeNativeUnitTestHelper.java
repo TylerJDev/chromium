@@ -7,6 +7,7 @@ package org.chromium.components.safe_browsing;
 import org.junit.Assert;
 
 import org.chromium.base.annotations.CalledByNative;
+import org.chromium.components.safe_browsing.SafeBrowsingApiBridge.UrlCheckTimeObserver;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -97,8 +98,9 @@ public class SafeBrowsingApiHandlerBridgeNativeUnitTestHelper {
     public static class MockSafeBrowsingApiHandler implements SafeBrowsingApiHandler {
         private Observer mObserver;
 
-        // Mock time it takes for a lookup request to complete.
-        private static final long DEFAULT_CHECK_DELTA_MS = 10;
+        // Mock time it takes for a lookup request to complete. This value is verified on the native
+        // side.
+        private static final long DEFAULT_CHECK_DELTA_MICROSECONDS = 15;
 
         // Maps to store preset values, keyed by uri.
         private static final Map<String, UrlCheckDoneValues> sPresetValuesMap = new HashMap<>();
@@ -123,7 +125,7 @@ public class SafeBrowsingApiHandlerBridgeNativeUnitTestHelper {
 
             mObserver.onUrlCheckDone(callbackId, presetValues.mReturnedLookupResult,
                     presetValues.mReturnedThreatType, presetValues.mReturnedThreatAttributes,
-                    presetValues.mReturnedResponseStatus, DEFAULT_CHECK_DELTA_MS);
+                    presetValues.mReturnedResponseStatus, DEFAULT_CHECK_DELTA_MICROSECONDS);
         }
 
         public static void tearDown() {
@@ -161,16 +163,44 @@ public class SafeBrowsingApiHandlerBridgeNativeUnitTestHelper {
         }
     }
 
+    public static final MockUrlCheckTimeObserver sSafeBrowsingApiUrlCheckTimeObserver =
+            new MockUrlCheckTimeObserver();
+
+    public static class MockUrlCheckTimeObserver implements UrlCheckTimeObserver {
+        private long mCapturedUrlCheckTimeDeltaMicros;
+        private boolean mIsOnUrlCheckTimeCalled;
+
+        @Override
+        public void onUrlCheckTime(long urlCheckTimeDeltaMicros) {
+            Assert.assertFalse(
+                    "Url check time should only be logged once.", mIsOnUrlCheckTimeCalled);
+            mCapturedUrlCheckTimeDeltaMicros = urlCheckTimeDeltaMicros;
+            mIsOnUrlCheckTimeCalled = true;
+        }
+
+        public long getCapturedUrlCheckTimeDeltaMicros() {
+            return mCapturedUrlCheckTimeDeltaMicros;
+        }
+
+        public void tearDown() {
+            mCapturedUrlCheckTimeDeltaMicros = 0;
+            mIsOnUrlCheckTimeCalled = false;
+        }
+    }
+
     @CalledByNative
     static void setUp() {
-        SafeBrowsingApiBridge.setHandler(new MockSafetyNetApiHandler());
+        SafeBrowsingApiBridge.setSafetyNetApiHandler(new MockSafetyNetApiHandler());
         SafeBrowsingApiBridge.setSafeBrowsingApiHandler(new MockSafeBrowsingApiHandler());
+        SafeBrowsingApiBridge.setOneTimeSafeBrowsingApiUrlCheckObserver(
+                sSafeBrowsingApiUrlCheckTimeObserver);
     }
 
     @CalledByNative
     static void tearDown() {
         MockSafetyNetApiHandler.tearDown();
         MockSafeBrowsingApiHandler.tearDown();
+        sSafeBrowsingApiUrlCheckTimeObserver.tearDown();
         SafeBrowsingApiBridge.clearHandlerForTesting();
     }
 
@@ -202,5 +232,10 @@ public class SafeBrowsingApiHandlerBridgeNativeUnitTestHelper {
         MockSafeBrowsingApiHandler.setUrlCheckDoneValues(uri, expectedThreatTypes, expectedProtocol,
                 returnedLookupResult, returnedThreatType, returnedThreatAttributes,
                 returnedResponseStatus);
+    }
+
+    @CalledByNative
+    static long getSafeBrowsingApiUrlCheckTimeObserverResult() {
+        return sSafeBrowsingApiUrlCheckTimeObserver.getCapturedUrlCheckTimeDeltaMicros();
     }
 }

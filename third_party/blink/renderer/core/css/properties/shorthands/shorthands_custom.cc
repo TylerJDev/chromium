@@ -1940,7 +1940,7 @@ const CSSValue* GridArea::CSSValueFromComputedStyleInternal(
     const ComputedStyle& style,
     const LayoutObject* layout_object,
     bool allow_visited_style) const {
-  return ComputedStyleUtils::ValuesForGridShorthand(
+  return ComputedStyleUtils::ValuesForGridAreaShorthand(
       gridAreaShorthand(), style, layout_object, allow_visited_style);
 }
 
@@ -1977,7 +1977,7 @@ const CSSValue* GridColumn::CSSValueFromComputedStyleInternal(
     const ComputedStyle& style,
     const LayoutObject* layout_object,
     bool allow_visited_style) const {
-  return ComputedStyleUtils::ValuesForGridShorthand(
+  return ComputedStyleUtils::ValuesForGridLineShorthand(
       gridColumnShorthand(), style, layout_object, allow_visited_style);
 }
 
@@ -2271,7 +2271,7 @@ const CSSValue* GridRow::CSSValueFromComputedStyleInternal(
     const ComputedStyle& style,
     const LayoutObject* layout_object,
     bool allow_visited_style) const {
-  return ComputedStyleUtils::ValuesForGridShorthand(
+  return ComputedStyleUtils::ValuesForGridLineShorthand(
       gridRowShorthand(), style, layout_object, allow_visited_style);
 }
 
@@ -2367,6 +2367,11 @@ const CSSValue* InsetBlock::CSSValueFromComputedStyleInternal(
       insetBlockShorthand(), style, layout_object, allow_visited_style);
 }
 
+bool InsetBlock::IsLayoutDependent(const ComputedStyle* style,
+                                   LayoutObject* layout_object) const {
+  return layout_object && layout_object->IsBox();
+}
+
 bool Inset::ParseShorthand(bool important,
                            CSSParserTokenRange& range,
                            const CSSParserContext& context,
@@ -2382,6 +2387,11 @@ const CSSValue* Inset::CSSValueFromComputedStyleInternal(
     bool allow_visited_style) const {
   return ComputedStyleUtils::ValuesForSidesShorthand(
       insetShorthand(), style, layout_object, allow_visited_style);
+}
+
+bool Inset::IsLayoutDependent(const ComputedStyle* style,
+                              LayoutObject* layout_object) const {
+  return layout_object && layout_object->IsBox();
 }
 
 bool InsetInline::ParseShorthand(
@@ -2400,6 +2410,11 @@ const CSSValue* InsetInline::CSSValueFromComputedStyleInternal(
     bool allow_visited_style) const {
   return ComputedStyleUtils::ValuesForInlineBlockShorthand(
       insetInlineShorthand(), style, layout_object, allow_visited_style);
+}
+
+bool InsetInline::IsLayoutDependent(const ComputedStyle* style,
+                                    LayoutObject* layout_object) const {
+  return layout_object && layout_object->IsBox();
 }
 
 bool ListStyle::ParseShorthand(
@@ -2512,6 +2527,11 @@ bool MarginBlock::ParseShorthand(
       marginBlockShorthand(), important, context, range, properties);
 }
 
+bool MarginBlock::IsLayoutDependent(const ComputedStyle* style,
+                                    LayoutObject* layout_object) const {
+  return layout_object && layout_object->IsBox();
+}
+
 const CSSValue* MarginBlock::CSSValueFromComputedStyleInternal(
     const ComputedStyle& style,
     const LayoutObject* layout_object,
@@ -2535,7 +2555,8 @@ bool Margin::IsLayoutDependent(const ComputedStyle* style,
   return layout_object && layout_object->IsBox() &&
          (!style || !style->MarginBottom().IsFixed() ||
           !style->MarginTop().IsFixed() || !style->MarginLeft().IsFixed() ||
-          !style->MarginRight().IsFixed());
+          !style->MarginRight().IsFixed() ||
+          To<LayoutBox>(layout_object)->UsesPositionFallbackStyle());
 }
 
 const CSSValue* Margin::CSSValueFromComputedStyleInternal(
@@ -2554,6 +2575,11 @@ bool MarginInline::ParseShorthand(
     HeapVector<CSSPropertyValue, 64>& properties) const {
   return css_parsing_utils::ConsumeShorthandVia2Longhands(
       marginInlineShorthand(), important, context, range, properties);
+}
+
+bool MarginInline::IsLayoutDependent(const ComputedStyle* style,
+                                     LayoutObject* layout_object) const {
+  return layout_object && layout_object->IsBox();
 }
 
 const CSSValue* MarginInline::CSSValueFromComputedStyleInternal(
@@ -2655,7 +2681,7 @@ bool Offset::ParseShorthand(
   } else if (RuntimeEnabledFeatures::CSSOffsetPositionAnchorEnabled()) {
     css_parsing_utils::AddProperty(
         CSSPropertyID::kOffsetPosition, CSSPropertyID::kOffset,
-        *CSSIdentifierValue::Create(CSSValueID::kAuto), important,
+        *CSSIdentifierValue::Create(CSSValueID::kNormal), important,
         css_parsing_utils::IsImplicitProperty::kNotImplicit, properties);
   }
 
@@ -3194,13 +3220,21 @@ const CSSValue* ScrollPaddingInline::CSSValueFromComputedStyleInternal(
 
 namespace {
 
-// Consume a single name, axis, and attachment, then append the result to
-// `name_list` and `axis_list` respectively.
+// Consume a single name, axis, and optionally inset, then append the result to
+// `name_list`, `axis_list`, and `inset_list` respectively.
+//
+// Insets are only relevant for the view-timeline shorthand, and not for
+// the scroll-timeline shorthand, hence `inset_list` may be nullptr.
+//
+// https://drafts.csswg.org/scroll-animations-1/#view-timeline-shorthand
+// https://drafts.csswg.org/scroll-animations-1/#scroll-timeline-shorthand
 bool ConsumeTimelineItemInto(CSSParserTokenRange& range,
                              const CSSParserContext& context,
                              CSSValueList* name_list,
-                             CSSValueList* axis_list) {
+                             CSSValueList* axis_list,
+                             CSSValueList* inset_list) {
   using css_parsing_utils::ConsumeSingleTimelineAxis;
+  using css_parsing_utils::ConsumeSingleTimelineInset;
   using css_parsing_utils::ConsumeSingleTimelineName;
 
   CSSValue* name = ConsumeSingleTimelineName(range, context);
@@ -3209,13 +3243,39 @@ bool ConsumeTimelineItemInto(CSSParserTokenRange& range,
     return false;
   }
 
-  CSSValue* axis = ConsumeSingleTimelineAxis(range);
+  CSSValue* axis = nullptr;
+  CSSValue* inset = nullptr;
+
+  // [ <'view-timeline-axis'> || <'view-timeline-inset'> ]
+  while (true) {
+    if (!axis && (axis = ConsumeSingleTimelineAxis(range))) {
+      continue;
+    }
+    if (inset_list && !inset &&
+        (inset = ConsumeSingleTimelineInset(range, context))) {
+      continue;
+    }
+    break;
+  }
+
   if (!axis) {
     axis = CSSIdentifierValue::Create(CSSValueID::kBlock);
   }
+  if (inset_list && !inset) {
+    inset = MakeGarbageCollected<CSSValuePair>(
+        CSSIdentifierValue::Create(CSSValueID::kAuto),
+        CSSIdentifierValue::Create(CSSValueID::kAuto),
+        CSSValuePair::kDropIdenticalValues);
+  }
 
+  DCHECK(name_list);
+  DCHECK(axis_list);
   name_list->Append(*name);
   axis_list->Append(*axis);
+  if (inset) {
+    DCHECK(inset_list);
+    inset_list->Append(*inset);
+  }
 
   return true;
 }
@@ -3233,42 +3293,64 @@ bool ParseTimelineShorthand(CSSPropertyID shorthand_id,
 
   CSSValueList* name_list = CSSValueList::CreateCommaSeparated();
   CSSValueList* axis_list = CSSValueList::CreateCommaSeparated();
+  CSSValueList* inset_list =
+      shorthand.length() == 3u ? CSSValueList::CreateCommaSeparated() : nullptr;
 
   do {
-    if (!ConsumeTimelineItemInto(range, context, name_list, axis_list)) {
+    if (!ConsumeTimelineItemInto(range, context, name_list, axis_list,
+                                 inset_list)) {
       return false;
     }
   } while (ConsumeCommaIncludingWhitespace(range));
 
   DCHECK(name_list->length());
   DCHECK(axis_list->length());
+  DCHECK(!inset_list || inset_list->length());
   DCHECK_EQ(name_list->length(), axis_list->length());
+  DCHECK_EQ(inset_list ? name_list->length() : 0,
+            inset_list ? inset_list->length() : 0);
 
-  DCHECK_EQ(shorthand.length(), 2u);
+  DCHECK_GE(shorthand.length(), 2u);
+  DCHECK_LE(shorthand.length(), 3u);
   AddProperty(shorthand.properties()[0]->PropertyID(), shorthand_id, *name_list,
               important, IsImplicitProperty::kNotImplicit, properties);
   AddProperty(shorthand.properties()[1]->PropertyID(), shorthand_id, *axis_list,
               important, IsImplicitProperty::kNotImplicit, properties);
+  if (inset_list) {
+    DCHECK_EQ(shorthand.length(), 3u);
+    AddProperty(shorthand.properties()[2]->PropertyID(), shorthand_id,
+                *inset_list, important, IsImplicitProperty::kNotImplicit,
+                properties);
+  }
 
   return range.AtEnd();
 }
 
 static CSSValue* CSSValueForTimelineShorthand(
     const HeapVector<Member<const ScopedCSSName>>& name_vector,
-    const Vector<TimelineAxis>& axis_vector) {
+    const Vector<TimelineAxis>& axis_vector,
+    const Vector<TimelineInset>* inset_vector,
+    const ComputedStyle& style) {
   CSSValueList* list = CSSValueList::CreateCommaSeparated();
 
   if (name_vector.size() != axis_vector.size()) {
     return list;
   }
+  if (inset_vector && name_vector.size() != inset_vector->size()) {
+    return list;
+  }
   if (name_vector.empty()) {
     list->Append(*ComputedStyleUtils::SingleValueForTimelineShorthand(
-        /* name */ nullptr, TimelineAxis::kBlock));
+        /* name */ nullptr, TimelineAxis::kBlock, /* inset */ absl::nullopt,
+        style));
     return list;
   }
   for (wtf_size_t i = 0; i < name_vector.size(); ++i) {
     list->Append(*ComputedStyleUtils::SingleValueForTimelineShorthand(
-        name_vector[i].Get(), axis_vector[i]));
+        name_vector[i].Get(), axis_vector[i],
+        inset_vector ? absl::optional<TimelineInset>((*inset_vector)[i])
+                     : absl::optional<TimelineInset>(),
+        style));
   }
 
   return list;
@@ -3377,7 +3459,8 @@ const CSSValue* ScrollTimeline::CSSValueFromComputedStyleInternal(
       style.ScrollTimelineName() ? style.ScrollTimelineName()->GetNames()
                                  : HeapVector<Member<const ScopedCSSName>>{};
   const Vector<TimelineAxis>& axis_vector = style.ScrollTimelineAxis();
-  return CSSValueForTimelineShorthand(name_vector, axis_vector);
+  return CSSValueForTimelineShorthand(name_vector, axis_vector,
+                                      /* inset_vector */ nullptr, style);
 }
 
 bool TextDecoration::ParseShorthand(
@@ -3556,7 +3639,34 @@ const CSSValue* ViewTimeline::CSSValueFromComputedStyleInternal(
       style.ViewTimelineName() ? style.ViewTimelineName()->GetNames()
                                : HeapVector<Member<const ScopedCSSName>>{};
   const Vector<TimelineAxis>& axis_vector = style.ViewTimelineAxis();
-  return CSSValueForTimelineShorthand(name_vector, axis_vector);
+  return CSSValueForTimelineShorthand(name_vector, axis_vector,
+                                      /* inset_vector */ nullptr, style);
+}
+
+bool AlternativeViewTimelineWithInset::ParseShorthand(
+    bool important,
+    CSSParserTokenRange& range,
+    const CSSParserContext& context,
+    const CSSParserLocalContext& local_context,
+    HeapVector<CSSPropertyValue, 64>& properties) const {
+  return ParseTimelineShorthand(
+      CSSPropertyID::kAlternativeViewTimelineWithInset,
+      alternativeViewTimelineWithInsetShorthand(), important, range, context,
+      local_context, properties);
+}
+
+const CSSValue*
+AlternativeViewTimelineWithInset::CSSValueFromComputedStyleInternal(
+    const ComputedStyle& style,
+    const LayoutObject*,
+    bool allow_visited_style) const {
+  const HeapVector<Member<const ScopedCSSName>>& name_vector =
+      style.ViewTimelineName() ? style.ViewTimelineName()->GetNames()
+                               : HeapVector<Member<const ScopedCSSName>>{};
+  const Vector<TimelineAxis>& axis_vector = style.ViewTimelineAxis();
+  const Vector<TimelineInset>& inset_vector = style.ViewTimelineInset();
+  return CSSValueForTimelineShorthand(name_vector, axis_vector, &inset_vector,
+                                      style);
 }
 
 bool WebkitColumnBreakAfter::ParseShorthand(

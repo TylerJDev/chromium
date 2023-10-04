@@ -12,6 +12,7 @@
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/observer_list.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/types/cxx23_to_underlying.h"
 #include "components/autofill/core/browser/data_model/autofill_offer_data.h"
@@ -103,7 +104,9 @@ enum class Result {
   kRemoveServerCvc_Failure = 251,
   kClearServerCvcs_Success = 260,
   kClearServerCvcs_Failure = 261,
-  kMaxValue = kClearServerCvcs_Failure,
+  kUpdateCreditCardCvc_Success = 270,
+  kUpdateCreditCardCvc_Failure = 271,
+  kMaxValue = kUpdateCreditCardCvc_Failure,
 };
 
 // Reports the success or failure of various operations on the database via UMA.
@@ -524,6 +527,19 @@ WebDatabase::State AutofillWebDataBackendImpl::UpdateCreditCard(
   return WebDatabase::COMMIT_NEEDED;
 }
 
+WebDatabase::State AutofillWebDataBackendImpl::UpdateLocalCvc(
+    const std::string& guid,
+    const std::u16string& cvc,
+    WebDatabase* db) {
+  CHECK(owning_task_runner()->RunsTasksInCurrentSequence());
+  if (AutofillTable::FromWebDatabase(db)->UpdateLocalCvc(guid, cvc)) {
+    ReportResult(Result::kUpdateCreditCardCvc_Success);
+    return WebDatabase::COMMIT_NEEDED;
+  }
+  ReportResult(Result::kUpdateCreditCardCvc_Failure);
+  return WebDatabase::COMMIT_NOT_NEEDED;
+}
+
 WebDatabase::State AutofillWebDataBackendImpl::RemoveCreditCard(
     const std::string& guid,
     WebDatabase* db) {
@@ -631,20 +647,29 @@ WebDatabase::State AutofillWebDataBackendImpl::UpdateServerCardMetadata(
   return WebDatabase::COMMIT_NEEDED;
 }
 
-std::unique_ptr<WDTypedResult> AutofillWebDataBackendImpl::GetIbans(
+std::unique_ptr<WDTypedResult> AutofillWebDataBackendImpl::GetLocalIbans(
     WebDatabase* db) {
   DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
   std::vector<std::unique_ptr<Iban>> ibans;
-  AutofillTable::FromWebDatabase(db)->GetIbans(&ibans);
+  AutofillTable::FromWebDatabase(db)->GetLocalIbans(&ibans);
 
   return std::make_unique<WDResult<std::vector<std::unique_ptr<Iban>>>>(
       AUTOFILL_IBANS_RESULT, std::move(ibans));
 }
 
-WebDatabase::State AutofillWebDataBackendImpl::AddIban(const Iban& iban,
-                                                       WebDatabase* db) {
+std::unique_ptr<WDTypedResult> AutofillWebDataBackendImpl::GetServerIbans(
+    WebDatabase* db) {
   DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
-  if (!AutofillTable::FromWebDatabase(db)->AddIban(iban)) {
+  std::vector<std::unique_ptr<Iban>> ibans =
+      AutofillTable::FromWebDatabase(db)->GetServerIbans();
+  return std::make_unique<WDResult<std::vector<std::unique_ptr<Iban>>>>(
+      AUTOFILL_IBANS_RESULT, std::move(ibans));
+}
+
+WebDatabase::State AutofillWebDataBackendImpl::AddLocalIban(const Iban& iban,
+                                                            WebDatabase* db) {
+  DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
+  if (!AutofillTable::FromWebDatabase(db)->AddLocalIban(iban)) {
     ReportResult(Result::kAddIban_Failure);
     return WebDatabase::COMMIT_NOT_NEEDED;
   }
@@ -656,19 +681,20 @@ WebDatabase::State AutofillWebDataBackendImpl::AddIban(const Iban& iban,
   return WebDatabase::COMMIT_NEEDED;
 }
 
-WebDatabase::State AutofillWebDataBackendImpl::UpdateIban(const Iban& iban,
-                                                          WebDatabase* db) {
+WebDatabase::State AutofillWebDataBackendImpl::UpdateLocalIban(
+    const Iban& iban,
+    WebDatabase* db) {
   DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
   // It is currently valid to try to update a missing IBAN. We simply drop
   // the write and the caller will detect this on the next refresh.
   std::unique_ptr<Iban> original_iban =
-      AutofillTable::FromWebDatabase(db)->GetIban(iban.guid());
+      AutofillTable::FromWebDatabase(db)->GetLocalIban(iban.guid());
   if (!original_iban) {
     ReportResult(Result::kUpdateIban_ReadFailure);
     return WebDatabase::COMMIT_NOT_NEEDED;
   }
 
-  if (!AutofillTable::FromWebDatabase(db)->UpdateIban(iban)) {
+  if (!AutofillTable::FromWebDatabase(db)->UpdateLocalIban(iban)) {
     ReportResult(Result::kUpdateIban_WriteFailure);
     return WebDatabase::COMMIT_NOT_NEEDED;
   }
@@ -680,18 +706,18 @@ WebDatabase::State AutofillWebDataBackendImpl::UpdateIban(const Iban& iban,
   return WebDatabase::COMMIT_NEEDED;
 }
 
-WebDatabase::State AutofillWebDataBackendImpl::RemoveIban(
+WebDatabase::State AutofillWebDataBackendImpl::RemoveLocalIban(
     const std::string& guid,
     WebDatabase* db) {
   DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
   std::unique_ptr<Iban> iban =
-      AutofillTable::FromWebDatabase(db)->GetIban(guid);
+      AutofillTable::FromWebDatabase(db)->GetLocalIban(guid);
   if (!iban) {
     ReportResult(Result::kRemoveIban_ReadFailure);
     return WebDatabase::COMMIT_NOT_NEEDED;
   }
 
-  if (!AutofillTable::FromWebDatabase(db)->RemoveIban(guid)) {
+  if (!AutofillTable::FromWebDatabase(db)->RemoveLocalIban(guid)) {
     ReportResult(Result::kRemoveIban_WriteFailure);
     return WebDatabase::COMMIT_NOT_NEEDED;
   }
@@ -728,9 +754,16 @@ WebDatabase::State AutofillWebDataBackendImpl::AddServerCvc(
     const std::u16string& cvc,
     WebDatabase* db) {
   CHECK(owning_task_runner()->RunsTasksInCurrentSequence());
-  if (AutofillTable::FromWebDatabase(db)->AddServerCvc(
-          ServerCvc{instrument_id, cvc,
-                    /*last_updated_timestamp=*/AutofillClock::Now()})) {
+  const ServerCvc server_cvc{instrument_id, cvc,
+                             /*last_updated_timestamp=*/AutofillClock::Now()};
+  if (AutofillTable::FromWebDatabase(db)->AddServerCvc(server_cvc)) {
+    const ServerCvcChange change{
+        ServerCvcChange::ADD, base::NumberToString(instrument_id), server_cvc};
+    for (auto& db_observer : db_observer_list_) {
+      // TODO(crbug/1477924): Add integration tests for Add, Remove and Update
+      // for Wallet Credential data.
+      db_observer.ServerCvcChanged(change);
+    }
     ReportResult(Result::kAddServerCvc_Success);
     return WebDatabase::COMMIT_NEEDED;
   }
@@ -743,9 +776,15 @@ WebDatabase::State AutofillWebDataBackendImpl::UpdateServerCvc(
     const std::u16string& cvc,
     WebDatabase* db) {
   CHECK(owning_task_runner()->RunsTasksInCurrentSequence());
-  if (AutofillTable::FromWebDatabase(db)->UpdateServerCvc(
-          ServerCvc{instrument_id, cvc,
-                    /*last_updated_timestamp=*/AutofillClock::Now()})) {
+  const ServerCvc server_cvc{instrument_id, cvc,
+                             /*last_updated_timestamp=*/AutofillClock::Now()};
+  if (AutofillTable::FromWebDatabase(db)->UpdateServerCvc(server_cvc)) {
+    const ServerCvcChange change{ServerCvcChange::UPDATE,
+                                 base::NumberToString(instrument_id),
+                                 server_cvc};
+    for (auto& db_observer : db_observer_list_) {
+      db_observer.ServerCvcChanged(change);
+    }
     ReportResult(Result::kUpdateServerCvc_Success);
     return WebDatabase::COMMIT_NEEDED;
   }
@@ -758,6 +797,14 @@ WebDatabase::State AutofillWebDataBackendImpl::RemoveServerCvc(
     WebDatabase* db) {
   CHECK(owning_task_runner()->RunsTasksInCurrentSequence());
   if (AutofillTable::FromWebDatabase(db)->RemoveServerCvc(instrument_id)) {
+    // Remove doesn't require `ServerCvc` struct data, so an empty data is
+    // passed to the ServerCvcChange
+    const ServerCvcChange change{ServerCvcChange::REMOVE,
+                                 base::NumberToString(instrument_id),
+                                 ServerCvc{}};
+    for (auto& db_observer : db_observer_list_) {
+      db_observer.ServerCvcChanged(change);
+    }
     ReportResult(Result::kRemoveServerCvc_Success);
     return WebDatabase::COMMIT_NEEDED;
   }
@@ -768,34 +815,26 @@ WebDatabase::State AutofillWebDataBackendImpl::RemoveServerCvc(
 WebDatabase::State AutofillWebDataBackendImpl::ClearServerCvcs(
     WebDatabase* db) {
   CHECK(owning_task_runner()->RunsTasksInCurrentSequence());
+  std::vector<std::unique_ptr<ServerCvc>> server_cvc_list =
+      AutofillTable::FromWebDatabase(db)->GetAllServerCvcs();
   if (AutofillTable::FromWebDatabase(db)->ClearServerCvcs()) {
+    for (const std::unique_ptr<ServerCvc>& server_cvc_from_list :
+         server_cvc_list) {
+      // Remove doesn't require `ServerCvc` struct data, so an empty data is
+      // passed to the ServerCvcChange
+      const ServerCvcChange change{
+          ServerCvcChange::REMOVE,
+          base::NumberToString(server_cvc_from_list->instrument_id),
+          ServerCvc{}};
+      for (auto& db_observer : db_observer_list_) {
+        db_observer.ServerCvcChanged(change);
+      }
+    }
     ReportResult(Result::kClearServerCvcs_Success);
     return WebDatabase::COMMIT_NEEDED;
   }
   ReportResult(Result::kClearServerCvcs_Failure);
   return WebDatabase::COMMIT_NOT_NEEDED;
-}
-
-WebDatabase::State AutofillWebDataBackendImpl::AddUpiId(
-    const std::string& upi_id,
-    WebDatabase* db) {
-  DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
-  if (!AutofillTable::FromWebDatabase(db)->InsertUpiId(upi_id)) {
-    ReportResult(Result::kAddUpiId_Failure);
-    return WebDatabase::COMMIT_NOT_NEEDED;
-  }
-  ReportResult(Result::kAddUpiId_Success);
-  return WebDatabase::COMMIT_NEEDED;
-}
-
-std::unique_ptr<WDTypedResult> AutofillWebDataBackendImpl::GetAllUpiIds(
-    WebDatabase* db) {
-  DCHECK(owning_task_runner()->RunsTasksInCurrentSequence());
-
-  std::vector<std::string> upi_ids =
-      AutofillTable::FromWebDatabase(db)->GetAllUpiIds();
-  return std::make_unique<WDResult<std::vector<std::string>>>(
-      AUTOFILL_UPI_RESULT, std::move(upi_ids));
 }
 
 std::unique_ptr<WDTypedResult>

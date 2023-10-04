@@ -749,6 +749,15 @@ TEST(FilterDataTest, AttributionFilterDataMatch_LookbackWindow) {
           .match_expected = true,
       },
       {
+          .description = "duration-smaller-than-window",
+          .filter_data = {},
+          .filters = FiltersDisjunction({*FilterConfig::Create(
+              {}, /*lookback_window=*/kTriggerTime - kSourceTime +
+                      base::Microseconds(1))}),
+          .negated = true,
+          .match_expected = false,
+      },
+      {
           .description = "duration-equal-to-window",
           .filter_data = {},
           .filters = FiltersDisjunction({*FilterConfig::Create(
@@ -762,7 +771,7 @@ TEST(FilterDataTest, AttributionFilterDataMatch_LookbackWindow) {
           .filters = FiltersDisjunction({*FilterConfig::Create(
               {}, /*lookback_window=*/kTriggerTime - kSourceTime)}),
           .negated = true,
-          .match_expected = true,
+          .match_expected = false,
       },
       {
           .description = "duration-equal-to-window-with-matching-filter",
@@ -773,12 +782,31 @@ TEST(FilterDataTest, AttributionFilterDataMatch_LookbackWindow) {
           .match_expected = true,
       },
       {
+          .description =
+              "duration-equal-to-window-with-matching-filter-negated",
+          .filter_data = *FilterData::Create(one_filter),
+          .filters = FiltersDisjunction({*FilterConfig::Create(
+              {one_filter}, /*lookback_window=*/kTriggerTime - kSourceTime)}),
+          .negated = true,
+          .match_expected = false,
+      },
+      {
           .description = "duration-equal-to-window-with-non-matching-filter",
           .filter_data = *FilterData::Create(one_filter),
           .filters = FiltersDisjunction({*FilterConfig::Create(
               {one_filter_different},
               /*lookback_window=*/kTriggerTime - kSourceTime)}),
           .negated = false,
+          .match_expected = false,
+      },
+      {
+          .description =
+              "duration-equal-to-window-with-non-matching-filter-negated",
+          .filter_data = *FilterData::Create(one_filter),
+          .filters = FiltersDisjunction({*FilterConfig::Create(
+              {one_filter_different},
+              /*lookback_window=*/kTriggerTime - kSourceTime)}),
+          .negated = true,
           .match_expected = false,
       },
       {
@@ -808,6 +836,38 @@ TEST(FilterDataTest, AttributionFilterDataMatch_LookbackWindow) {
           .negated = false,
           .match_expected = false,
       },
+      {
+          .description =
+              "duration-greater-than-window-with-matching-filter-negated",
+          .filter_data = *FilterData::Create(one_filter),
+          .filters = FiltersDisjunction({*FilterConfig::Create(
+              {one_filter}, /*lookback_window=*/kTriggerTime - kSourceTime -
+                                base::Microseconds(1))}),
+          .negated = true,
+          .match_expected = false,
+      },
+      {
+          .description =
+              "duration-greater-than-window-with-non-matching-filter",
+          .filter_data = *FilterData::Create(one_filter),
+          .filters = FiltersDisjunction(
+              {*FilterConfig::Create({one_filter_different},
+                                     /*lookback_window=*/kTriggerTime -
+                                         kSourceTime - base::Microseconds(1))}),
+          .negated = false,
+          .match_expected = false,
+      },
+      {
+          .description =
+              "duration-greater-than-window-with-non-matching-filter-negated",
+          .filter_data = *FilterData::Create(one_filter),
+          .filters = FiltersDisjunction(
+              {*FilterConfig::Create({one_filter_different},
+                                     /*lookback_window=*/kTriggerTime -
+                                         kSourceTime - base::Microseconds(1))}),
+          .negated = true,
+          .match_expected = true,
+      },
   };
 
   for (const auto& test_case : kTestCases) {
@@ -818,6 +878,21 @@ TEST(FilterDataTest, AttributionFilterDataMatch_LookbackWindow) {
                                test_case.filters, test_case.negated))
         << test_case.description;
   }
+}
+
+// TODO(https://crbug.com/1486496): remove this test once CHECK is used in the
+// implementation.
+TEST(FilterDataTest,
+     AttributionFilterDataMatch_SourceTimeGreaterThanTriggerTime) {
+  const auto one_filter = FilterValues({{"filter1", {"value1"}}});
+  const auto filter_data = *FilterData::Create(one_filter);
+  const auto filters = FiltersDisjunction({*FilterConfig::Create(
+      {one_filter}, /*lookback_window=*/kTriggerTime - kSourceTime)});
+  EXPECT_TRUE(FilterData(filter_data)
+                  .MatchesForTesting(
+                      SourceType::kEvent, kSourceTime,
+                      /*trigger_time=*/kSourceTime - base::Microseconds(1),
+                      filters, /*negated=*/false));
 }
 
 }  // namespace

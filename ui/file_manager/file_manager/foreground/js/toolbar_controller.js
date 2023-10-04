@@ -355,18 +355,16 @@ export class ToolbarController {
           locationInfo.rootType !== VolumeManagerCommon.RootType.CROSTINI &&
           locationInfo.rootType !== VolumeManagerCommon.RootType.GUEST_OS);
 
-    if (util.isSearchV2Enabled()) {
-      const newDirectory = event.newDirEntry;
-      if (newDirectory) {
-        const locationInfo = this.volumeManager_.getLocationInfo(newDirectory);
-        const bodyClassList =
-            this.filesSelectedLabel_.ownerDocument.body.classList;
-        if (locationInfo &&
-            locationInfo.rootType === VolumeManagerCommon.RootType.TRASH) {
-          bodyClassList.add('check-select-v1');
-        } else {
-          bodyClassList.remove('check-select-v1');
-        }
+    const newDirectory = event.newDirEntry;
+    if (newDirectory) {
+      const locationInfo = this.volumeManager_.getLocationInfo(newDirectory);
+      const bodyClassList =
+          this.filesSelectedLabel_.ownerDocument.body.classList;
+      if (locationInfo &&
+          locationInfo.rootType === VolumeManagerCommon.RootType.TRASH) {
+        bodyClassList.add('check-select-v1');
+      } else {
+        bodyClassList.remove('check-select-v1');
       }
     }
   }
@@ -443,9 +441,7 @@ export class ToolbarController {
           /** @type {!FileListSelectionModel} */
           (this.directoryModel_.getFileListSelection()).getCheckSelectMode()) {
         bodyClassList.toggle('check-select');
-        if (!util.isSearchV2Enabled()) {
-          bodyClassList.toggle('check-select-v1');
-        }
+        bodyClassList.toggle('check-select-v1');
       }
     }
   }
@@ -555,6 +551,8 @@ export class ToolbarController {
   updateBulkPinning_(state) {
     const bulkPinningPref = state.preferences?.driveFsBulkPinningEnabled;
     const bulkPinning = state.bulkPinning;
+    const isNetworkMetered = state.drive?.connectionType ===
+        chrome.fileManagerPrivate.DriveConnectionStateType.METERED;
     // If the bulk pinning preference is enabled, the user should not be able to
     // toggle items offline.
     if (this.bulkPinningPref_ !== bulkPinningPref) {
@@ -567,7 +565,7 @@ export class ToolbarController {
       this.cloudButton_.hidden = true;
       return;
     }
-    this.updateBulkPinningIcon_(bulkPinning);
+    this.updateBulkPinningIcon_(bulkPinning, isNetworkMetered);
     this.cloudButton_.hidden = false;
   }
 
@@ -575,8 +573,18 @@ export class ToolbarController {
    * Encapsulates the logic to update the bulk pinning cloud icon and the sub
    * icons that indicate the current stage it is in.
    * @param {chrome.fileManagerPrivate.BulkPinProgress|undefined} progress
+   * @param {boolean} isNetworkMetered
    */
-  updateBulkPinningIcon_(progress) {
+  updateBulkPinningIcon_(progress, isNetworkMetered) {
+    if (isNetworkMetered) {
+      this.cloudButton_.ariaLabel = str('BULK_PINNING_BUTTON_LABEL_PAUSED');
+      this.cloudButtonIcon_.setAttribute('type', constants.ICON_TYPES.CLOUD);
+      this.cloudStatusIcon_.setAttribute(
+          'type', constants.ICON_TYPES.CLOUD_PAUSED);
+      this.cloudStatusIcon_.removeAttribute('size');
+      return;
+    }
+
     switch (progress?.stage) {
       case chrome.fileManagerPrivate.BulkPinStage.SYNCING:
         this.cloudButtonIcon_.setAttribute('type', constants.ICON_TYPES.CLOUD);

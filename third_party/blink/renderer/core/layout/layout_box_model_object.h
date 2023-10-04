@@ -168,17 +168,15 @@ class CORE_EXPORT LayoutBoxModelObject : public LayoutObject {
   // border boxes.
   virtual gfx::Rect BorderBoundingBox() const = 0;
 
-  virtual PhysicalRect PhysicalVisualOverflowRect() const = 0;
+  virtual PhysicalRect VisualOverflowRect() const = 0;
 
   // Returns the visual overflow rect, expanded to the area affected by any
   // filters that paint outside of the box, in physical coordinates.
-  PhysicalRect PhysicalVisualOverflowRectIncludingFilters() const;
+  PhysicalRect VisualOverflowRectIncludingFilters() const;
 
   // Returns a physical rect that is a result of apply this object's filters to
   // it. If there are no filters, it returns its argument.
   PhysicalRect ApplyFiltersToRect(const PhysicalRect&) const;
-
-  bool UsesCompositedScrolling() const;
 
   // These return the CSS computed padding values.
   LayoutUnit ComputedCSSPaddingTop() const {
@@ -418,6 +416,8 @@ class CORE_EXPORT LayoutBoxModelObject : public LayoutObject {
   PhysicalOffset AdjustedPositionRelativeTo(const PhysicalOffset&,
                                             const Element*) const;
 
+  // This returns a logical rectangle.
+  // TODO(crbug.com/1229581): Change it to LogicalRect.
   LayoutRect LocalCaretRectForEmptyElement(LayoutUnit width,
                                            LayoutUnit text_indent_offset) const;
 

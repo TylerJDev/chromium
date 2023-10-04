@@ -15,7 +15,7 @@
 #import "ios/chrome/browser/signin/chrome_account_manager_service.h"
 #import "ios/chrome/browser/signin/identity_manager_factory.h"
 #import "ios/chrome/browser/signin/system_identity.h"
-#import "ios/chrome/browser/sync/sync_setup_service.h"
+#import "ios/chrome/browser/sync/model/sync_setup_service.h"
 #import "ios/chrome/browser/ui/authentication/authentication_flow.h"
 
 @interface UserSigninMediator ()
@@ -69,13 +69,10 @@
 }
 
 - (void)dealloc {
-  DCHECK(!self.authenticationFlow);
-  DCHECK(!self.identityManager);
-  DCHECK(!self.accountManagerService);
-  DCHECK(!self.consentAuditor);
-  DCHECK(!self.authenticationService);
-  DCHECK(!self.syncService);
-  DCHECK(!self.delegate);
+  DCHECK(!self.identityManager)
+      << "delegate: " << base::SysNSStringToUTF8([self.delegate description])
+      << ", AuthenticationFlow "
+      << base::SysNSStringToUTF8([self.authenticationFlow description]);
 }
 
 - (void)authenticateWithIdentity:(id<SystemIdentity>)identity
@@ -134,7 +131,6 @@
 - (void)interruptWithAction:(SigninCoordinatorInterrupt)action
                  completion:(ProceduralBlock)completion {
   [self.authenticationFlow interruptWithAction:action];
-  DCHECK(self.delegate);
   switch (self.delegate.signinStateOnStart) {
     case IdentitySigninStateSignedOut:
       switch (action) {

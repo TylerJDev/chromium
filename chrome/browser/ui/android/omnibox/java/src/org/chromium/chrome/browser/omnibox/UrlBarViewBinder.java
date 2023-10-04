@@ -17,10 +17,9 @@ import com.google.android.material.color.MaterialColors;
 import org.chromium.base.Callback;
 import org.chromium.base.Log;
 import org.chromium.base.TraceEvent;
+import org.chromium.base.metrics.TimingMetric;
 import org.chromium.chrome.browser.omnibox.UrlBarProperties.AutocompleteText;
 import org.chromium.chrome.browser.omnibox.UrlBarProperties.UrlBarTextState;
-import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
-import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.ui.modelutil.PropertyKey;
 import org.chromium.ui.modelutil.PropertyModel;
 
@@ -64,7 +63,14 @@ class UrlBarViewBinder {
             view.setIgnoreTextChangesForAutocomplete(true);
 
             try (TraceEvent te1 = TraceEvent.scoped("UrlBarViewBinder.setText")) {
-                view.setText(state.text);
+                try (TimingMetric t = TimingMetric.shortUptime("Omnibox.SetText.Duration")) {
+                    if (OmniboxFeatures.shouldTruncateVisibleUrl()) {
+                        view.setTextWithTruncation(
+                                state.text, state.scrollType, state.scrollToIndex);
+                    } else {
+                        view.setText(state.text);
+                    }
+                }
             }
 
             view.setTextForAutofillServices(state.textForAutofillServices);
@@ -82,8 +88,12 @@ class UrlBarViewBinder {
                     view.setSelection(view.getText().length());
                 }
             }
-        } else if (UrlBarProperties.BRANDED_COLOR_SCHEME.equals(propertyKey)) {
-            updateTextColors(view, model.get(UrlBarProperties.BRANDED_COLOR_SCHEME));
+        } else if (UrlBarProperties.TEXT_COLOR.equals(propertyKey)) {
+            view.setTextColor(model.get(UrlBarProperties.TEXT_COLOR));
+        } else if (UrlBarProperties.HINT_TEXT_COLOR.equals(propertyKey)) {
+            view.setHintTextColor(model.get(UrlBarProperties.HINT_TEXT_COLOR));
+        } else if (UrlBarProperties.TYPEFACE.equals(propertyKey)) {
+            view.setTypeface(model.get(UrlBarProperties.TYPEFACE));
         } else if (UrlBarProperties.INCOGNITO_COLORS_ENABLED.equals(propertyKey)) {
             final boolean incognitoColorsEnabled =
                     model.get(UrlBarProperties.INCOGNITO_COLORS_ENABLED);
@@ -107,17 +117,6 @@ class UrlBarViewBinder {
                                 : 0);
             }
         }
-    }
-
-    private static void updateTextColors(UrlBar view, @BrandedColorScheme int brandedColorScheme) {
-        final @ColorInt int textColor = OmniboxResourceProvider.getUrlBarPrimaryTextColor(
-                view.getContext(), brandedColorScheme);
-
-        final @ColorInt int hintColor = OmniboxResourceProvider.getUrlBarHintTextColor(
-                view.getContext(), brandedColorScheme);
-
-        view.setTextColor(textColor);
-        view.setHintTextColor(hintColor);
     }
 
     private static void updateHighlightColor(UrlBar view, boolean useIncognitoColors) {

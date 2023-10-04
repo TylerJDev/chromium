@@ -379,6 +379,7 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   virtual void ReportPermissionsPolicyViolation(
       mojom::blink::PermissionsPolicyFeature,
       mojom::blink::PolicyDisposition,
+      const absl::optional<String>& reporting_endpoint,
       const String& message = g_empty_string) const {}
   virtual void ReportDocumentPolicyViolation(
       mojom::blink::DocumentPolicyFeature,
@@ -392,6 +393,10 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   // Implementation of WindowOrWorkerGlobalScope.crossOriginIsolated.
   // https://html.spec.whatwg.org/C/webappapis.html#concept-settings-object-cross-origin-isolated-capability
   virtual bool CrossOriginIsolatedCapability() const = 0;
+
+  // Allows --disable-web-security (via `Agent::IsWebSecurityDisabled()`) to
+  // override `CrossOriginIsolatedCapability()` .
+  bool CrossOriginIsolatedCapabilityOrDisabledWebSecurity() const;
 
   // Returns true if scripts within this ExecutionContext are allowed to use
   // Trusted Context APIs (i.e. annotated with [IsolatedContext] IDL attribute).

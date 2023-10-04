@@ -78,6 +78,7 @@
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/events/keycodes/dom/dom_keyboard_layout_map.h"
 #include "ui/gfx/geometry/dip_util.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
 
 using blink::WebInputEvent;
@@ -86,6 +87,18 @@ using blink::WebGestureEvent;
 using blink::WebTouchEvent;
 
 namespace content {
+
+namespace {
+
+// If enabled, when the text input state changes `[NSApp updateWindows]` is
+// called after a delay. This is done as `updateWindows` can be quite
+// costly, and if the text input state is changing rapidly there is no need to
+// update it immediately.
+BASE_FEATURE(kDelayUpdateWindowsAfterTextInputStateChanged,
+             "DelayUpdateWindowsAfterTextInputStateChanged",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+}  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // BrowserCompositorMacClient, public:
@@ -210,13 +223,6 @@ RenderWidgetHostViewMac::RenderWidgetHostViewMac(RenderWidgetHost* widget)
       screen->GetDisplayNearestWindow([NSApp keyWindow]).id());
   original_screen_infos_ = screen_infos_;
 
-  // TODO(crbug.com/1457025): Fix isInternal inaccuracies and remove logging.
-  DISPLAY_LOG(DEBUG) << "RWHVMac ScreenInfos initialized, count: "
-                     << screen_infos_.screen_infos.size();
-  for (const auto& screen_info : screen_infos_.screen_infos) {
-    DISPLAY_LOG(DEBUG) << screen_info.ToString();
-  }
-
   viz::FrameSinkId frame_sink_id = host()->GetFrameSinkId();
 
   browser_compositor_ = std::make_unique<BrowserCompositorMac>(
@@ -327,6 +333,12 @@ void RenderWidgetHostViewMac::MigrateNSViewBridge(
       ns_view_id_, std::move(stub_client), std::move(stub_bridge_receiver));
 
   ns_view_ = remote_ns_view_.get();
+
+  // New remote NSViews start out as visible, make sure we hide it if it is
+  // supposed to be hidden already.
+  if (!is_visible_) {
+    remote_ns_view_->SetVisible(false);
+  }
 
   // End local display::Screen observation via `in_process_ns_view_bridge_`;
   // the remote NSWindow's display::Screen information will be sent by Mojo.
@@ -681,7 +693,13 @@ void RenderWidgetHostViewMac::OnUpdateTextInputStateCalled(
 
     // Let AppKit cache the new input context to make IMEs happy.
     // See http://crbug.com/73039.
-    [NSApp updateWindows];
+    if (base::FeatureList::IsEnabled(
+            kDelayUpdateWindowsAfterTextInputStateChanged)) {
+      update_windows_timer_.Start(FROM_HERE, base::Milliseconds(100), this,
+                                  &RenderWidgetHostViewMac::UpdateWindowsNow);
+    } else {
+      [NSApp updateWindows];
+    }
   }
 }
 
@@ -887,15 +905,6 @@ void RenderWidgetHostViewMac::UpdateScreenInfo() {
   if (dip_size_changed || current_display_changed) {
     browser_compositor_->UpdateSurfaceFromNSView(
         view_bounds_in_window_dip_.size());
-  }
-
-  // TODO(crbug.com/1457025): Fix isInternal innacuracies and remove logging.
-  if (any_display_changed) {
-    DISPLAY_LOG(DEBUG) << "RWHVMac ScreenInfos updated, count: "
-                       << screen_infos_.screen_infos.size();
-    for (const auto& screen_info : screen_infos_.screen_infos) {
-      DISPLAY_LOG(DEBUG) << screen_info.ToString();
-    }
   }
 
   // TODO(crbug.com/1169312): Unify display info caching and change detection.
@@ -1565,9 +1574,9 @@ void RenderWidgetHostViewMac::SetActive(bool active) {
     UpdateActiveState(active);
     if (active) {
       if (HasFocus())
-        host()->Focus();
+        host()->GotFocus();
     } else {
-      host()->Blur();
+      host()->LostFocus();
     }
   }
   if (HasFocus())
@@ -1642,6 +1651,7 @@ void RenderWidgetHostViewMac::SetTextInputActive(bool active) {
   } else {
     password_input_enabler_.reset();
   }
+  update_windows_timer_.Stop();
 }
 
 MouseWheelPhaseHandler* RenderWidgetHostViewMac::GetMouseWheelPhaseHandler() {
@@ -2065,8 +2075,13 @@ bool RenderWidgetHostViewMac::SyncGetFirstRectForRange(
     // https://crbug.com/121917
     base::ScopedAllowBlocking allow_wait;
     // TODO(thakis): Pipe |actualRange| through TextInputClientMac machinery.
-    *rect = TextInputClientMac::GetInstance()->GetFirstRectForRange(
-        GetFocusedWidget(), requested_range);
+    gfx::Rect blink_rect =
+        TextInputClientMac::GetInstance()->GetFirstRectForRange(
+            GetFocusedWidget(), requested_range);
+
+    // With zoom-for-dsf, RenderWidgetHost coordinate system is physical points,
+    // which means we have to scale the rect by the device scale factor.
+    *rect = gfx::ScaleToEnclosingRect(blink_rect, 1.f / GetDeviceScaleFactor());
   }
   return true;
 }
@@ -2376,6 +2391,10 @@ void RenderWidgetHostViewMac::SetTooltipText(
   ns_view_->SetTooltipText(tooltip_text);
   if (tooltip_observer_for_testing_)
     tooltip_observer_for_testing_->OnTooltipTextUpdated(tooltip_text);
+}
+
+void RenderWidgetHostViewMac::UpdateWindowsNow() {
+  [NSApp updateWindows];
 }
 
 Class GetRenderWidgetHostViewCocoaClassForTesting() {

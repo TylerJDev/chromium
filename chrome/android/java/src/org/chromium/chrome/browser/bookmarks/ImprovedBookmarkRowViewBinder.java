@@ -51,9 +51,9 @@ public class ImprovedBookmarkRowViewBinder {
             row.setBookmarkIdEditable(model.get(ImprovedBookmarkRowProperties.EDITABLE));
         } else if (key == ImprovedBookmarkRowProperties.ROW_CLICK_LISTENER) {
             row.setRowClickListener(model.get(ImprovedBookmarkRowProperties.ROW_CLICK_LISTENER));
-        } else if (key == ImprovedBookmarkRowProperties.ROW_LONGCLICK_LISTENER) {
+        } else if (key == ImprovedBookmarkRowProperties.ROW_LONG_CLICK_LISTENER) {
             row.setRowLongClickListener(
-                    model.get(ImprovedBookmarkRowProperties.ROW_LONGCLICK_LISTENER));
+                    model.get(ImprovedBookmarkRowProperties.ROW_LONG_CLICK_LISTENER));
         } else if (key == BookmarkManagerProperties.BOOKMARK_ID) {
             row.setItem(model.get(BookmarkManagerProperties.BOOKMARK_ID));
         } else if (key == ImprovedBookmarkRowProperties.END_IMAGE_VISIBILITY) {
@@ -65,6 +65,8 @@ public class ImprovedBookmarkRowViewBinder {
             row.setEndImageRes(model.get(ImprovedBookmarkRowProperties.END_IMAGE_RES));
         } else if (key == ImprovedBookmarkRowProperties.FOLDER_COORDINATOR) {
             row.setFolderCoordinator(model.get(ImprovedBookmarkRowProperties.FOLDER_COORDINATOR));
+        } else if (key == ImprovedBookmarkRowProperties.CONTENT_DESCRIPTION) {
+            row.setContentDescription(model.get(ImprovedBookmarkRowProperties.CONTENT_DESCRIPTION));
         }
     }
 }

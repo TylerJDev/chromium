@@ -145,6 +145,10 @@ bool InputType::IsTextField() const {
   return false;
 }
 
+bool InputType::ShouldAutoDirUseValue() const {
+  return false;
+}
+
 template <typename T>
 bool ValidateInputType(const T& input_type, const String& value) {
   if (!input_type.CanSetStringValue()) {
@@ -529,7 +533,14 @@ String InputType::ReversedRangeOutOfRangeText(const Decimal&,
 }
 
 String InputType::RangeInvalidText(const Decimal&, const Decimal&) const {
-  NOTREACHED();
+  static auto* input_type = base::debug::AllocateCrashKeyString(
+      "input-type", base::debug::CrashKeySize::Size32);
+  base::debug::SetCrashKeyString(input_type,
+                                 FormControlType().GetString().Utf8().c_str());
+  NOTREACHED() << "This should not get called. Check if input type '"
+               << FormControlType()
+               << "' should have a RangeInvalidText implementation."
+               << "See crbug.com/1474270";
   return String();
 }
 
@@ -706,7 +717,9 @@ bool InputType::CanSetStringValue() const {
 }
 
 bool InputType::IsKeyboardFocusable() const {
-  return GetElement().IsBaseElementFocusable();
+  // Inputs are always keyboard focusable if they are focusable at all,
+  // and don't have a negative tabindex set.
+  return GetElement().IsFocusable() && GetElement().tabIndex() >= 0;
 }
 
 bool InputType::MayTriggerVirtualKeyboard() const {
@@ -924,10 +937,6 @@ Decimal InputType::FindClosestTickMarkValue(const Decimal&) {
 
 bool InputType::HasLegalLinkAttribute(const QualifiedName&) const {
   return false;
-}
-
-const QualifiedName& InputType::SubResourceAttributeName() const {
-  return QualifiedName::Null();
 }
 
 void InputType::CopyNonAttributeProperties(const HTMLInputElement&) {}

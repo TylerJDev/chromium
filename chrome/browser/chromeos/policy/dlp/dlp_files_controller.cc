@@ -10,14 +10,15 @@
 
 #include "base/files/file_path.h"
 #include "base/path_service.h"
+#include "base/process/process_handle.h"
 #include "base/task/bind_post_task.h"
 #include "chrome/browser/chromeos/policy/dlp/dlp_files_utils.h"
 #include "chrome/browser/chromeos/policy/dlp/dlp_scoped_file_access_delegate.h"
-#include "chrome/browser/enterprise/data_controls/component.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chromeos/dbus/dlp/dlp_client.h"
 #include "chromeos/dbus/dlp/dlp_service.pb.h"
+#include "components/enterprise/data_controls/component.h"
 #include "components/file_access/scoped_file_access_copy.h"
 #include "storage/browser/file_system/file_system_url.h"
 
@@ -86,7 +87,7 @@ void GotFilesSourcesOfCopy(
              base::ScopedFD fd) {
             std::move(result_callback)
                 .Run(std::make_unique<file_access::ScopedFileAccessCopy>(
-                    response.allowed(), base::ScopedFD(),
+                    response.allowed(), std::move(fd),
                     std::move(delayed_add_file)));
           },
           std::move(result_callback), std::move(delayed_add_file));
@@ -145,12 +146,18 @@ void DlpFilesController::RequestCopyAccess(
   Profile* profile = ProfileManager::GetPrimaryUserProfile();
 
   absl::optional<data_controls::Component> dst_component =
-      MapFilePathtoPolicyComponent(profile, destination.path());
+      MapFilePathToPolicyComponent(profile, destination.path());
   absl::optional<data_controls::Component> src_component =
-      MapFilePathtoPolicyComponent(profile, source_file.path());
+      MapFilePathToPolicyComponent(profile, source_file.path());
 
   // Copy from external is not limited by DLP.
-  if (src_component.has_value()) {
+  // TODO(b/297190245): currently there is no component for mounted archives and
+  // they are considered as not in the local file system so we end up in the if
+  // below when a file is copied from a mounted archive. When mounting of
+  // restricted archives is supported, we however need to apply the restriction
+  // of the source archive to the copied files and not just always allow as
+  // below.
+  if (src_component.has_value() || !IsInLocalFileSystem(source_file.path())) {
     std::move(result_callback)
         .Run(std::make_unique<file_access::ScopedFileAccess>(
             file_access::ScopedFileAccess::Allowed()));
@@ -162,20 +169,26 @@ void DlpFilesController::RequestCopyAccess(
                     : ::dlp::DlpComponent::SYSTEM;
 
   ::dlp::RequestFileAccessRequest file_access_request;
+  file_access_request.set_process_id(base::GetCurrentProcId());
   file_access_request.add_files_paths(source_file.path().value());
   file_access_request.set_destination_component(proto);
 
   if (!dst_component.has_value()) {
     // We allow internal copy, we still have to get the scopedFS
     // and we might need to copy the source URL information.
-    if (IsInLocalFileSystem(source_file.path())) {
+    if (IsInLocalFileSystem(destination.path())) {
       ::dlp::GetFilesSourcesRequest request;
       request.add_files_paths(source_file.path().value());
       chromeos::DlpClient::Get()->GetFilesSources(
           request,
           base::BindOnce(&GotFilesSourcesOfCopy, destination,
                          file_access_request, std::move(result_callback)));
+    } else {
+      std::move(result_callback)
+          .Run(std::make_unique<file_access::ScopedFileAccess>(
+              /*allowed=*/false, base::ScopedFD()));
     }
+
     return;
   }
 

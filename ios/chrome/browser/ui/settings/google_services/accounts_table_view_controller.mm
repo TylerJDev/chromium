@@ -18,9 +18,9 @@
 #import "components/sync/service/sync_service.h"
 #import "components/sync/service/sync_service_utils.h"
 #import "ios/chrome/browser/net/crurl.h"
-#import "ios/chrome/browser/settings/sync/utils/account_error_ui_info.h"
-#import "ios/chrome/browser/settings/sync/utils/identity_error_util.h"
-#import "ios/chrome/browser/settings/sync/utils/sync_util.h"
+#import "ios/chrome/browser/settings/model/sync/utils/account_error_ui_info.h"
+#import "ios/chrome/browser/settings/model/sync/utils/identity_error_util.h"
+#import "ios/chrome/browser/settings/model/sync/utils/sync_util.h"
 #import "ios/chrome/browser/shared/coordinator/alert/action_sheet_coordinator.h"
 #import "ios/chrome/browser/shared/coordinator/alert/alert_coordinator.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
@@ -50,8 +50,8 @@
 #import "ios/chrome/browser/signin/identity_manager_factory.h"
 #import "ios/chrome/browser/signin/system_identity.h"
 #import "ios/chrome/browser/signin/system_identity_manager.h"
-#import "ios/chrome/browser/sync/sync_observer_bridge.h"
-#import "ios/chrome/browser/sync/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_observer_bridge.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/ui/authentication/authentication_ui_util.h"
 #import "ios/chrome/browser/ui/authentication/cells/table_view_account_item.h"
 #import "ios/chrome/browser/ui/authentication/enterprise/enterprise_utils.h"
@@ -62,7 +62,7 @@
 #import "ios/chrome/browser/ui/settings/settings_root_view_controlling.h"
 #import "ios/chrome/browser/ui/settings/sync/sync_encryption_passphrase_table_view_controller.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
-#import "ios/chrome/grit/ios_chromium_strings.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "net/base/mac/url_conversions.h"
 #import "ui/base/l10n/l10n_util_mac.h"
@@ -210,6 +210,13 @@ constexpr CGFloat kErrorSymbolSize = 22.;
 }
 
 - (void)settingsWillBeDismissed {
+  if (!_dismissAccountDetailsViewController.is_null()) {
+    DCHECK(self.presentedViewController);
+    DCHECK(!self.removeOrMyGoogleChooserAlertCoordinator);
+    DCHECK(!self.removeAccountCoordinator);
+    DCHECK(!self.signoutCoordinator);
+    std::move(_dismissAccountDetailsViewController).Run(/*animated=*/false);
+  }
   [self dismissRemoveOrMyGoogleChooserAlert];
   [self.signoutCoordinator stop];
   self.signoutCoordinator = nil;
@@ -586,10 +593,6 @@ constexpr CGFloat kErrorSymbolSize = 22.;
       break;
     }
     case ItemTypeSignOut: {
-      if ([self isAccountSignedInNotSyncing]) {
-        [self signOut];
-        break;
-      }
       UIView* itemView =
           [[tableView cellForRowAtIndexPath:indexPath] contentView];
       [self showSignOutWithItemView:itemView];
@@ -667,7 +670,9 @@ constexpr CGFloat kErrorSymbolSize = 22.;
 
 - (void)showAccountDetails:(id<SystemIdentity>)identity
                   itemView:(UIView*)itemView {
-  DCHECK(!self.removeOrMyGoogleChooserAlertCoordinator);
+  // TODO(crbug.com/1464966): Switch back to DCHECK if the number of reports is
+  // low.
+  DUMP_WILL_BE_CHECK(!self.removeOrMyGoogleChooserAlertCoordinator);
   self.removeOrMyGoogleChooserAlertCoordinator = [[ActionSheetCoordinator alloc]
       initWithBaseViewController:self
                          browser:_browser
@@ -1003,32 +1008,4 @@ constexpr CGFloat kErrorSymbolSize = 22.;
               ->HasSyncConsent();
 }
 
-// Signs out without showing action sheet.
-// Used when the user is signed in not syncing.
-- (void)signOut {
-  if (![self authService]->HasPrimaryIdentity(signin::ConsentLevel::kSignin)) {
-    // This could happen if the account somehow got removed after the UI was
-    // created.
-    return;
-  }
-  CHECK([self isAccountSignedInNotSyncing]);
-  if (_authenticationOperationInProgress) {
-    return;
-  }
-  _authenticationOperationInProgress = YES;
-  [self preventUserInteraction];
-  signin_metrics::RecordSignoutUserAction(/*force_clear_data=*/false);
-  __weak AccountsTableViewController* weakSelf = self;
-  ProceduralBlock signOutCompletion = ^() {
-    __strong AccountsTableViewController* strongSelf = weakSelf;
-    if (!strongSelf) {
-      return;
-    }
-    [strongSelf allowUserInteraction];
-    [strongSelf handleAuthenticationOperationDidFinish];
-  };
-  [self authService]->SignOut(
-      signin_metrics::ProfileSignout::kUserClickedSignoutSettings,
-      /*force_clear_browsing_data=*/NO, signOutCompletion);
-}
 @end

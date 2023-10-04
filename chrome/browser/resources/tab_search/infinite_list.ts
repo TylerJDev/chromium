@@ -64,11 +64,18 @@ export class InfiniteList extends PolymerElement {
         observer: 'onItemsChanged_',
         value: [],
       },
+
+      selectedItem: {
+        type: Object,
+        readonly: true,
+        notify: true,
+      },
     };
   }
 
   maxHeight: number;
   items: Object[];
+  selectedItem: Object|null;
   private instanceConstructors_:
       Map<string,
           new(args: {item: Object, index?: number}) =>
@@ -117,7 +124,10 @@ export class InfiniteList extends PolymerElement {
    */
   ensureAllDomItemsAvailable() {
     if (this.items.length > 0) {
-      const shouldUpdateHeight = this.instances_.length !== this.items.length;
+      // Height may need to be updated when length has not changed, if previous
+      // height calculation was performed when this element was not visible.
+      const shouldUpdateHeight = this.instances_.length !== this.items.length ||
+          this.$.container.style.height === '0px';
       for (let i = this.instances_.length; i < this.items.length; i++) {
         this.createAndInsertDomItem_(i);
       }
@@ -597,13 +607,8 @@ export class InfiniteList extends PolymerElement {
         NO_SELECTION;
   }
 
-  get selectedItem(): Object|null {
-    if (this.$.selector.selected === undefined) {
-      return null;
-    }
-
-    return this.items[this.selectableIndexToItemIndex_!.get(
-        this.$.selector.selected as number)!]!;
+  private onSelectedItemChanged_() {
+    this.selectedItem = (this.$.selector.selectedItem as any)?.data;
   }
 }
 

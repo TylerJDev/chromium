@@ -17,6 +17,7 @@
 #include "cc/test/resource_provider_test_utils.h"
 #include "components/viz/client/client_resource_provider.h"
 #include "components/viz/common/display/renderer_settings.h"
+#include "components/viz/common/frame_sinks/copy_output_request.h"
 #include "components/viz/common/quads/aggregated_render_pass.h"
 #include "components/viz/common/quads/aggregated_render_pass_draw_quad.h"
 #include "components/viz/common/quads/solid_color_draw_quad.h"
@@ -80,8 +81,8 @@ class DCTestOverlayProcessor : public OverlayProcessorWin {
   DebugRendererSettings debug_settings_;
 };
 
-std::unique_ptr<AggregatedRenderPass> CreateRenderPass() {
-  AggregatedRenderPassId render_pass_id{1};
+std::unique_ptr<AggregatedRenderPass> CreateRenderPass(
+    AggregatedRenderPassId render_pass_id = AggregatedRenderPassId{1}) {
   gfx::Rect output_rect(0, 0, 256, 256);
 
   auto pass = std::make_unique<AggregatedRenderPass>();
@@ -347,6 +348,74 @@ TEST_P(DCLayerOverlayTest, DisableVideoOverlayIfMovingFeature) {
       ProcessForOverlaysSingleVideoRectWithOffset({1, 0}).size();
     }
     EXPECT_EQ(1U, ProcessForOverlaysSingleVideoRectWithOffset({1, 0}).size());
+  }
+}
+
+// Check that we don't accidentally end up in a case where we try to read back a
+// DComp surface, which can happen if one issues a copy request while we're in
+// the hysteresis when switching from a DComp surface back to a swap chain.
+TEST_P(DCLayerOverlayTest, ForceSwapChainForCapture) {
+  InitializeOverlayProcessor();
+
+  // Start in the DComp surface mode, e.g. from a previous frame that had a
+  // video overlay.
+  overlay_processor_->set_using_dc_layers_for_testing(true);
+
+  // Frame with no overlays, but we expect to still be in DComp surface mode,
+  // due to one-sided hysteresis intended to prevent allocation churn.
+  {
+    AggregatedRenderPassList pass_list;
+    pass_list.push_back(CreateRenderPass());
+
+    damage_rect_ = pass_list.back()->output_rect;
+
+    if (!IsUsingDCompPresenter()) {
+      // We expect no change, so no call.
+      EXPECT_CALL(*output_surface_.get(), SetEnableDCLayers(_)).Times(0);
+    }
+
+    OverlayCandidateList dc_layer_list;
+    OverlayProcessorInterface::FilterOperationsMap render_pass_filters;
+    OverlayProcessorInterface::FilterOperationsMap render_pass_backdrop_filters;
+    overlay_processor_->ProcessForOverlays(
+        resource_provider_.get(), &pass_list, GetIdentityColorMatrix(),
+        render_pass_filters, render_pass_backdrop_filters,
+        SurfaceDamageRectList(), GetOutputSurfacePlane(), &dc_layer_list,
+        &damage_rect_, &content_bounds_);
+
+    if (IsUsingDCompPresenter()) {
+      EXPECT_TRUE(pass_list.back()->needs_synchronous_dcomp_commit);
+    }
+  }
+
+  // Frame with a copy request. Even though we're still in the hysteresis, we
+  // expect to forcibly switch to swap chain mode so that the copy request
+  // succeeds.
+  {
+    AggregatedRenderPassList pass_list;
+    pass_list.push_back(CreateRenderPass());
+
+    pass_list.back()->copy_requests.push_back(
+        CopyOutputRequest::CreateStubForTesting());
+
+    damage_rect_ = pass_list.back()->output_rect;
+
+    if (!IsUsingDCompPresenter()) {
+      EXPECT_CALL(*output_surface_.get(), SetEnableDCLayers(false)).Times(1);
+    }
+
+    OverlayCandidateList dc_layer_list;
+    OverlayProcessorInterface::FilterOperationsMap render_pass_filters;
+    OverlayProcessorInterface::FilterOperationsMap render_pass_backdrop_filters;
+    overlay_processor_->ProcessForOverlays(
+        resource_provider_.get(), &pass_list, GetIdentityColorMatrix(),
+        render_pass_filters, render_pass_backdrop_filters,
+        SurfaceDamageRectList(), GetOutputSurfacePlane(), &dc_layer_list,
+        &damage_rect_, &content_bounds_);
+
+    if (IsUsingDCompPresenter()) {
+      EXPECT_FALSE(pass_list.back()->needs_synchronous_dcomp_commit);
+    }
   }
 }
 
@@ -1305,11 +1374,17 @@ void DCLayerOverlayTest::TestRenderPassRootTransform(bool is_overlay) {
   const gfx::Rect kVideoRect = gfx::Rect(0, 0, 100, 100);
   const gfx::Rect kOpaqueRect = gfx::Rect(90, 80, 15, 30);
   const gfx::Transform kRenderPassToRootTransform =
-      gfx::Transform::MakeTranslation(27, 45);
+      gfx::Transform::MakeTranslation(20, 45);
+  // Surface damages in root space.
   const SurfaceDamageRectList kSurfaceDamageRectList = {
-      gfx::Rect(25, 20, 10, 10),    // above overlay
-      gfx::Rect(27, 45, 100, 100),  // damage rect of video overlay
-      gfx::Rect(30, 25, 50, 50)};   // below overlay
+      // On top and does not intersect overlay. Translates to (110,5 20x10) in
+      // render pass space.
+      gfx::Rect(130, 50, 20, 10),
+      // The video overlay damage rect. (0,0 100x100) in render pass space.
+      gfx::Rect(20, 45, 100, 100),
+      // Under and intersects the overlay. Translates to (95,25 20x10) in
+      // render pass space.
+      gfx::Rect(115, 70, 20, 10)};
   const size_t kOverlayDamageIndex = 1;
 
   for (size_t frame = 0; frame < 3; frame++) {
@@ -1344,7 +1419,8 @@ void DCLayerOverlayTest::TestRenderPassRootTransform(bool is_overlay) {
         render_pass_filters, render_pass_backdrop_filters,
         std::move(surface_damage_rect_list), GetOutputSurfacePlane(),
         &dc_layer_list, &damage_rect_, &content_bounds_);
-    LOG(INFO) << damage_rect_.ToString();
+    LOG(INFO) << "frame " << frame
+              << " damage rect: " << damage_rect_.ToString();
 
     EXPECT_EQ(dc_layer_list.size(), 1u);
     EXPECT_TRUE(
@@ -1362,13 +1438,203 @@ void DCLayerOverlayTest::TestRenderPassRootTransform(bool is_overlay) {
       // overlays are being processed for the first time.
       EXPECT_EQ(gfx::Rect(0, 0, 256, 256), damage_rect_);
     } else {
-      // With the render pass to root transform, the video overlay should have
-      // been translated to (27,45 100x100). The final damage rect should
-      // include (25,20 10x10), which doesn't intersect the overlay. The
-      // (30,25 50x50) surface damage is partially under the overlay, so the
-      // overlay damage can be subtracted to become (30,25 50x15). The final
-      // damage rect is (25,20 10x10) union (30,25 50x15).
-      EXPECT_EQ(damage_rect_, gfx::Rect(25, 20, 55, 25));
+      // To calculate the damage rect in root space, we first subtract the video
+      // damage from (115,70 20x10) since this damage is under the video. This
+      // results in (120,70 20x10). This then gets unioned with (130,50 20x10),
+      // which doesn't intersect the video. This results in (120,50 30x30).
+      // The damage rect returned from the DCLayerOverlayProcessor is in
+      // render pass space, so we apply the (20, 45) inverse transform,
+      // resulting in (100,5 30x30).
+      EXPECT_EQ(damage_rect_, gfx::Rect(100, 5, 30, 30));
+    }
+  }
+}
+
+// Tests processing overlays/underlays on multiple render passes per frame,
+// where only one render pass has an overlay.
+TEST_P(DCLayerOverlayTest, MultipleRenderPassesOneOverlay) {
+  InitializeOverlayProcessor(/*allowed_yuv_overlay_count*/ 1);
+  const gfx::Rect output_rect = {0, 0, 256, 256};
+  const size_t num_render_passes = 3;
+  for (size_t frame = 0; frame < 3; frame++) {
+    AggregatedRenderPassList render_passes;  // Used to keep render passes alive
+    DCLayerOverlayProcessor::RenderPassOverlayDataMap
+        render_pass_overlay_data_map;
+
+    OverlayProcessorInterface::FilterOperationsMap render_pass_filters;
+    OverlayProcessorInterface::FilterOperationsMap render_pass_backdrop_filters;
+    SurfaceDamageRectList surface_damage_rect_list;
+
+    // Create 3 render passes, with only one containing an overlay candidate.
+    for (size_t id = 1; id <= num_render_passes; id++) {
+      auto pass = CreateRenderPass(AggregatedRenderPassId{id});
+      pass->transform_to_root_target = gfx::Transform::MakeTranslation(id, 0);
+
+      gfx::Rect quad_rect_in_root_space =
+          gfx::Rect(0, 0, id * 16, pass->output_rect.height());
+
+      if (id == 1) {
+        // Create an overlay quad in the first render pass.
+        auto* video_quad = CreateFullscreenCandidateYUVVideoQuad(
+            resource_provider_.get(), child_resource_provider_.get(),
+            child_provider_.get(), pass->shared_quad_state_list.back(),
+            pass.get());
+        gfx::Rect quad_rect_in_quad_space =
+            pass->transform_to_root_target
+                .InverseMapRect(quad_rect_in_root_space)
+                .value();
+        video_quad->rect = quad_rect_in_quad_space;
+        video_quad->visible_rect = quad_rect_in_quad_space;
+        pass->shared_quad_state_list.back()->overlay_damage_index = id - 1;
+      } else {
+        // Create a quad that's not an overlay.
+        CreateSolidColorQuadAt(pass->shared_quad_state_list.back(),
+                               SkColors::kBlue, pass.get(),
+                               pass->transform_to_root_target
+                                   .InverseMapRect(quad_rect_in_root_space)
+                                   .value());
+      }
+
+      surface_damage_rect_list.emplace_back(quad_rect_in_root_space);
+      render_pass_overlay_data_map[pass.get()].damage_rect = output_rect;
+      render_passes.emplace_back(std::move(pass));
+    }
+
+    surface_damage_rect_list.emplace_back(0, 0, 256, 256);
+
+    overlay_processor_->ProcessOnDCLayerOverlayProcessorForTesting(
+        resource_provider_.get(), render_pass_filters,
+        render_pass_backdrop_filters, std::move(surface_damage_rect_list),
+        false /*is_video_capture_enabled*/,
+        false
+        /*is_page_fullscreen_mode*/,
+        render_pass_overlay_data_map);
+
+    for (auto& [render_pass, overlay_data] : render_pass_overlay_data_map) {
+      LOG(INFO) << "frame " << frame << " render pass " << render_pass->id
+                << " damage rect : " << overlay_data.damage_rect.ToString();
+      LOG(INFO) << "frame " << frame << " render pass " << render_pass->id
+                << " number of overlays: "
+                << overlay_data.promoted_overlays.size();
+
+      if (render_pass->id == AggregatedRenderPassId(1)) {
+        // The render pass that contains an overlay.
+        EXPECT_EQ(overlay_data.promoted_overlays.size(), 1u);
+        EXPECT_EQ(absl::get<gfx::Transform>(
+                      overlay_data.promoted_overlays[0].transform),
+                  gfx::Transform::MakeTranslation(1, 0));
+        EXPECT_GT(overlay_data.promoted_overlays[0].plane_z_order, 0);
+
+        // The rect of the candidate should be in render pass space, which is an
+        // arbitrary space. Combining with the render pass to root transform
+        // results in a rect in root space. The transform is defined above as an
+        // x translation of -1.
+        EXPECT_EQ(overlay_data.promoted_overlays[0].display_rect,
+                  gfx::RectF(-1, 0, 16, 256));
+
+        if (frame == 0) {
+          // On the first frame, the damage rect should be unchanged since the
+          // overlays are being processed for the first time.
+          EXPECT_EQ(overlay_data.damage_rect, output_rect);
+        } else {
+          // On subsequent frames, the video rect should be subtracted from
+          // the damage rect. The x coordinate is 15 instead of 16 because of
+          // the root_to_transform_target. The surface_damage_rect_list damages
+          // are in root space, while the damage_rect output is in render pass
+          // space.
+          EXPECT_EQ(overlay_data.damage_rect, gfx::Rect(15, 0, 240, 256));
+        }
+      } else {
+        // All other render passes do not have overlays.
+        EXPECT_TRUE(overlay_data.promoted_overlays.empty());
+
+        // With no overlays, the damage should be unchanged since there are no
+        // overlays to subtract.
+        EXPECT_EQ(overlay_data.damage_rect, output_rect);
+      }
+    }
+  }
+}
+
+// Tests processing overlays/underlays on multiple render passes per frame, with
+// each render pass having an overlay. This exceeds the maximum allowed number
+// of overlays, so all overlays should be rejected.
+TEST_P(DCLayerOverlayTest, MultipleRenderPassesExceedsOverlayAllowance) {
+  const gfx::Rect output_rect = {0, 0, 256, 256};
+  const size_t num_render_passes = 3;
+  InitializeOverlayProcessor(num_render_passes - 1);
+  for (size_t frame = 1; frame <= 3; frame++) {
+    AggregatedRenderPassList
+        render_passes;  // Used to keep render passes alive.
+    DCLayerOverlayProcessor::RenderPassOverlayDataMap
+        render_pass_overlay_data_map;
+
+    OverlayProcessorInterface::FilterOperationsMap render_pass_filters;
+    OverlayProcessorInterface::FilterOperationsMap render_pass_backdrop_filters;
+    SurfaceDamageRectList surface_damage_rect_list;
+
+    // Create 3 render passes that all have a video overlay candidate. Start
+    // at the frame number so that we switch up the render pass IDs to verify
+    // that render passes that do not exist are not kept in
+    // |DCLayerOverlayProcessor::previous_frame_render_pass_states_|.
+    for (size_t id = frame; id < num_render_passes + frame; id++) {
+      auto pass = CreateRenderPass(AggregatedRenderPassId{id});
+      pass->transform_to_root_target = gfx::Transform::MakeTranslation(id, 0);
+      pass->shared_quad_state_list.back()->overlay_damage_index = id - 1;
+
+      gfx::Rect video_rect_in_root_space =
+          gfx::Rect(0, 0, id * 16, pass->output_rect.height());
+
+      gfx::Rect video_rect_in_render_pass_space =
+          pass->transform_to_root_target
+              .InverseMapRect(video_rect_in_root_space)
+              .value();
+      auto* video_quad = CreateFullscreenCandidateYUVVideoQuad(
+          resource_provider_.get(), child_resource_provider_.get(),
+          child_provider_.get(), pass->shared_quad_state_list.back(),
+          pass.get());
+      video_quad->rect = video_rect_in_render_pass_space;
+      video_quad->visible_rect = video_rect_in_render_pass_space;
+
+      surface_damage_rect_list.emplace_back(video_rect_in_root_space);
+      render_pass_overlay_data_map[pass.get()].damage_rect = output_rect;
+      render_passes.emplace_back(std::move(pass));
+    }
+
+    surface_damage_rect_list.emplace_back(0, 0, 256, 256);
+
+    overlay_processor_->ProcessOnDCLayerOverlayProcessorForTesting(
+        resource_provider_.get(), render_pass_filters,
+        render_pass_backdrop_filters, std::move(surface_damage_rect_list),
+        false /*is_video_capture_enabled*/,
+        false
+        /*is_page_fullscreen_mode*/,
+        render_pass_overlay_data_map);
+
+    // Verify that the previous frame states contain only 3 render passes and
+    // that they have the IDs that we set them to.
+    EXPECT_EQ(3U, overlay_processor_->get_previous_frame_render_pass_count());
+    std::vector<AggregatedRenderPassId> previous_frame_render_pass_ids =
+        overlay_processor_->get_previous_frame_render_pass_ids();
+    std::sort(previous_frame_render_pass_ids.begin(),
+              previous_frame_render_pass_ids.end());
+    for (size_t id = frame; id < num_render_passes + frame; id++) {
+      EXPECT_EQ(id, previous_frame_render_pass_ids[id - frame].value());
+    }
+
+    for (auto& [render_pass, overlay_data] : render_pass_overlay_data_map) {
+      LOG(INFO) << "frame " << frame << " render pass " << render_pass->id
+                << " damage rect : " << overlay_data.damage_rect.ToString();
+      LOG(INFO) << "frame " << frame << " render pass " << render_pass->id
+                << " number of overlays: "
+                << overlay_data.promoted_overlays.size();
+
+      // Since there is more than one overlay, all overlays should be rejected.
+      EXPECT_EQ(overlay_data.promoted_overlays.size(), 0u);
+
+      // With no overlays, the damage should be unchanged since there are no
+      // overlays to subtract.
+      EXPECT_EQ(overlay_data.damage_rect, output_rect);
     }
   }
 }

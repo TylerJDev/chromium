@@ -278,9 +278,10 @@ public class CustomTabTabPersistencePolicy implements TabPersistencePolicy {
         ThreadUtils.assertOnUiThread();
 
         for (Activity activity : ApplicationStatus.getRunningActivities()) {
-            if (!(activity instanceof BaseCustomTabActivity)) continue;
-            getAllTabIdsForActivity((BaseCustomTabActivity) activity, liveTabIds);
-            liveTaskIds.add(activity.getTaskId());
+            if (activity instanceof BaseCustomTabActivity customActivity) {
+                getAllTabIdsForActivity(customActivity, liveTabIds);
+                liveTaskIds.add(customActivity.getTaskId());
+            }
         }
     }
 
@@ -414,5 +415,12 @@ public class CustomTabTabPersistencePolicy implements TabPersistencePolicy {
                 sCleanupTask = null;
             }
         }
+    }
+
+    @Override
+    public void getAllTabIds(Callback<SparseBooleanArray> tabIdsCallback) {
+        // This function is currently only used for PersistedTabData maintenance.
+        // PersistedTabData doesn't currently support Custom Tabs.
+        assert false : "Not currently supported for Custom Tabs";
     }
 }

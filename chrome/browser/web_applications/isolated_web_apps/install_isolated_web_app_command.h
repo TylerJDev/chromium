@@ -29,6 +29,7 @@
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/webapps/browser/install_result_code.h"
 #include "components/webapps/browser/installable/installable_logging.h"
+#include "components/webapps/common/web_app_id.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
 
@@ -48,7 +49,11 @@ class WebAppUrlLoader;
 
 enum class WebAppUrlLoaderResult;
 
-struct InstallIsolatedWebAppCommandSuccess {};
+struct InstallIsolatedWebAppCommandSuccess {
+  explicit InstallIsolatedWebAppCommandSuccess(base::Version installed_version)
+      : installed_version(std::move(installed_version)) {}
+  base::Version installed_version;
+};
 struct InstallIsolatedWebAppCommandError {
   std::string message;
 
@@ -165,12 +170,13 @@ class InstallIsolatedWebAppCommand : public WebAppCommandTemplate<AppLock> {
       WebAppInstallInfo install_info);
 
   void FinalizeInstall(WebAppInstallInfo info);
-  void OnFinalizeInstall(const AppId& unused_app_id,
+  void OnFinalizeInstall(const webapps::AppId& unused_app_id,
                          webapps::InstallResultCode install_result_code,
                          OsHooksErrors unused_os_hooks_errors);
 
   SEQUENCE_CHECKER(sequence_checker_);
 
+  base::Value::Dict debug_log_;
   std::unique_ptr<AppLockDescription> lock_description_;
   std::unique_ptr<AppLock> lock_;
 
@@ -179,6 +185,9 @@ class InstallIsolatedWebAppCommand : public WebAppCommandTemplate<AppLock> {
   IsolatedWebAppUrlInfo url_info_;
   IsolatedWebAppLocation location_;
   absl::optional<base::Version> expected_version_;
+  // Populated as part of the installation process based on the version read
+  // from the Web Bundle.
+  base::Version actual_version_;
 
   std::unique_ptr<content::WebContents> web_contents_;
 

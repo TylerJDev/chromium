@@ -20,10 +20,12 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/media/cast_remoting_connector.h"
 #include "chrome/browser/media/router/discovery/access_code/access_code_cast_feature.h"
+#include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/tab_sharing/tab_sharing_ui.h"
 #include "components/access_code_cast/common/access_code_cast_metrics.h"
 #include "components/mirroring/browser/single_client_video_capture_host.h"
@@ -73,10 +75,6 @@ using media::mojom::AudioInputStreamObserver;
 
 // Default resolution constraint.
 constexpr gfx::Size kMaxResolution(1920, 1080);
-
-// The delay before calling PauseVideoCaptureHostOnIO. This allows us to ensure
-// UI elements are hidden before we stop sending frames.
-constexpr base::TimeDelta kPauseDelay = base::Milliseconds(500);
 
 // Command line arguments that should be passed to the mirroring service.
 static const char* kPassthroughSwitches[]{
@@ -147,14 +145,21 @@ content::WebContents* GetContents(
                                        id.main_render_frame_id));
 }
 
+// Gets the profile associated with `web_contents`, if it exists. Else, gets the
+// last used profile if it is loaded.
+Profile* GetProfileOrLastUsedProfile(content::WebContents* web_contents) {
+  if (web_contents) {
+    return Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  }
+  return ProfileManager::GetLastUsedProfileIfLoaded();
+}
+
 // Returns true if this user is allowed to use Access Codes & QR codes to
 // discover cast devices, and AccessCodeCastTabSwitchingUI flag is enabled.
 bool IsAccessCodeCastTabSwitchingUIEnabled(
     const content::WebContentsMediaCaptureId& id) {
-  auto* web_contents = GetContents(id);
-  return web_contents &&
-         media_router::IsAccessCodeCastTabSwitchingUiEnabled(
-             Profile::FromBrowserContext(web_contents->GetBrowserContext()));
+  Profile* profile = GetProfileOrLastUsedProfile(GetContents(id));
+  return media_router::IsAccessCodeCastTabSwitchingUiEnabled(profile);
 }
 
 // Returns the size of the primary display in pixels, or absl::nullopt if it
@@ -622,11 +627,10 @@ void CastMirroringServiceHost::OpenOffscreenTab(
 void CastMirroringServiceHost::Pause(base::OnceClosure on_paused_callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (video_capture_host_) {
-    content::GetIOThreadTaskRunner({})->PostDelayedTask(
+    content::GetIOThreadTaskRunner({})->PostTask(
         FROM_HERE,
         base::BindOnce(&PauseVideoCaptureHostOnIO, video_capture_host_->impl(),
-                       ignored_token_, std::move(on_paused_callback)),
-        kPauseDelay);
+                       ignored_token_, std::move(on_paused_callback)));
   }
 }
 

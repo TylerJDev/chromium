@@ -140,7 +140,7 @@ class NearbyPresenceCredentialManagerImplTest : public testing::Test {
 
     // Simulate the credentials being generated in the NP library.
     fake_nearby_presence_.SetGenerateCredentialsResponse(
-        BuildSharedCredentials(), mojom::StatusCode::kOk);
+        BuildSharedCredentials(), mojo_base::mojom::AbslStatusCode::kOk);
   }
 
   void TearDown() override {
@@ -243,17 +243,17 @@ class NearbyPresenceCredentialManagerImplTest : public testing::Test {
       // Simulate the local device credentials stored in the NP library and
       // retrieved successfully.
       fake_nearby_presence_.SetLocalSharedCredentialsResponse(
-          BuildSharedCredentials(), mojom::StatusCode::kOk);
+          BuildSharedCredentials(), mojo_base::mojom::AbslStatusCode::kOk);
     } else {
       // Simulate the local device credentials retrieved unsuccessfully.
       fake_nearby_presence_.SetLocalSharedCredentialsResponse(
-          /*credentials=*/{}, mojom::StatusCode::kFailure);
+          /*credentials=*/{}, mojo_base::mojom::AbslStatusCode::kUnknown);
     }
 
     // Simulate the remote device credentials being successfully set in the
     // NP library.
     fake_nearby_presence_.SetUpdateRemoteCredentialsStatus(
-        mojom::StatusCode::kOk);
+        mojo_base::mojom::AbslStatusCode::kOk);
 
     base::RunLoop update_local_device_metadata_run_loop;
     fake_nearby_presence_.SetUpdateLocalDeviceMetadataCallback(
@@ -389,12 +389,28 @@ TEST_F(NearbyPresenceCredentialManagerImplTest, RegistrationSuccess) {
   EXPECT_TRUE(credential_manager_);
   EXPECT_TRUE(credential_manager_->IsLocalDeviceRegistered());
   histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeRegistration.Result",
+      /*bucket: kSuccess=*/0, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration.FailureReason",
+      0);
+  histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration."
+      "AttemptsNeededCount",
+      /*bucket: attempt_count=*/1, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration."
+      "ServerRequestDuration",
+      1);
+  histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Upload.Result", /*bucket: success=*/true, 1);
   histogram_tester_.ExpectTotalCount(
       "Nearby.Presence.Credentials.Upload.FailureReason", 0);
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Upload.AttemptsNeededCount",
       /*bucket: attempt_count=*/1, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 1);
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.Result", /*bucket: success=*/true,
       1);
@@ -403,6 +419,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest, RegistrationSuccess) {
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.AttemptsNeededCount",
       /*bucket: attempt_count=*/1, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Download.ServerRequestDuration", 1);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest, ServerRegistrationTimeout) {
@@ -423,6 +441,17 @@ TEST_F(NearbyPresenceCredentialManagerImplTest, ServerRegistrationTimeout) {
 
   create_credential_manager_run_loop.Run();
   EXPECT_FALSE(credential_manager_);
+  histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeRegistration.Result",
+      /*bucket: kRegistrationWithServerFailure=*/1, 1);
+  histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration.FailureReason",
+      /*bucket: NearbyHttpResult::kTimeout*/
+      ash::nearby::NearbyHttpResult::kTimeout, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration."
+      "ServerRequestDuration",
+      0);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest, ServerRegistrationFailure) {
@@ -444,12 +473,23 @@ TEST_F(NearbyPresenceCredentialManagerImplTest, ServerRegistrationFailure) {
 
   create_credential_manager_run_loop.Run();
   EXPECT_FALSE(credential_manager_);
+  histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeRegistration.Result",
+      /*bucket: kRegistrationWithServerFailure=*/1, 1);
+  histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration.FailureReason",
+      /*bucket: NearbyHttpResult::kHttpErrorInternalServerError*/
+      ash::nearby::NearbyHttpResult::kHttpErrorInternalServerError, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration."
+      "ServerRequestDuration",
+      0);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest, CredentialGenerationFailure) {
   // Simulate the credentials being failed to be generated in the NP library.
   fake_nearby_presence_.SetGenerateCredentialsResponse(
-      {}, mojom::StatusCode::kFailure);
+      {}, mojo_base::mojom::AbslStatusCode::kFailedPrecondition);
 
   base::RunLoop create_credential_manager_run_loop;
   CreateCredentialManager(create_credential_manager_run_loop.QuitClosure());
@@ -458,6 +498,13 @@ TEST_F(NearbyPresenceCredentialManagerImplTest, CredentialGenerationFailure) {
 
   create_credential_manager_run_loop.Run();
   EXPECT_FALSE(credential_manager_);
+  histogram_tester_.ExpectBucketCount(
+      "Nearby.Presence.Credentials.FirstTimeRegistration.Result",
+      /*bucket: kLocalCredentialGenerationFailure=*/2, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.FirstTimeServerRegistration."
+      "ServerRequestDuration",
+      1);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest,
@@ -498,6 +545,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
       "Nearby.Presence.Credentials.Upload.FailureReason",
       /*bucket: NearbyHttpResult::kTimeout*/
       ash::nearby::NearbyHttpResult::kTimeout, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 0);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest, UploadCredentialsFailure) {
@@ -538,6 +587,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest, UploadCredentialsFailure) {
       "Nearby.Presence.Credentials.Upload.FailureReason",
       /*bucket: NearbyHttpResult::kHttpErrorInternalServerError*/
       ash::nearby::NearbyHttpResult::kHttpErrorInternalServerError, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 0);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest, DownloadCredentialsFailure) {
@@ -634,7 +685,7 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
   // Simulate the remote device credentials being unsuccessfully set in the
   // NP library.
   fake_nearby_presence_.SetUpdateRemoteCredentialsStatus(
-      mojom::StatusCode::kFailure);
+      mojo_base::mojom::AbslStatusCode::kDeadlineExceeded);
 
   base::RunLoop create_credential_manager_run_loop;
   CreateCredentialManager(create_credential_manager_run_loop.QuitClosure());
@@ -691,6 +742,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Upload.AttemptsNeededCount",
       /*bucket: attempt_count=*/1, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 1);
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.Result", /*bucket: success=*/true,
       1);
@@ -699,6 +752,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.AttemptsNeededCount",
       /*bucket: attempt_count=*/1, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Download.ServerRequestDuration", 1);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest,
@@ -738,6 +793,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
       "Nearby.Presence.Credentials.Upload.FailureReason", 0);
   histogram_tester_.ExpectTotalCount(
       "Nearby.Presence.Credentials.Upload.AttemptsNeededCount", 0);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 0);
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.Result", /*bucket: success=*/true,
       1);
@@ -746,6 +803,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.AttemptsNeededCount",
       /*bucket: attempt_count=*/1, 1);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Download.ServerRequestDuration", 1);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest,
@@ -799,6 +858,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
       ash::nearby::NearbyHttpResult::kHttpErrorInternalServerError, 1);
   histogram_tester_.ExpectTotalCount(
       "Nearby.Presence.Credentials.Upload.AttemptsNeededCount", 0);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 0);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest,
@@ -834,6 +895,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
       ash::nearby::NearbyHttpResult::kHttpErrorInternalServerError, 1);
   histogram_tester_.ExpectTotalCount(
       "Nearby.Presence.Credentials.Download.AttemptsNeededCount", 0);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Download.ServerRequestDuration", 0);
 }
 
 TEST_F(NearbyPresenceCredentialManagerImplTest,
@@ -856,7 +919,7 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
   // Simulate the remote device credentials being unsuccessfully set in the
   // NP library.
   fake_nearby_presence_.SetUpdateRemoteCredentialsStatus(
-      mojom::StatusCode::kFailure);
+      mojo_base::mojom::AbslStatusCode::kUnknown);
 
   // Simulate a successful download of credentials from the server.
   TriggerDownloadRemoteCredentialSuccess();
@@ -893,6 +956,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
       "Nearby.Presence.Credentials.Upload.FailureReason", 0);
   histogram_tester_.ExpectTotalCount(
       "Nearby.Presence.Credentials.Upload.AttemptsNeededCount", 0);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Upload.ServerRequestDuration", 0);
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.Result", /*bucket: success=*/true,
       7);
@@ -901,6 +966,8 @@ TEST_F(NearbyPresenceCredentialManagerImplTest,
   histogram_tester_.ExpectBucketCount(
       "Nearby.Presence.Credentials.Download.AttemptsNeededCount",
       /*bucket: attempt_count=*/1, 7);
+  histogram_tester_.ExpectTotalCount(
+      "Nearby.Presence.Credentials.Download.ServerRequestDuration", 7);
 }
 
 }  // namespace ash::nearby::presence

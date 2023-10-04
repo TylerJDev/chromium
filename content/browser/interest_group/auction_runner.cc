@@ -362,9 +362,7 @@ void AuctionRunner::ResolvedAuctionAdResponsePromise(
 }
 
 void AuctionRunner::ResolvedAdditionalBids(
-    blink::mojom::AuctionAdConfigAuctionIdPtr auction_id,
-    std::vector<blink::mojom::AuctionAdConfigAdditionalBidPtr>
-        additional_bids) {
+    blink::mojom::AuctionAdConfigAuctionIdPtr auction_id) {
   if (!base::FeatureList::IsEnabled(
           blink::features::kFledgeNegativeTargeting)) {
     mojo::ReportBadMessage(
@@ -390,11 +388,12 @@ void AuctionRunner::ResolvedAdditionalBids(
 
   config->expects_additional_bids = false;
 
+  AdAuctionPageData* page_data = get_page_data_callback_.Run();
   if (auction_id->is_main_auction()) {
-    auction_.NotifyAdditionalBidsConfig(std::move(additional_bids));
+    auction_.NotifyAdditionalBidsConfig(page_data);
   } else {
     auction_.NotifyComponentAdditionalBidsConfig(
-        auction_id->get_component_auction(), std::move(additional_bids));
+        auction_id->get_component_auction(), page_data);
   }
 
   NotifyPromiseResolved(auction_id.get(), config);
@@ -479,7 +478,7 @@ AuctionRunner::AuctionRunner(
       client_security_state_(std::move(client_security_state)),
       url_loader_factory_(std::move(url_loader_factory)),
       is_interest_group_api_allowed_callback_(
-          is_interest_group_api_allowed_callback),
+          std::move(is_interest_group_api_allowed_callback)),
       get_page_data_callback_(get_page_data_callback),
       attestation_callback_(attestation_callback),
       abort_receiver_(this, std::move(abort_receiver)),
@@ -497,6 +496,7 @@ AuctionRunner::AuctionRunner(
                interest_group_manager,
                &auction_metrics_recorder_,
                /*auction_start_time=*/base::Time::Now(),
+               is_interest_group_api_allowed_callback_,
                std::move(log_private_aggregation_requests_callback)) {}
 
 void AuctionRunner::StartAuction() {
@@ -506,7 +506,6 @@ void AuctionRunner::StartAuction() {
     return;
   }
   auction_.StartLoadInterestGroupsPhase(
-      is_interest_group_api_allowed_callback_,
       base::BindOnce(&AuctionRunner::OnLoadInterestGroupsComplete,
                      base::Unretained(this)));
 }
@@ -545,6 +544,10 @@ void AuctionRunner::OnBidsGeneratedAndScored(bool success) {
 
   auto errors = auction_.TakeErrors();
 
+  // Need this before `CreateReporter()` since the reporter takes over
+  // AuctonConfig.
+  auto requested_ad_size = auction_.RequestedAdSize();
+
   std::unique_ptr<InterestGroupAuctionReporter> reporter =
       auction_.CreateReporter(
           browser_context_, private_aggregation_manager_, url_loader_factory_,
@@ -555,7 +558,7 @@ void AuctionRunner::OnBidsGeneratedAndScored(bool success) {
   state_ = State::kSucceeded;
   std::move(callback_).Run(
       this, /*manually_aborted=*/false, std::move(winning_group_key),
-      auction_.RequestedAdSize(), auction_.top_bid()->bid->ad_descriptor,
+      std::move(requested_ad_size), auction_.top_bid()->bid->ad_descriptor,
       auction_.top_bid()->bid->ad_component_descriptors, std::move(errors),
       std::move(reporter));
 }
@@ -584,6 +587,9 @@ void AuctionRunner::OnServerResponseAuctionComplete(base::TimeTicks start_time,
   UpdateInterestGroupsPostAuction();
 
   auto errors = auction_.TakeErrors();
+  // Need this before `CreateReporter()` since the reporter takes over
+  // AuctonConfig.
+  auto requested_ad_size = auction_.RequestedAdSize();
 
   std::unique_ptr<InterestGroupAuctionReporter> reporter =
       auction_.CreateReporter(
@@ -598,7 +604,7 @@ void AuctionRunner::OnServerResponseAuctionComplete(base::TimeTicks start_time,
   state_ = State::kSucceeded;
   std::move(callback_).Run(
       this, /*manually_aborted=*/false, std::move(winning_group_key),
-      auction_.RequestedAdSize(), auction_.top_bid()->bid->ad_descriptor,
+      std::move(requested_ad_size), auction_.top_bid()->bid->ad_descriptor,
       auction_.top_bid()->bid->ad_component_descriptors, std::move(errors),
       std::move(reporter));
 }

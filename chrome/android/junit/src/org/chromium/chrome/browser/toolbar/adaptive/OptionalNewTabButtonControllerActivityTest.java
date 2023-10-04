@@ -29,14 +29,12 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 
-import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.chrome.browser.ChromeRobolectricTestRunner;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.app.tabmodel.TabWindowManagerSingleton;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.tab.MockTab;
-import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabCreatorManager;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.toolbar.ButtonDataProvider;
@@ -47,9 +45,7 @@ import org.chromium.chrome.test.util.browser.Features.EnableFeatures;
 import org.chromium.chrome.test.util.browser.tabmodel.MockTabCreatorManager;
 import org.chromium.chrome.test.util.browser.tabmodel.MockTabModelSelector;
 import org.chromium.content_public.browser.WebContents;
-import org.chromium.ui.display.DisplayAndroidManager;
 import org.chromium.url.JUnitTestGURLs;
-import org.chromium.url.ShadowGURL;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -58,9 +54,8 @@ import java.util.NoSuchElementException;
  * Robolectric tests running {@link OptionalNewTabButtonController} in a {@link
  * ChromeTabbedActivity}.
  */
-@Config(shadows = {OptionalNewTabButtonControllerActivityTest.ShadowDelegate.class,
-                ShadowGURL.class})
-@RunWith(BaseRobolectricTestRunner.class)
+@Config(shadows = {OptionalNewTabButtonControllerActivityTest.ShadowDelegate.class})
+@RunWith(ChromeRobolectricTestRunner.class)
 @EnableFeatures({ChromeFeatureList.ADAPTIVE_BUTTON_IN_TOP_TOOLBAR_CUSTOMIZATION_V2})
 @CommandLineFlags.
 Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE, ChromeSwitches.DISABLE_NATIVE_INITIALIZATION,
@@ -104,7 +99,6 @@ public class OptionalNewTabButtonControllerActivityTest {
     @Before
     public void setUp() {
         // Avoid leaking state from the previous test.
-        resetStaticState();
         AdaptiveToolbarStatePredictor.setToolbarStateForTesting(
                 AdaptiveToolbarButtonVariant.NEW_TAB);
         // To bypass a direct call to AdaptiveToolbarStatePredictor#readFromSegmentationPlatform for
@@ -113,7 +107,7 @@ public class OptionalNewTabButtonControllerActivityTest {
                 new Pair<>(true, AdaptiveToolbarButtonVariant.NEW_TAB));
         MockTabModelSelector tabModelSelector = new MockTabModelSelector(
                 /*tabCount=*/1, /*incognitoTabCount=*/0, (id, incognito) -> {
-                    Tab tab = spy(MockTab.createAndInitialize(id, incognito));
+                    MockTab tab = spy(MockTab.createAndInitialize(id, incognito));
                     doReturn(Mockito.mock(WebContents.class)).when(tab).getWebContents();
                     return tab;
                 });
@@ -121,8 +115,8 @@ public class OptionalNewTabButtonControllerActivityTest {
         assertNull(ShadowDelegate.sTabCreatorManager);
         ShadowDelegate.sTabModelSelector = tabModelSelector;
         ShadowDelegate.sTabCreatorManager = new MockTabCreatorManager(tabModelSelector);
-        mTab = (MockTab) tabModelSelector.getCurrentTab();
-        mTab.setGurlOverrideForTesting(JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL));
+        mTab = tabModelSelector.getCurrentTab();
+        mTab.setGurlOverrideForTesting(JUnitTestGURLs.EXAMPLE_URL);
 
         mActivityScenario = ActivityScenario.launch(ChromeTabbedActivity.class);
         mActivityScenario.onActivity(activity -> {
@@ -134,16 +128,7 @@ public class OptionalNewTabButtonControllerActivityTest {
     @After
     public void tearDown() {
         mActivityScenario.close();
-        resetStaticState();
-    }
-
-    private static void resetStaticState() {
         ShadowDelegate.reset();
-        // DisplayAndroidManager will reuse the Display between tests. This can cause
-        // AsyncInitializationActivity#applyOverrides to set incorrect smallestWidth.
-        DisplayAndroidManager.resetInstanceForTesting();
-        TabWindowManagerSingleton.resetTabModelSelectorFactoryForTesting();
-        AdaptiveToolbarStatePredictor.setToolbarStateForTesting(null);
     }
 
     @Test
@@ -196,10 +181,10 @@ public class OptionalNewTabButtonControllerActivityTest {
         mActivityScenario.onActivity(activity -> {
             assertTrue(mAdaptiveButtonController.get(mTab).canShow());
 
-            mTab.setGurlOverrideForTesting(JUnitTestGURLs.getGURL(JUnitTestGURLs.NTP_URL));
+            mTab.setGurlOverrideForTesting(JUnitTestGURLs.NTP_URL);
             assertFalse(mAdaptiveButtonController.get(mTab).canShow());
 
-            mTab.setGurlOverrideForTesting(JUnitTestGURLs.getGURL(JUnitTestGURLs.EXAMPLE_URL));
+            mTab.setGurlOverrideForTesting(JUnitTestGURLs.EXAMPLE_URL);
             assertTrue(mAdaptiveButtonController.get(mTab).canShow());
         });
     }

@@ -55,7 +55,7 @@ float GetCurrentZoomFactor(PrefService* prefs) {
 
 std::string RetrieveChoobeSubtitle(PrefService* prefs) {
   int percentage = std::round(GetCurrentZoomFactor(prefs) * 100);
-  return base::NumberToString(percentage) + "%";
+  return base::NumberToString(percentage);
 }
 
 bool ShouldShowChoobeReturnButton(ChoobeFlowController* controller) {
@@ -235,9 +235,7 @@ void DisplaySizeScreen::OnUserAction(const base::Value::List& args) {
                           args[1].GetDouble());
     ReportScreenCompletedToChoobe(
         WizardController::default_controller()->choobe_flow_controller());
-    LoginDisplayHost::default_host()
-        ->GetWizardContext()
-        ->return_to_choobe_screen = true;
+    context()->return_to_choobe_screen = true;
     exit_callback_.Run(Result::kNext);
     return;
   }

@@ -11,7 +11,6 @@ import org.chromium.chrome.browser.bookmarks.BookmarkUiPrefs.BookmarkRowDisplayP
 import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowProperties.ImageVisibility;
 import org.chromium.components.bookmarks.BookmarkId;
 import org.chromium.components.bookmarks.BookmarkItem;
-import org.chromium.components.bookmarks.BookmarkType;
 import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.commerce.core.ShoppingService;
 import org.chromium.components.power_bookmarks.PowerBookmarkMeta;
@@ -61,11 +60,15 @@ public class ImprovedBookmarkRowCoordinator {
             propertyModel.set(ImprovedBookmarkRowProperties.TITLE, bookmarkItem.getTitle());
         }
 
-        // Description
-        propertyModel.set(
-                ImprovedBookmarkRowProperties.DESCRIPTION_VISIBLE, !bookmarkItem.isFolder());
-        // Only bookmarks have descriptions.
-        if (!bookmarkItem.isFolder()) {
+        // Description and content description.
+        boolean isFolder = bookmarkItem.isFolder();
+        propertyModel.set(ImprovedBookmarkRowProperties.DESCRIPTION_VISIBLE, !isFolder);
+        if (isFolder) {
+            propertyModel.set(ImprovedBookmarkRowProperties.CONTENT_DESCRIPTION,
+                    String.format("%s %s", bookmarkItem.getTitle(),
+                            BookmarkUtils.getFolderDescriptionText(
+                                    bookmarkId, mBookmarkModel, mContext.getResources())));
+        } else {
             propertyModel.set(
                     ImprovedBookmarkRowProperties.DESCRIPTION, bookmarkItem.getUrlForDisplay());
         }
@@ -77,7 +80,7 @@ public class ImprovedBookmarkRowCoordinator {
         propertyModel.set(ImprovedBookmarkRowProperties.EDITABLE, bookmarkItem.isEditable());
 
         // Shopping coordinator setup.
-        if (meta != null && meta.hasShoppingSpecifics()) {
+        if (PowerBookmarkUtils.isShoppingListItem(meta)) {
             ShoppingAccessoryCoordinator shoppingAccessoryCoordinator =
                     new ShoppingAccessoryCoordinator(
                             mContext, meta.getShoppingSpecifics(), mShoppingService);
@@ -103,26 +106,26 @@ public class ImprovedBookmarkRowCoordinator {
                 item.isFolder() && useImages ? ImageVisibility.FOLDER_DRAWABLE
                                              : ImageVisibility.DRAWABLE);
 
-        @BookmarkType
-        int type = item.getId().getType();
         if (item.isFolder()) {
             if (displayPref == BookmarkRowDisplayPref.VISUAL) {
                 propertyModel.set(ImprovedBookmarkRowProperties.FOLDER_COORDINATOR,
                         new ImprovedBookmarkFolderViewCoordinator(
                                 mContext, mBookmarkImageFetcher, mBookmarkModel));
                 propertyModel.get(ImprovedBookmarkRowProperties.FOLDER_COORDINATOR)
-                        .setBookmarkId(item.getId());
+                        .setBookmarkItem(item);
             }
             propertyModel.set(ImprovedBookmarkRowProperties.START_AREA_BACKGROUND_COLOR,
                     BookmarkUtils.getIconBackground(mContext, mBookmarkModel, item));
             propertyModel.set(ImprovedBookmarkRowProperties.START_ICON_TINT,
                     BookmarkUtils.getIconTint(mContext, mBookmarkModel, item));
             propertyModel.set(ImprovedBookmarkRowProperties.START_ICON_DRAWABLE,
-                    BookmarkUtils.getFolderIcon(mContext, type, displayPref));
+                    BookmarkUtils.getFolderIcon(
+                            mContext, item.getId(), mBookmarkModel, displayPref));
         } else {
             propertyModel.set(ImprovedBookmarkRowProperties.START_AREA_BACKGROUND_COLOR,
                     ChromeColors.getSurfaceColor(mContext, R.dimen.default_elevation_1));
             propertyModel.set(ImprovedBookmarkRowProperties.START_ICON_TINT, null);
+            propertyModel.set(ImprovedBookmarkRowProperties.START_ICON_DRAWABLE, null);
             if (useImages) {
                 mBookmarkImageFetcher.fetchImageForBookmarkWithFaviconFallback(item, image -> {
                     propertyModel.set(ImprovedBookmarkRowProperties.START_ICON_DRAWABLE, image);

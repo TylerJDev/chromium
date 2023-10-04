@@ -40,9 +40,16 @@ public final class Website implements WebsiteEntry {
      */
     private Map<Integer, PermissionInfo> mPermissionInfos = new HashMap<>();
 
+    /**
+     * Indexed by ContentSettingsType. For Permissions like the StorageAccess API that are keyed by
+     * requesting and embedding site.
+     */
+    private Map<Integer, List<ContentSettingException>> mEmbeddedPermissionInfos = new HashMap<>();
+
     private LocalStorageInfo mLocalStorageInfo;
     private FPSCookieInfo mFPSCookieInfo;
     private CookiesInfo mCookiesInfo;
+    private double mZoomFactor;
     private final List<StorageInfo> mStorageInfo = new ArrayList<>();
     private final List<SharedDictionaryInfo> mSharedDictionaryInfo = new ArrayList<>();
 
@@ -157,6 +164,17 @@ public final class Website implements WebsiteEntry {
      */
     public void setPermissionInfo(PermissionInfo info) {
         mPermissionInfos.put(info.getContentSettingsType(), info);
+    }
+
+    public Map<Integer, List<ContentSettingException>> getEmbeddedPermissions() {
+        return mEmbeddedPermissionInfos;
+    }
+
+    public void addEmbeddedPermission(ContentSettingException info) {
+        assert !info.getSecondaryPattern().equals("*");
+        var list = mEmbeddedPermissionInfos.computeIfAbsent(
+                info.getContentSettingType(), k -> new ArrayList<>());
+        list.add(info);
     }
 
     public Collection<ContentSettingException> getContentSettingExceptions() {
@@ -285,6 +303,15 @@ public final class Website implements WebsiteEntry {
         mStorageInfo.add(info);
     }
 
+    /**
+     * Sets the zoom factor for the website (see PageZoomUtils.java).
+     *
+     * @param zoomFactor The zoom factor to set the website to.
+     */
+    public void setZoomFactor(double zoomFactor) {
+        mZoomFactor = zoomFactor;
+    }
+
     public List<StorageInfo> getStorageInfo() {
         return new ArrayList<StorageInfo>(mStorageInfo);
     }
@@ -367,6 +394,10 @@ public final class Website implements WebsiteEntry {
         for (StorageInfo info : mStorageInfo) usage += info.getSize();
         for (SharedDictionaryInfo info : mSharedDictionaryInfo) usage += info.getSize();
         return usage;
+    }
+
+    public double getZoomFactor() {
+        return mZoomFactor;
     }
 
     @Override

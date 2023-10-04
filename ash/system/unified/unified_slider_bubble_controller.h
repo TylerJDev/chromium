@@ -32,7 +32,9 @@ class ASH_EXPORT UnifiedSliderBubbleController
   enum SliderType {
     SLIDER_TYPE_VOLUME = 0,
     SLIDER_TYPE_DISPLAY_BRIGHTNESS,
-    SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE,
+    // TODO(b/298085976): Keyboard backlight sliders will migrate to toasts.
+    SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_OFF,
+    SLIDER_TYPE_KEYBOARD_BACKLIGHT_TOGGLE_ON,
     SLIDER_TYPE_KEYBOARD_BRIGHTNESS,
     SLIDER_TYPE_MIC
   };
@@ -62,6 +64,7 @@ class ASH_EXPORT UnifiedSliderBubbleController
   void BubbleViewDestroyed() override;
   void OnMouseEnteredView() override;
   void OnMouseExitedView() override;
+  void HideBubble(const TrayBubbleView* bubble_view) override;
 
   // Displays the microphone mute toast.
   void DisplayMicrophoneMuteToast();

@@ -56,11 +56,12 @@ class FakeWebContentsManager::FakeUrlLoader : public WebAppUrlLoader {
       : manager_(manager) {}
   ~FakeUrlLoader() override = default;
 
-  void LoadUrl(const GURL& url,
+  void LoadUrl(content::NavigationController::LoadURLParams load_url_params,
                content::WebContents* web_contents,
                UrlComparison url_comparison,
                ResultCallback callback) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    const GURL& url = load_url_params.url;
     CHECK(manager_);
     DVLOG(1) << "FakeWebContentsManager::FakeUrlLoader::LoadUrl " << url.spec();
     auto page_it = manager_->page_state_.find(url);
@@ -87,6 +88,12 @@ class FakeWebContentsManager::FakeUrlLoader : public WebAppUrlLoader {
     }
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), page.url_load_result));
+  }
+
+  void PrepareForLoad(content::WebContents* web_contents,
+                      base::OnceClosure callback) override {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, std::move(callback));
   }
 
  private:
@@ -373,7 +380,7 @@ void FakeWebContentsManager::DeleteIconState(const GURL& icon_url) {
   icon_state_.erase(icon_url);
 }
 
-AppId FakeWebContentsManager::CreateBasicInstallPageState(
+webapps::AppId FakeWebContentsManager::CreateBasicInstallPageState(
     const GURL& install_url,
     const GURL& manifest_url,
     const GURL& start_url,

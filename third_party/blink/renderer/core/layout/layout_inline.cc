@@ -269,13 +269,23 @@ LayoutRect LayoutInline::LocalCaretRect(
   if (extra_width_to_end_of_line)
     *extra_width_to_end_of_line = LayoutUnit();
 
+  LayoutUnit inline_size = RuntimeEnabledFeatures::EmptyCaretInVerticalEnabled()
+                               ? BorderAndPaddingLogicalWidth()
+                               : BorderAndPaddingWidth();
   LayoutRect caret_rect =
-      LocalCaretRectForEmptyElement(BorderAndPaddingWidth(), LayoutUnit());
+      LocalCaretRectForEmptyElement(inline_size, LayoutUnit());
 
   if (IsInLayoutNGInlineFormattingContext()) {
     NGInlineCursor cursor;
     cursor.MoveTo(*this);
     if (cursor) {
+      if (RuntimeEnabledFeatures::EmptyCaretInVerticalEnabled()) {
+        caret_rect = WritingModeConverter(
+                         {StyleRef().GetWritingMode(), TextDirection::kLtr},
+                         cursor.CurrentItem()->Size())
+                         .ToPhysical(LogicalRect(caret_rect))
+                         .ToLayoutRect();
+      }
       caret_rect.MoveBy(
           cursor.Current().OffsetInContainerFragment().ToLayoutPoint());
     }
@@ -602,7 +612,7 @@ bool LayoutInline::NodeAtPoint(HitTestResult& result,
     // Fragment traversal requires a target fragment to be specified,
     // unless there's only one.
     DCHECK(!CanTraversePhysicalFragments() || target_fragment_idx >= 0 ||
-           !FirstFragment().NextFragment());
+           !IsFragmented());
     // Convert from inline fragment index to container fragment index, as the
     // inline may not start in the first fragment generated for the inline
     // formatting context.
@@ -722,7 +732,7 @@ PhysicalRect LayoutInline::LinesVisualOverflowBoundingBox() const {
 
 PhysicalRect LayoutInline::VisualRectInDocument(VisualRectFlags flags) const {
   NOT_DESTROYED();
-  PhysicalRect rect = PhysicalVisualOverflowRect();
+  PhysicalRect rect = VisualOverflowRect();
   MapToVisualRectInAncestorSpace(View(), rect, flags);
   return rect;
 }
@@ -735,7 +745,7 @@ PhysicalRect LayoutInline::LocalVisualRectIgnoringVisibility() const {
   return PhysicalRect();
 }
 
-PhysicalRect LayoutInline::PhysicalVisualOverflowRect() const {
+PhysicalRect LayoutInline::VisualOverflowRect() const {
   NOT_DESTROYED();
   PhysicalRect overflow_rect = LinesVisualOverflowBoundingBox();
   const ComputedStyle& style = StyleRef();

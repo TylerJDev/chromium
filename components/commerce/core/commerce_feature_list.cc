@@ -50,6 +50,7 @@ const CountryLocaleMap& GetAllowedCountryToLocaleMap() {
     map[&kPriceInsightsRegionLaunched] = {{"us", {"en-us"}}};
     map[&kShowDiscountOnNavigationRegionLaunched] = {{"us", {"en-us"}}};
     map[&kShoppingPageTypesRegionLaunched] = {{"us", {"en-us"}}};
+    map[&kParcelTrackingRegionLaunched] = {{"us", {"en-us"}}};
 
     return map;
   }());
@@ -112,6 +113,10 @@ namespace switches {
 // Specifies whether ChromeCart is enabled.
 const char kEnableChromeCart[] = "enable-chrome-cart";
 }  // namespace switches
+
+BASE_FEATURE(kCommerceAllowChipExpansion,
+             "CommerceAllowChipExpansion",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kCommerceAllowLocalImages,
              "CommerceAllowLocalImages",
@@ -182,10 +187,12 @@ const char kPriceInsightsShowFeedbackParam[] = "price-insights-show-feedback";
 const base::FeatureParam<bool> kPriceInsightsShowFeedback{
     &commerce::kPriceInsights, kPriceInsightsShowFeedbackParam, false};
 
-// Discount on navigation
-BASE_FEATURE(kShowDiscountOnNavigation,
-             "ShowDiscountOnNavigation",
+// Tonal colors for the expanded state of the price tracking chip on desktop.
+BASE_FEATURE(kPriceTrackingIconColors,
+             "PriceTrackingIconColors",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Discount on navigation
 BASE_FEATURE(kShowDiscountOnNavigationRegionLaunched,
              "ShowDiscountOnNavigationRegionLaunched",
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -213,6 +220,10 @@ BASE_FEATURE(kShoppingListTrackByDefault,
              "ShoppingListTrackByDefault",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kShoppingListWAARestrictionRemoval,
+             "ShoppingListWAARestrictionRemoval",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kShoppingPDPMetrics,
              "ShoppingPDPMetrics",
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -227,7 +238,7 @@ BASE_FEATURE(kShoppingPageTypes,
 
 BASE_FEATURE(kShoppingPageTypesRegionLaunched,
              "ShoppingPageTypesRegionLaunched",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kRetailCoupons, "RetailCoupons", base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -254,6 +265,13 @@ BASE_FEATURE(kCodeBasedRBD, "CodeBasedRBD", base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kChromeCartDomBasedHeuristics,
              "ChromeCartDomBasedHeuristics",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kParcelTracking,
+             "ParcelTracking",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE(kParcelTrackingRegionLaunched,
+             "ParcelTrackingRegionLaunched",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Params for Discount Consent V2 in the NTP Cart module.

@@ -6,7 +6,6 @@ ContextualPageActionsModelTest.*
 CrossDeviceUserModelTest.*
 CustomInputProcessorTest.*
 DatabaseMaintenanceImplTest.*
-DefaultModelManagerTest.*
 DeviceSwitcherModelTest.*
 DeviceSwitcherResultDispatcherTest.*
 DeviceTierSegmentTest.*
@@ -54,12 +53,14 @@ SegmentationPlatformServiceImplMultiClientTest.*
 SegmentationPlatformServiceImplTest.*
 SegmentationResultPrefsTest.*
 SegmentationUkmHelperTest.*
+SelectionUtilsTest.*
 ServiceProxyImplTest.*
 ShoppingUserModelTest.*
 SignalDatabaseImplTest.*
 SignalFilterProcessorTest.*
 SignalKeyInternalTest.*
 SignalKeyTest.*
+SignalSampleViewTest.*
 SignalStorageConfigTest.*
 SqlFeatureProcessorTest.*
 StatsTest.*
@@ -76,5 +77,6 @@ UkmDatabaseBackendTest.*
 UkmMetricsTableTest.*
 UkmObserverTest.*
 UkmUrlTableTest.*
+UmaFeatureProcessorTest.*
 UrlSignalHandlerTest.*
 UserActionSignalHandlerTest.*

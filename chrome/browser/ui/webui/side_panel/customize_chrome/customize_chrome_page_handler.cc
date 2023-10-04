@@ -5,10 +5,16 @@
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
 
 #include "base/containers/contains.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
+#include "chrome/browser/browser_features.h"
 #include "chrome/browser/new_tab_page/modules/new_tab_page_modules.h"
 #include "chrome/browser/new_tab_page/new_tab_page_util.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/background/ntp_background_service_factory.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -23,11 +29,17 @@
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_section.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
+#include "components/optimization_guide/core/optimization_guide_util.h"
+#include "components/optimization_guide/proto/model_execution.pb.h"
+#include "components/optimization_guide/proto/wallpaper_search.pb.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
+#include "components/search/ntp_features.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/extension.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
@@ -210,6 +222,51 @@ void CustomizeChromePageHandler::RemoveBackgroundImage() {
   }
 }
 
+void CustomizeChromePageHandler::WallpaperSearchCallback(
+    SearchWallpaperCallback callback,
+    optimization_guide::OptimizationGuideModelExecutionResult result) {
+  if (!result.has_value()) {
+    return;
+  }
+  auto response = optimization_guide::ParsedAnyMetadata<
+      chrome_intelligence_modelexecution_proto::WallpaperSearchResponse>(
+      result.value());
+  if (response->images_size() < 1) {
+    return;
+  }
+  if (ntp_custom_background_service_) {
+    ntp_custom_background_service_->SelectLocalBackgroundImage(
+        response->images(0));
+  }
+  std::move(callback).Run(true);
+}
+
+void CustomizeChromePageHandler::SearchWallpaper(
+    const std::string& query,
+    SearchWallpaperCallback callback) {
+  callback =
+      mojo::WrapCallbackWithDefaultInvokeIfNotRun(std::move(callback), false);
+  if (!base::FeatureList::IsEnabled(
+          ntp_features::kCustomizeChromeWallpaperSearch) ||
+      !base::FeatureList::IsEnabled(
+          optimization_guide::features::kOptimizationGuideModelExecution)) {
+    return;
+  }
+  auto* optimization_guide_keyed_service =
+      OptimizationGuideKeyedServiceFactory::GetForProfile(profile_);
+  if (!optimization_guide_keyed_service) {
+    return;
+  }
+  chrome_intelligence_modelexecution_proto::WallpaperSearchRequest request;
+  request.set_query(query);
+  optimization_guide_keyed_service->ExecuteModel(
+      optimization_guide::proto::ModelExecutionFeature::
+          MODEL_EXECUTION_FEATURE_WALLPAPER_SEARCH,
+      request,
+      base::BindOnce(&CustomizeChromePageHandler::WallpaperSearchCallback,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
+}
+
 void CustomizeChromePageHandler::UpdateTheme() {
   if (ntp_custom_background_service_) {
     ntp_custom_background_service_->RefreshBackgroundIfNeeded();
@@ -363,6 +420,14 @@ void CustomizeChromePageHandler::UpdateScrollToSection() {
 
 void CustomizeChromePageHandler::LogEvent(NTPLoggingEventType event) {
   switch (event) {
+    case NTP_BACKGROUND_UPLOAD_CANCEL:
+      base::RecordAction(base::UserMetricsAction(
+          "NTPRicherPicker.Backgrounds.UploadCanceled"));
+      break;
+    case NTP_BACKGROUND_UPLOAD_DONE:
+      base::RecordAction(base::UserMetricsAction(
+          "NTPRicherPicker.Backgrounds.UploadConfirmed"));
+      break;
     case NTP_CUSTOMIZE_SHORTCUT_TOGGLE_TYPE:
       UMA_HISTOGRAM_ENUMERATION(
           "NewTabPage.CustomizeShortcutAction",
@@ -493,12 +558,13 @@ void CustomizeChromePageHandler::FileSelected(const base::FilePath& path,
     ntp_custom_background_service_->SelectLocalBackgroundImage(path);
   }
   select_file_dialog_ = nullptr;
+  LogEvent(NTP_BACKGROUND_UPLOAD_DONE);
   std::move(choose_local_custom_background_callback_).Run(true);
 }
 
 void CustomizeChromePageHandler::FileSelectionCanceled(void* params) {
   DCHECK(choose_local_custom_background_callback_);
   select_file_dialog_ = nullptr;
-
+  LogEvent(NTP_BACKGROUND_UPLOAD_CANCEL);
   std::move(choose_local_custom_background_callback_).Run(false);
 }

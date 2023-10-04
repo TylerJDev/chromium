@@ -339,9 +339,17 @@ PrerenderManager::StartPrerenderBookmark(
   // Create new PreloadingAttempt and pass all the values corresponding to
   // this prerendering attempt for Prerender.
   content::PreloadingAttempt* preloading_attempt =
-      preloading_data->AddPreloadingAttempt(predictor,
-                                            content::PreloadingType::kPrerender,
-                                            std::move(same_url_matcher));
+      preloading_data->AddPreloadingAttempt(
+          predictor, content::PreloadingType::kPrerender,
+          std::move(same_url_matcher),
+          web_contents()->GetPrimaryMainFrame()->GetPageUkmSourceId());
+
+  // BookmarkBar only allow https protocol.
+  if (!prerendering_url.SchemeIs("https")) {
+    preloading_attempt->SetEligibility(
+        content::PreloadingEligibility::kHttpsOnly);
+    return nullptr;
+  }
 
   if (bookmark_prerender_handle_) {
     if (bookmark_prerender_handle_->GetInitialPrerenderingUrl() ==
@@ -378,9 +386,10 @@ PrerenderManager::StartPrerenderNewTabPage(
       content::PreloadingData::GetSameURLMatcher(prerendering_url);
 
   content::PreloadingAttempt* preloading_attempt =
-      preloading_data->AddPreloadingAttempt(predictor,
-                                            content::PreloadingType::kPrerender,
-                                            std::move(same_url_matcher));
+      preloading_data->AddPreloadingAttempt(
+          predictor, content::PreloadingType::kPrerender,
+          std::move(same_url_matcher),
+          web_contents()->GetPrimaryMainFrame()->GetPageUkmSourceId());
 
   // New Tab Page only allow https protocol.
   if (!prerendering_url.SchemeIs("https")) {
@@ -406,12 +415,23 @@ PrerenderManager::StartPrerenderNewTabPage(
   new_tab_page_prerender_handle_ = web_contents()->StartPrerendering(
       prerendering_url, content::PrerenderTriggerType::kEmbedder,
       prerender_utils::kNewTabPageMetricSuffix,
-      ui::PageTransitionFromInt(ui::PAGE_TRANSITION_LINK),
+      ui::PageTransitionFromInt(ui::PAGE_TRANSITION_AUTO_BOOKMARK),
       content::PreloadingHoldbackStatus::kUnspecified, preloading_attempt);
 
   return new_tab_page_prerender_handle_
              ? new_tab_page_prerender_handle_->GetWeakPtr()
              : nullptr;
+}
+
+void PrerenderManager::StopPrerenderNewTabPage(
+    base::WeakPtr<content::PrerenderHandle> prerender_handle) {
+  if (!prerender_handle) {
+    return;
+  }
+  CHECK(new_tab_page_prerender_handle_);
+  CHECK_EQ(prerender_handle.get(),
+           new_tab_page_prerender_handle_->GetWeakPtr().get());
+  new_tab_page_prerender_handle_.reset();
 }
 
 void PrerenderManager::StopPrerenderBookmark(
@@ -480,7 +500,8 @@ void PrerenderManager::StartPrerenderSearchSuggestion(
   content::PreloadingAttempt* preloading_attempt =
       preloading_data->AddPreloadingAttempt(
           chrome_preloading_predictor::kDefaultSearchEngine,
-          content::PreloadingType::kPrerender, same_url_matcher);
+          content::PreloadingType::kPrerender, same_url_matcher,
+          web_contents()->GetPrimaryMainFrame()->GetPageUkmSourceId());
 
   // If the caller does not want to prerender a new result, this does not need
   // to do anything.

@@ -36,6 +36,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/extensions/api/tab_groups/tab_groups_constants.h"
 #include "chrome/browser/extensions/api/tab_groups/tab_groups_util.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
@@ -51,6 +52,8 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/resource_coordinator/tab_manager.h"
+#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
+#include "chrome/browser/safe_browsing/extension_telemetry/tabs_api_signal.h"
 #include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/ui/apps/chrome_app_delegate.h"
 #include "chrome/browser/ui/browser.h"
@@ -76,6 +79,7 @@
 #include "chrome/common/url_constants.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -435,6 +439,30 @@ bool WindowBoundsIntersectDisplays(const gfx::Rect& bounds) {
     intersect_area += display_bounds.size().GetArea();
   }
   return intersect_area >= (bounds.size().GetArea() / 2);
+}
+
+void NotifyExtensionTelemetry(Profile* profile,
+                              const Extension* extension,
+                              safe_browsing::TabsApiInfo::ApiMethod api_method,
+                              const std::string& current_url,
+                              const std::string& new_url) {
+  // Ignore API calls that are not invoked by extensions.
+  if (!extension) {
+    return;
+  }
+
+  auto* extension_telemetry_service =
+      safe_browsing::ExtensionTelemetryService::Get(profile);
+
+  if (!extension_telemetry_service || !extension_telemetry_service->enabled() ||
+      !base::FeatureList::IsEnabled(
+          safe_browsing::kExtensionTelemetryTabsApiSignal)) {
+    return;
+  }
+
+  auto tabs_api_signal = std::make_unique<safe_browsing::TabsApiSignal>(
+      extension->id(), api_method, current_url, new_url);
+  extension_telemetry_service->AddSignal(std::move(tabs_api_signal));
 }
 
 }  // namespace
@@ -1298,6 +1326,11 @@ ExtensionFunction::ResponseAction TabsCreateFunction::Run() {
       return Error(result.error());
     }
 
+    NotifyExtensionTelemetry(Profile::FromBrowserContext(browser_context()),
+                             extension(), safe_browsing::TabsApiInfo::CREATE,
+                             /*current_url=*/std::string(),
+                             options.url.value_or(std::string()));
+
     // Return data about the newly created tab.
     return has_callback() ? WithArguments(std::move(*result)) : NoArguments();
   }());
@@ -1497,6 +1530,12 @@ ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
 
   web_contents_ = contents;
 
+  // Check that the tab is not part of a SavedTabGroup.
+  if (contents && ExtensionTabUtil::TabIsInSavedTabGroup(
+                      web_contents_, browser->tab_strip_model())) {
+    return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
+  }
+
   // TODO(rafaelw): handle setting remaining tab properties:
   // -title
   // -favIconUrl
@@ -1509,8 +1548,18 @@ ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
       return RespondNow(Error(ErrorUtils::FormatErrorMessage(
           tabs_constants::kURLsNotAllowedInIncognitoError, updated_url)));
     }
+
+    // Get last committed or pending URL.
+    std::string current_url = contents->GetVisibleURL().is_valid()
+                                  ? contents->GetVisibleURL().spec()
+                                  : std::string();
+
     if (!UpdateURL(updated_url, tab_id, &error))
       return RespondNow(Error(std::move(error)));
+
+    NotifyExtensionTelemetry(Profile::FromBrowserContext(browser_context()),
+                             extension(), safe_browsing::TabsApiInfo::UPDATE,
+                             current_url, updated_url);
   }
 
   bool active = false;
@@ -1661,6 +1710,23 @@ ExtensionFunction::ResponseAction TabsMoveFunction::Run() {
   if (params->tab_ids.as_integers) {
     std::vector<int>& tab_ids = *params->tab_ids.as_integers;
     num_tabs = tab_ids.size();
+
+    for (int tab_id : tab_ids) {
+      // Check that the tab is not part of a SavedTabGroup.
+      content::WebContents* web_contents = nullptr;
+      TabStripModel* tab_strip_model = nullptr;
+      GetTabById(tab_id, browser_context(), include_incognito_information(),
+                 nullptr, &tab_strip_model, &web_contents, nullptr, &error);
+      if (!error.empty()) {
+        return RespondNow(Error(std::move(error)));
+      }
+      if (web_contents && ExtensionTabUtil::TabIsInSavedTabGroup(
+                              web_contents, tab_strip_model)) {
+        return RespondNow(
+            Error(tabs_constants::kSavedTabGroupNotEditableError));
+      }
+    }
+
     for (int tab_id : tab_ids) {
       if (!MoveTab(tab_id, &new_index, tab_values, window_id, &error))
         return RespondNow(Error(std::move(error)));
@@ -1781,28 +1847,37 @@ ExtensionFunction::ResponseAction TabsReloadFunction::Run() {
     bypass_cache = *params->reload_properties->bypass_cache;
   }
 
-  content::WebContents* web_contents = nullptr;
-
   // If |tab_id| is specified, look for it. Otherwise default to selected tab
   // in the current window.
-  Browser* current_browser =
-      ChromeExtensionFunctionDetails(this).GetCurrentBrowser();
+
+  Browser* browser = nullptr;
+  content::WebContents* web_contents = nullptr;
   if (!params->tab_id) {
+    Browser* current_browser =
+        ChromeExtensionFunctionDetails(this).GetCurrentBrowser();
+
     if (!current_browser)
       return RespondNow(Error(tabs_constants::kNoCurrentWindowError));
 
     if (!ExtensionTabUtil::GetDefaultTab(current_browser, &web_contents,
                                          nullptr))
       return RespondNow(Error(kUnknownErrorDoNotUse));
+
+    browser = current_browser;
   } else {
     int tab_id = *params->tab_id;
 
-    Browser* browser = nullptr;
     std::string error;
     if (!GetTabById(tab_id, browser_context(), include_incognito_information(),
                     &browser, nullptr, &web_contents, nullptr, &error)) {
       return RespondNow(Error(std::move(error)));
     }
+  }
+
+  // Prevent Reloading if the tab is in a savedTabGroup.
+  if (web_contents && ExtensionTabUtil::TabIsInSavedTabGroup(
+                          web_contents, browser->tab_strip_model())) {
+    return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
   }
 
   web_contents->GetController().Reload(
@@ -1858,6 +1933,15 @@ bool TabsRemoveFunction::RemoveTab(int tab_id, std::string* error) {
     *error = tabs_constants::kTabStripNotEditableError;
     return false;
   }
+
+  // Get last committed or pending URL.
+  std::string current_url = contents->GetVisibleURL().is_valid()
+                                ? contents->GetVisibleURL().spec()
+                                : std::string();
+  NotifyExtensionTelemetry(Profile::FromBrowserContext(browser_context()),
+                           extension(), safe_browsing::TabsApiInfo::REMOVE,
+                           current_url, /*new_url=*/std::string());
+
   // The tab might not immediately close after calling Close() below, so we
   // should wait until WebContentsDestroyed is called before responding.
   web_contents_destroyed_observers_.push_back(
@@ -1967,6 +2051,12 @@ ExtensionFunction::ResponseAction TabsGroupFunction::Run() {
                     &tab_browser, nullptr, &web_contents, nullptr, &error)) {
       return RespondNow(Error(std::move(error)));
     }
+
+    if (web_contents && ExtensionTabUtil::TabIsInSavedTabGroup(
+                            web_contents, tab_browser->tab_strip_model())) {
+      return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
+    }
+
     tab_browsers.push_back(tab_browser);
 
     if (DevToolsWindow::IsDevToolsWindow(web_contents))
@@ -2038,6 +2128,19 @@ ExtensionFunction::ResponseAction TabsUngroupFunction::Run() {
 
   std::string error;
   for (int tab_id : tab_ids) {
+    // Check that the tab is not part of a SavedTabGroup.
+    content::WebContents* web_contents = nullptr;
+    TabStripModel* tab_strip_model = nullptr;
+    GetTabById(tab_id, browser_context(), include_incognito_information(),
+               nullptr, &tab_strip_model, &web_contents, nullptr, &error);
+    if (!error.empty()) {
+      return RespondNow(Error(std::move(error)));
+    }
+    if (web_contents &&
+        ExtensionTabUtil::TabIsInSavedTabGroup(web_contents, tab_strip_model)) {
+      return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
+    }
+
     if (!UngroupTab(tab_id, &error))
       return RespondNow(Error(std::move(error)));
   }
@@ -2637,23 +2740,29 @@ ExtensionFunction::ResponseAction TabsDiscardFunction::Run() {
     if (DevToolsWindow::IsDevToolsWindow(contents))
       return RespondNow(Error(tabs_constants::kNotAllowedForDevToolsError));
   }
+
+  // Check that the tab is not in a SavedTabGroup.
+  if (contents && ExtensionTabUtil::TabIsInSavedTabGroup(contents, nullptr)) {
+    return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
+  }
+
   // Discard the tab.
   contents =
       g_browser_process->GetTabManager()->DiscardTabByExtension(contents);
 
   // Create the Tab object and return it in case of success.
-  if (contents) {
-    return RespondNow(
-        ArgumentList(tabs::Discard::Results::Create(CreateTabObjectHelper(
-            contents, extension(), source_context_type(), nullptr, -1))));
+  if (!contents) {
+    // Return appropriate error message otherwise.
+    return RespondNow(Error(params->tab_id
+                                ? ErrorUtils::FormatErrorMessage(
+                                      tabs_constants::kCannotDiscardTab,
+                                      base::NumberToString(*params->tab_id))
+                                : tabs_constants::kCannotFindTabToDiscard));
   }
 
-  // Return appropriate error message otherwise.
-  return RespondNow(Error(params->tab_id
-                              ? ErrorUtils::FormatErrorMessage(
-                                    tabs_constants::kCannotDiscardTab,
-                                    base::NumberToString(*params->tab_id))
-                              : tabs_constants::kCannotFindTabToDiscard));
+  return RespondNow(
+      ArgumentList(tabs::Discard::Results::Create(CreateTabObjectHelper(
+          contents, extension(), source_context_type(), nullptr, -1))));
 }
 
 TabsDiscardFunction::TabsDiscardFunction() {}
@@ -2675,6 +2784,11 @@ ExtensionFunction::ResponseAction TabsGoForwardFunction::Run() {
   if (!controller.CanGoForward())
     return RespondNow(Error(tabs_constants::kNotFoundNextPageError));
 
+  // Check that the tab is not in a SavedTabGroup.
+  if (ExtensionTabUtil::TabIsInSavedTabGroup(web_contents, nullptr)) {
+    return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
+  }
+
   controller.GoForward();
   return RespondNow(NoArguments());
 }
@@ -2694,6 +2808,11 @@ ExtensionFunction::ResponseAction TabsGoBackFunction::Run() {
   NavigationController& controller = web_contents->GetController();
   if (!controller.CanGoBack())
     return RespondNow(Error(tabs_constants::kNotFoundNextPageError));
+
+  // Check that the tab is not part of a saved tab group.
+  if (ExtensionTabUtil::TabIsInSavedTabGroup(web_contents, nullptr)) {
+    return RespondNow(Error(tabs_constants::kSavedTabGroupNotEditableError));
+  }
 
   controller.GoBack();
   return RespondNow(NoArguments());

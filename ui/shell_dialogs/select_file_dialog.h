@@ -55,6 +55,8 @@ class SHELL_DIALOGS_EXPORT SelectFileDialog
   // An interface implemented by a Listener object wishing to know about the
   // the result of the Select File/Folder action. These callbacks must be
   // re-entrant.
+  // WARNING: See note about the lifetime of the Listener in the
+  // SelectFileDialog::Create() comments below.
   class SHELL_DIALOGS_EXPORT Listener {
    public:
     // Notifies the Listener that a file/folder selection has been made. The
@@ -108,8 +110,8 @@ class SHELL_DIALOGS_EXPORT SelectFileDialog
   // platform-native file selection dialog. |policy| is an optional class that
   // can prevent showing a dialog.
   //
-  // The lifetime of the Listener is not managed by this class. The calling
-  // code should call always ListenerDestroyed() (on the base class
+  // WARNING: The lifetime of the Listener is not managed by this class.
+  // The calling code should call always ListenerDestroyed() (on the base class
   // BaseShellDialog) when the listener is destroyed since the SelectFileDialog
   // is refcounted and uses a background thread.
   static scoped_refptr<SelectFileDialog> Create(
@@ -234,7 +236,7 @@ class SHELL_DIALOGS_EXPORT SelectFileDialog
       const GURL* caller) = 0;
 
   // The listener to be notified of selection completion.
-  raw_ptr<Listener, AcrossTasksDanglingUntriaged> listener_;
+  raw_ptr<Listener> listener_;
 
  private:
   // Tests if the file selection dialog can be displayed by

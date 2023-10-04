@@ -13,9 +13,9 @@
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list_observer_bridge.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
-#import "ios/chrome/browser/snapshots/snapshot_browser_agent.h"
-#import "ios/chrome/browser/snapshots/snapshot_cache.h"
-#import "ios/chrome/browser/snapshots/snapshot_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_browser_agent.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_storage.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
 #import "ios/chrome/browser/ui/fullscreen/animated_scoped_fullscreen_disabler.h"
 #import "ios/chrome/browser/ui/fullscreen/fullscreen_controller.h"
 #import "ios/chrome/browser/ui/fullscreen/scoped_fullscreen_disabler.h"
@@ -108,7 +108,7 @@ const NSUInteger kIpadGreySwipeTabCount = 8;
 // Load grey snapshots for the next `kIpadGreySwipeTabCount` tabs in
 // `direction`.
 - (void)createGreyCache:(UISwipeGestureRecognizerDirection)direction;
-// Tell snapshot cache to clear grey cache.
+// Tell snapshot storage to clear grey cache.
 - (void)deleteGreyCache;
 // Handle tab side swipe for iPad.  Change tabs according to swipe distance.
 - (void)handleiPadTabSwipe:(SideSwipeGestureRecognizer*)gesture;
@@ -207,8 +207,8 @@ const NSUInteger kIpadGreySwipeTabCount = 8;
 - (void)createGreyCache:(UISwipeGestureRecognizerDirection)direction {
   NSInteger dx = (direction == UISwipeGestureRecognizerDirectionLeft) ? -1 : 1;
   NSInteger index = _startingTabIndex + dx;
-  NSMutableArray* sessionIDs =
-      [NSMutableArray arrayWithCapacity:kIpadGreySwipeTabCount];
+  std::vector<SnapshotID> snapshotIDs;
+  snapshotIDs.reserve(kIpadGreySwipeTabCount);
   for (NSUInteger count = 0; count < kIpadGreySwipeTabCount; count++) {
     // Wrap around edges.
     if (index >= self.webStateList->count()) {
@@ -225,15 +225,16 @@ const NSUInteger kIpadGreySwipeTabCount = 8;
     web::WebState* webState = self.webStateList->GetWebStateAt(index);
     if (webState && PagePlaceholderTabHelper::FromWebState(webState)
                         ->will_add_placeholder_for_next_navigation()) {
-      [sessionIDs addObject:webState->GetStableIdentifier()];
+      snapshotIDs.push_back(
+          SnapshotTabHelper::FromWebState(webState)->GetSnapshotID());
     }
     index = index + dx;
   }
-  [_snapshotBrowserAgent->snapshot_cache() createGreyCache:sessionIDs];
+  [_snapshotBrowserAgent->snapshot_storage() createGreyCache:snapshotIDs];
 }
 
 - (void)deleteGreyCache {
-  [_snapshotBrowserAgent->snapshot_cache() removeGreyCache];
+  [_snapshotBrowserAgent->snapshot_storage() removeGreyCache];
 }
 
 - (void)handlePan:(SideSwipeGestureRecognizer*)gesture {

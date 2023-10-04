@@ -22,6 +22,7 @@
 #include "third_party/blink/renderer/core/frame/browser_controls.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/core/layout/layout_text.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/layout_view_transition_root.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -382,6 +383,9 @@ ViewTransitionStyleTracker::ViewTransitionStyleTracker(
     element_data->mix_blend_mode =
         static_cast<BlendMode>(transition_state_element.mix_blend_mode);
 
+    element_data->color_scheme =
+        String::FromUTF8(transition_state_element.color_scheme);
+
     CHECK_LE(transition_state_element.text_orientation,
              static_cast<std::underlying_type_t<ETextOrientation>>(
                  ETextOrientation::kMaxEnumValue));
@@ -585,7 +589,16 @@ bool ViewTransitionStyleTracker::FlattenAndVerifyElements(
       StringBuilder message;
       message.Append(kDuplicateTagBaseError);
       message.Append(name);
-      AddConsoleError(message.ReleaseString());
+
+      Vector<DOMNodeId> nodes;
+      // Find all the elements with this name.
+      for (auto& name_finder : flat_list) {
+        if (name_finder->name == name) {
+          nodes.push_back(name_finder->element->GetDomNodeId());
+        }
+      }
+
+      AddConsoleError(message.ReleaseString(), nodes);
       return false;
     }
 
@@ -995,6 +1008,7 @@ bool ViewTransitionStyleTracker::RunPostPrePaintSteps() {
     WritingMode writing_mode;
     BlendMode blend_mode;
     ETextOrientation text_orientation;
+    String color_scheme;
     absl::optional<gfx::RectF> captured_rect_in_layout_space;
 
     if (element_data->target_element->IsDocumentElement()) {
@@ -1007,11 +1021,18 @@ bool ViewTransitionStyleTracker::RunPostPrePaintSteps() {
       writing_mode = layout_object->StyleRef().GetWritingMode();
       blend_mode = layout_object->StyleRef().GetBlendMode();
       text_orientation = layout_object->StyleRef().GetTextOrientation();
+      const CSSValue* color_scheme_value =
+          CSSProperty::Get(CSSPropertyID::kColorScheme)
+              .CSSValueFromComputedStyle(layout_object->StyleRef(),
+                                         /*layout_object=*/nullptr,
+                                         /*allow_visited_style=*/false);
+      color_scheme =
+          color_scheme_value ? color_scheme_value->CssText() : "normal";
     } else {
       ComputeLiveElementGeometry(
           max_capture_size, *layout_object, container_properties,
           visual_overflow_rect_in_layout_space, writing_mode, blend_mode,
-          text_orientation, captured_rect_in_layout_space);
+          text_orientation, color_scheme, captured_rect_in_layout_space);
     }
 
     if (!element_data->container_properties.empty() &&
@@ -1021,6 +1042,7 @@ bool ViewTransitionStyleTracker::RunPostPrePaintSteps() {
         writing_mode == element_data->container_writing_mode &&
         blend_mode == element_data->mix_blend_mode &&
         text_orientation == element_data->text_orientation &&
+        color_scheme == element_data->color_scheme &&
         captured_rect_in_layout_space ==
             element_data->captured_rect_in_layout_space) {
       continue;
@@ -1044,6 +1066,7 @@ bool ViewTransitionStyleTracker::RunPostPrePaintSteps() {
     element_data->container_writing_mode = writing_mode;
     element_data->mix_blend_mode = blend_mode;
     element_data->text_orientation = text_orientation;
+    element_data->color_scheme = color_scheme;
     element_data->captured_rect_in_layout_space = captured_rect_in_layout_space;
 
     PseudoId live_content_element = HasLiveNewContent()
@@ -1092,6 +1115,7 @@ void ViewTransitionStyleTracker::ComputeLiveElementGeometry(
     WritingMode& writing_mode,
     BlendMode& blend_mode,
     ETextOrientation& text_orientation,
+    String& color_scheme,
     absl::optional<gfx::RectF>& captured_rect_in_layout_space) const {
   DCHECK(!layout_object.IsLayoutView());
 
@@ -1105,22 +1129,18 @@ void ViewTransitionStyleTracker::ComputeLiveElementGeometry(
   auto snapshot_matrix_in_layout_space =
       ComputeViewportTransform(layout_object);
 
-  if (document_->GetLayoutView()
-          ->ShouldPlaceBlockDirectionScrollbarOnLogicalLeft()) {
-    // The SnapshotViewportRect offset below takes points from the fixed
-    // viewport into the snapshot viewport. However, the transform is
-    // currently into absolute coordinates; when the scrollbar appears on the
-    // left, the fixed viewport origin is actually at (15, 0) in absolute
-    // coordinates (assuming 15px scrollbars). Therefore we must first shift
-    // by the scrollbar width so we're in fixed viewport coordinates.
-    ScrollableArea& viewport = *document_->View()->LayoutViewport();
-    snapshot_matrix_in_layout_space.PostTranslate(
-        -viewport.VerticalScrollbarWidth(), 0);
-  }
+  // The FixedToSnapshot offset below takes points from the fixed
+  // viewport into the snapshot viewport. However, the transform is
+  // currently into frame coordinates; when a scrollbar (or gutter) appears on
+  // the left, the fixed viewport origin is actually at (15, 0) in frame
+  // coordinates (assuming 15px scrollbars). Therefore we must first shift
+  // by the scrollbar width so we're in fixed viewport coordinates.
+  gfx::Vector2d fixed_to_frame =
+      -document_->GetLayoutView()->OriginAdjustmentForScrollbars();
+  snapshot_matrix_in_layout_space.PostTranslate(fixed_to_frame);
 
   gfx::Vector2d snapshot_to_fixed_offset = -GetFixedToSnapshotRootOffset();
-  snapshot_matrix_in_layout_space.PostTranslate(snapshot_to_fixed_offset.x(),
-                                                snapshot_to_fixed_offset.y());
+  snapshot_matrix_in_layout_space.PostTranslate(snapshot_to_fixed_offset);
 
   auto snapshot_matrix_in_css_space = snapshot_matrix_in_layout_space;
   snapshot_matrix_in_css_space.Zoom(1.0 / device_pixel_ratio_);
@@ -1133,6 +1153,7 @@ void ViewTransitionStyleTracker::ComputeLiveElementGeometry(
     auto* resize_observer_entry = MakeGarbageCollected<ResizeObserverEntry>(
         To<Element>(layout_object.GetNode()));
     auto entry_size = resize_observer_entry->borderBoxSize()[0];
+    // ResizeObserver gives us CSS space pixels.
     border_box_size_in_css_space =
         layout_object.IsHorizontalWritingMode()
             ? PhysicalSize(LayoutUnit(entry_size->inlineSize()),
@@ -1142,6 +1163,9 @@ void ViewTransitionStyleTracker::ComputeLiveElementGeometry(
   } else if (auto* box_model = DynamicTo<LayoutBoxModelObject>(layout_object)) {
     border_box_size_in_css_space =
         PhysicalSize(box_model->BorderBoundingBox().size());
+    // Size BorderBoundingBox is in Layout space, we need to convert to CSS
+    // space.
+    border_box_size_in_css_space.Scale(1.f / device_pixel_ratio_);
   }
 
   // If the object's effective zoom differs from device_pixel_ratio, adjust
@@ -1173,6 +1197,12 @@ void ViewTransitionStyleTracker::ComputeLiveElementGeometry(
   writing_mode = layout_object.StyleRef().GetWritingMode();
   blend_mode = layout_object.StyleRef().GetBlendMode();
   text_orientation = layout_object.StyleRef().GetTextOrientation();
+  const CSSValue* color_scheme_value =
+      CSSProperty::Get(CSSPropertyID::kColorScheme)
+          .CSSValueFromComputedStyle(layout_object.StyleRef(),
+                                     /*layout_object=*/nullptr,
+                                     /*allow_visited_style=*/false);
+  color_scheme = color_scheme_value ? color_scheme_value->CssText() : "normal";
 
   container_properties = ContainerProperties(border_box_size_in_css_space,
                                              snapshot_matrix_in_css_space);
@@ -1382,19 +1412,18 @@ gfx::Outsets GetFixedToSnapshotViewportOutsets(Document& document) {
                   ->GetVirtualKeyboardResizeHeight();
   }
 
+  NGPhysicalBoxStrut scrollbar_strut =
+      document.GetLayoutView()->ComputeScrollbars();
   // A left-side scrollbar (i.e. in an RTL writing-mode) should overlay the
   // snapshot viewport as well. This cannot currently happen in Chrome but it
   // can in other browsers. Handle this case in the event
   // https://crbug.com/249860 is ever fixed.
-  LocalFrameView& view = *document.View();
-  if (document.GetLayoutView()
-          ->ShouldPlaceBlockDirectionScrollbarOnLogicalLeft()) {
-    left += view.LayoutViewport()->VerticalScrollbarWidth();
-  } else {
-    right += view.LayoutViewport()->VerticalScrollbarWidth();
-  }
-
-  bottom += view.LayoutViewport()->HorizontalScrollbarHeight();
+  // This includes outsets for scrollbar-gutter; both sides could include
+  // scrollbar space simultaneously.
+  left += scrollbar_strut.left.ToInt();
+  right += scrollbar_strut.right.ToInt();
+  bottom += scrollbar_strut.bottom.ToInt();
+  top += scrollbar_strut.top.ToInt();
 
   gfx::Outsets outsets;
   outsets.set_top(top);
@@ -1407,16 +1436,14 @@ gfx::Outsets GetFixedToSnapshotViewportOutsets(Document& document) {
 
 gfx::Rect ViewTransitionStyleTracker::GetSnapshotRootInFixedViewport() const {
   DCHECK(document_->GetLayoutView());
-  DCHECK(document_->View());
-  DCHECK(document_->GetFrame());
 
-  LocalFrameView& view = *document_->View();
+  LayoutView& layout_view = *document_->GetLayoutView();
 
-  // Start with the FrameView size, i.e. the position: fixed viewport, and
-  // expand the viewport by any insetting UI such as the mobile URL bar,
-  // virtual-keyboard, scrollbars, etc.
-  gfx::Rect snapshot_viewport_rect(
-      view.LayoutViewport()->ExcludeScrollbars(view.Size()));
+  // Start with the position: fixed viewport and expand it by any
+  // insetting UI such as the mobile URL bar, virtual-keyboard, scrollbars,
+  // etc.
+  gfx::Rect snapshot_viewport_rect(layout_view.ClientWidth().ToInt(),
+                                   layout_view.ClientHeight().ToInt());
   snapshot_viewport_rect.Outset(GetFixedToSnapshotViewportOutsets(*document_));
 
   return snapshot_viewport_rect;
@@ -1435,18 +1462,16 @@ gfx::Vector2d ViewTransitionStyleTracker::GetFrameToSnapshotRootOffset() const {
   DCHECK(document_->View());
 
   gfx::Outsets outsets = GetFixedToSnapshotViewportOutsets(*document_);
-  int left = outsets.left();
-  int top = outsets.top();
+  gfx::Vector2d fixed_to_snapshot(-outsets.left(), -outsets.top());
 
-  // Left-side vertical scrollbars are placed within the frame but offset the
-  // fixed viewport so remove its width from the fixed-to-snapshot offset to
-  // get the frame-to-snapshot offset.
-  if (document_->GetLayoutView()
-          ->ShouldPlaceBlockDirectionScrollbarOnLogicalLeft()) {
-    left -= document_->View()->LayoutViewport()->VerticalScrollbarWidth();
-  }
+  // A scrollbar (or gutter) on the left or top is placed within the frame but
+  // offsets the fixed viewport so remove its size from the fixed-to-snapshot
+  // offset to get the frame-to-snapshot offset.
+  gfx::Vector2d frame_to_snapshot =
+      fixed_to_snapshot +
+      document_->GetLayoutView()->OriginAdjustmentForScrollbars();
 
-  return gfx::Vector2d(-left, -top);
+  return frame_to_snapshot;
 }
 
 ViewTransitionState ViewTransitionStyleTracker::GetViewTransitionState() const {
@@ -1485,6 +1510,7 @@ ViewTransitionState ViewTransitionStyleTracker::GetViewTransitionState() const {
         element_data->mix_blend_mode);
     element.text_orientation = static_cast<decltype(element.text_orientation)>(
         element_data->text_orientation);
+    element.color_scheme = element_data->color_scheme.Utf8();
   }
 
   // TODO(khushalsagar): Need to send offsets to retain positioning of
@@ -1578,7 +1604,7 @@ CSSStyleSheet& ViewTransitionStyleTracker::UAStyleSheet() {
     builder.AddContainerStyles(
         view_transition_name, element_data->container_properties.back(),
         element_data->container_writing_mode, element_data->mix_blend_mode,
-        element_data->text_orientation);
+        element_data->text_orientation, element_data->color_scheme);
 
     // This sets up the styles to animate the pseudo-elements as described in
     // https://drafts.csswg.org/css-view-transitions-1/#setup-transition-pseudo-elements-algorithm.
@@ -1722,6 +1748,18 @@ PhysicalRect ViewTransitionStyleTracker::ComputeVisualOverflowRect(
         PhysicalRect mapped_overflow_rect =
             ComputeVisualOverflowRect(*child_box, ancestor_for_recursion);
         result.Unite(mapped_overflow_rect);
+      } else if (auto* child_text = DynamicTo<LayoutText>(child)) {
+        const bool child_visible =
+            child_text->StyleRef().Visibility() == EVisibility::kVisible ||
+            !child_text->VisualRectRespectsVisibility();
+        if (!child_visible) {
+          continue;
+        }
+
+        auto overflow_rect = child_text->VisualOverflowRect();
+        child_text->MapToVisualRectInAncestorSpace(
+            ancestor_for_recursion, overflow_rect, kUseGeometryMapper);
+        result.Unite(overflow_rect);
       }
     }
   }
@@ -1829,7 +1867,7 @@ ViewTransitionStyleTracker::ComputeVisualOverflowRectWithPaintLayers(
     // ancestor space and combine that with the result. GeometryMapper should
     // take care of any filters and clips that are necessary between this box
     // and the ancestor.
-    auto overflow_rect = box.PhysicalVisualOverflowRect();
+    auto overflow_rect = box.VisualOverflowRect();
     box.MapToVisualRectInAncestorSpace(ancestor, overflow_rect,
                                        kUseGeometryMapper);
     result.Unite(overflow_rect);
@@ -1841,7 +1879,7 @@ ViewTransitionStyleTracker::ComputeVisualOverflowRectWithPaintLayers(
         layout_box && layout_box->ShouldClipOverflowAlongEitherAxis()) {
       result.Intersect(layout_box->OverflowClipRect(PhysicalOffset()));
     }
-    result.Unite(box.PhysicalVisualOverflowRectIncludingFilters());
+    result.Unite(box.VisualOverflowRectIncludingFilters());
 
     // TODO(crbug.com/1432868): This captures a couple of common cases --
     // box-shadow and no box shadow on the element. However, this isn't at all

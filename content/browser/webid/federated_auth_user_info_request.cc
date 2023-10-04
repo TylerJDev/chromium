@@ -130,8 +130,8 @@ void FederatedAuthUserInfoRequest::SetCallbackAndStart(
     return;
   }
 
-  if (!network::IsOriginPotentiallyTrustworthy(
-          url::Origin::Create(idp_config_url_))) {
+  url::Origin idp_origin = url::Origin::Create(idp_config_url_);
+  if (!network::IsOriginPotentiallyTrustworthy(idp_origin)) {
     CompleteWithError(
         FederatedAuthUserInfoRequestResult::kNotPotentiallyTrustworthy);
     return;
@@ -146,7 +146,7 @@ void FederatedAuthUserInfoRequest::SetCallbackAndStart(
 
   if (webid::ShouldFailAccountsEndpointRequestBecauseNotSignedInWithIdp(
           *render_frame_host_, idp_config_url_, permission_delegate_) &&
-      webid::GetIdpSigninStatusMode(*render_frame_host_) ==
+      webid::GetIdpSigninStatusMode(*render_frame_host_, idp_origin) ==
           FedCmIdpSigninStatusMode::ENABLED) {
     CompleteWithError(FederatedAuthUserInfoRequestResult::kNotSignedInWithIdp);
     return;
@@ -165,8 +165,8 @@ void FederatedAuthUserInfoRequest::SetCallbackAndStart(
   // FederatedProviderFetcher is stored as a member so that
   // FederatedProviderFetcher is destroyed when FederatedAuthRequestImpl is
   // destroyed.
-  provider_fetcher_ =
-      std::make_unique<FederatedProviderFetcher>(network_manager_.get());
+  provider_fetcher_ = std::make_unique<FederatedProviderFetcher>(
+      *render_frame_host_, network_manager_.get());
   provider_fetcher_->Start(
       {idp_config_url_}, /*icon_ideal_size=*/0, /*icon_minimum_size=*/0,
       base::BindOnce(
@@ -198,7 +198,8 @@ void FederatedAuthUserInfoRequest::OnAllConfigAndWellKnownFetched(
       webid::ShouldFailAccountsEndpointRequestBecauseNotSignedInWithIdp(
           *render_frame_host_, idp_config_url_, permission_delegate_);
   if (does_idp_have_failing_signin_status_ &&
-      webid::GetIdpSigninStatusMode(*render_frame_host_) ==
+      webid::GetIdpSigninStatusMode(*render_frame_host_,
+                                    url::Origin::Create(idp_config_url_)) ==
           FedCmIdpSigninStatusMode::ENABLED) {
     CompleteWithError(FederatedAuthUserInfoRequestResult::kNotSignedInWithIdp);
     return;

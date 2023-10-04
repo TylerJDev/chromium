@@ -18,6 +18,7 @@
 #import "ios/web/public/session/proto/navigation.pb.h"
 #import "ios/web/public/session/proto/proto_util.h"
 #import "ios/web/public/session/proto/storage.pb.h"
+#import "ios/web/public/web_state_id.h"
 
 namespace {
 // Serialization keys used in NSCoding functions.
@@ -47,17 +48,13 @@ NSString* const kLastCommittedItemIndexDeprecatedKey =
 NSString* const kTabIdKey = @"TabId";
 }
 
-@implementation CRWSessionStorage {
-  // The unique identifier, stored as the underlying type since SessionID
-  // has not public default constructor, thus cannot be an ivar/property.
-  SessionID::id_type _uniqueIdentifier;
-}
+@implementation CRWSessionStorage
 
 - (instancetype)initWithProto:(const web::proto::WebStateStorage&)storage {
   if ((self = [super init])) {
     // As the protobuf message does not contain the unique or stable
     // identifiers, generate new random values.
-    _uniqueIdentifier = SessionID::NewUnique().id();
+    _uniqueIdentifier = web::WebStateID::NewUnique();
     _stableIdentifier = [[NSUUID UUID] UUIDString];
 
     _hasOpener = storage.has_opener();
@@ -127,6 +124,14 @@ NSString* const kTabIdKey = @"TabId";
   }
 }
 
+#pragma mark - NSObject
+
+- (BOOL)isEqual:(NSObject*)object {
+  CRWSessionStorage* other = base::apple::ObjCCast<CRWSessionStorage>(object);
+
+  return [other cr_isEqualSameClass:self];
+}
+
 #pragma mark - NSCoding
 
 - (instancetype)initWithCoder:(nonnull NSCoder*)decoder {
@@ -148,6 +153,17 @@ NSString* const kTabIdKey = @"TabId";
     // Prior to M34, 0 was used as "no index" instead of -1; adjust for that.
     if (!_itemStorages.count)
       _lastCommittedItemIndex = -1;
+
+    // In a respin of M-117, a data corruption was introduced that may cause
+    // last_committed_item_index to be out-of-bound. Force the value back in
+    // bound to prevent a crash trying to load the session.
+    if (_lastCommittedItemIndex != NSNotFound) {
+      const int items_size = static_cast<int>(_itemStorages.count);
+      if (_lastCommittedItemIndex >= items_size) {
+        _lastCommittedItemIndex = items_size - 1;
+      }
+    }
+
     _certPolicyCacheStorage =
         [decoder decodeObjectForKey:kCertificatePolicyCacheStorageKey];
     if (!_certPolicyCacheStorage) {
@@ -215,18 +231,19 @@ NSString* const kTabIdKey = @"TabId";
       _stableIdentifier = [[NSUUID UUID] UUIDString];
     }
 
-    // If no unique identifier was read, or it was invalid, generate a
-    // new one.
-    static_assert(sizeof(_uniqueIdentifier) == sizeof(int32_t));
-    _uniqueIdentifier = [decoder decodeInt32ForKey:kUniqueIdentifierKey];
-    if (!SessionID::IsValidValue(_uniqueIdentifier)) {
-      _uniqueIdentifier = SessionID::NewUnique().id();
-    }
-
     // Force conversion to NSString if `_stableIdentifier` happens to be a
     // NSMutableString (to prevent this value from being mutated).
     _stableIdentifier = [_stableIdentifier copy];
     DCHECK(_stableIdentifier.length);
+
+    // If no unique identifier was read, or it was invalid, generate a
+    // new one.
+    static_assert(sizeof(_uniqueIdentifier.identifier()) == sizeof(int32_t));
+    _uniqueIdentifier = web::WebStateID::FromSerializedValue(
+        [decoder decodeInt32ForKey:kUniqueIdentifierKey]);
+    if (!_uniqueIdentifier.valid()) {
+      _uniqueIdentifier = web::WebStateID::NewUnique();
+    }
 
     if ([decoder containsValueForKey:kLastActiveTimeKey]) {
       _lastActiveTime = base::Time::FromDeltaSinceWindowsEpoch(
@@ -273,22 +290,60 @@ NSString* const kTabIdKey = @"TabId";
                 forKey:kCreationTimeKey];
   }
 
-  if (SessionID::IsValidValue(_uniqueIdentifier)) {
-    static_assert(sizeof(_uniqueIdentifier) == sizeof(int32_t));
-    [coder encodeInt32:_uniqueIdentifier forKey:kUniqueIdentifierKey];
+  if (_uniqueIdentifier.valid()) {
+    static_assert(sizeof(_uniqueIdentifier.identifier()) == sizeof(int32_t));
+    [coder encodeInt32:_uniqueIdentifier.identifier()
+                forKey:kUniqueIdentifierKey];
   }
 }
 
-#pragma mark - Properties
+#pragma mark Private
 
-- (SessionID)uniqueIdentifier {
-  DCHECK(SessionID::IsValidValue(_uniqueIdentifier));
-  return SessionID::FromSerializedValue(_uniqueIdentifier);
-}
+- (BOOL)cr_isEqualSameClass:(CRWSessionStorage*)other {
+  if (_hasOpener != other.hasOpener) {
+    return NO;
+  }
 
-- (void)setUniqueIdentifier:(SessionID)uniqueIdentifier {
-  DCHECK(uniqueIdentifier.is_valid());
-  _uniqueIdentifier = uniqueIdentifier.id();
+  if (_lastCommittedItemIndex != other.lastCommittedItemIndex) {
+    return NO;
+  }
+
+  if (_userAgentType != other.userAgentType) {
+    return NO;
+  }
+
+  if (_userData != other.userData && ![_userData isEqual:other.userData]) {
+    return NO;
+  }
+
+  if (_lastActiveTime != other.lastActiveTime) {
+    return NO;
+  }
+
+  if (_creationTime != other.creationTime) {
+    return NO;
+  }
+
+  if (_uniqueIdentifier != other.uniqueIdentifier) {
+    return NO;
+  }
+
+  if (_stableIdentifier != other.stableIdentifier &&
+      ![_stableIdentifier isEqual:other.stableIdentifier]) {
+    return NO;
+  }
+
+  if (_itemStorages != other.itemStorages &&
+      ![_itemStorages isEqual:other.itemStorages]) {
+    return NO;
+  }
+
+  if (_certPolicyCacheStorage != other.certPolicyCacheStorage &&
+      ![_certPolicyCacheStorage isEqual:other.certPolicyCacheStorage]) {
+    return NO;
+  }
+
+  return YES;
 }
 
 @end

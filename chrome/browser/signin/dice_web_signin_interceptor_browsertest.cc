@@ -238,7 +238,8 @@ class DiceWebSigninInterceptorBrowserTest : public SigninBrowserTestBase {
     SigninBrowserTestBase::SetUpOnMainThread();
     ASSERT_TRUE(embedded_test_server()->Start());
     DiceWebSigninInterceptorFactory::GetForProfile(GetProfile())
-        ->SetAccountLevelSigninRestrictionFetchResultForTesting("");
+        ->SetInterceptedAccountProfileSeparationPoliciesForTesting(
+            policy::ProfileSeparationPolicies(""));
   }
 
   void OnWillCreateBrowserContextServices(
@@ -587,7 +588,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptorBrowserTest,
   web_app_info->user_display_mode =
       web_app::mojom::UserDisplayMode::kStandalone;
   web_app_info->title = u"A Web App";
-  web_app::AppId app_id =
+  webapps::AppId app_id =
       web_app::test::InstallWebApp(profile, std::move(web_app_info));
 
   Browser* app_browser = web_app::LaunchWebAppBrowserAndWait(profile, app_id);
@@ -645,7 +646,8 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptorBrowserTest,
   GetProfile()->GetPrefs()->SetString(prefs::kManagedAccountsSigninRestriction,
                                       "none");
   DiceWebSigninInterceptorFactory::GetForProfile(GetProfile())
-      ->SetAccountLevelSigninRestrictionFetchResultForTesting("");
+      ->SetInterceptedAccountProfileSeparationPoliciesForTesting(
+          policy::ProfileSeparationPolicies(""));
 
   SetupGaiaResponses();
 
@@ -813,8 +815,8 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptorBrowserTest,
   GetProfile()->GetPrefs()->SetString(prefs::kManagedAccountsSigninRestriction,
                                       "none");
   DiceWebSigninInterceptorFactory::GetForProfile(GetProfile())
-      ->SetAccountLevelSigninRestrictionFetchResultForTesting(
-          "primary_account");
+      ->SetInterceptedAccountProfileSeparationPoliciesForTesting(
+          policy::ProfileSeparationPolicies("primary_account"));
 
   SetupGaiaResponses();
 
@@ -906,8 +908,8 @@ IN_PROC_BROWSER_TEST_F(
   GetProfile()->GetPrefs()->SetString(prefs::kManagedAccountsSigninRestriction,
                                       "none");
   DiceWebSigninInterceptorFactory::GetForProfile(GetProfile())
-      ->SetAccountLevelSigninRestrictionFetchResultForTesting(
-          "primary_account");
+      ->SetInterceptedAccountProfileSeparationPoliciesForTesting(
+          policy::ProfileSeparationPolicies("primary_account"));
 
   SetupGaiaResponses();
 
@@ -973,8 +975,8 @@ IN_PROC_BROWSER_TEST_F(
   GetProfile()->GetPrefs()->SetString(prefs::kManagedAccountsSigninRestriction,
                                       "none");
   DiceWebSigninInterceptorFactory::GetForProfile(GetProfile())
-      ->SetAccountLevelSigninRestrictionFetchResultForTesting(
-          "primary_account_strict");
+      ->SetInterceptedAccountProfileSeparationPoliciesForTesting(
+          policy::ProfileSeparationPolicies("primary_account_strict"));
 
   SetupGaiaResponses();
 

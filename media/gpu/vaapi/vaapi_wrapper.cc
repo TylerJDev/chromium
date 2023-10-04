@@ -82,6 +82,11 @@ extern "C" {
 using media_gpu_vaapi::kModuleVa_prot;
 #endif
 
+#if BUILDFLAG(IS_LINUX)
+#include "base/files/file_util.h"
+#include "base/strings/string_split.h"
+#endif
+
 using media_gpu_vaapi::kModuleVa;
 using media_gpu_vaapi::kModuleVa_drm;
 #if BUILDFLAG(USE_VAAPI_X11)
@@ -350,6 +355,9 @@ media::VAImplementation VendorStringToImplementationType(
   } else if (base::StartsWith(va_vendor_string, "Intel iHD driver",
                               base::CompareCase::SENSITIVE)) {
     return media::VAImplementation::kIntelIHD;
+  } else if (base::StartsWith(va_vendor_string, "Chromium fake libva driver",
+                              base::CompareCase::SENSITIVE)) {
+    return media::VAImplementation::kChromiumFakeDriver;
   }
   return media::VAImplementation::kOther;
 }
@@ -1498,6 +1506,54 @@ bool IsVBREncodingSupported(VAProfile va_profile) {
   return VASupportedProfiles::Get().IsProfileSupported(mode, va_profile);
 }
 
+#if BUILDFLAG(IS_LINUX)
+// Some VA-API drivers (vdpau-va-driver) will crash if used with VA/DRM on
+// NVIDIA GPUs. This function checks if such drivers are present.
+bool IsBrokenNvidiaVaapiDriverPresent() {
+  std::vector<std::string> va_drivers_paths;
+
+  std::string va_drivers_paths_env;
+  auto env = base::Environment::Create();
+  if (env->GetVar("LIBVA_DRIVERS_PATH", &va_drivers_paths_env)) {
+    va_drivers_paths =
+        base::SplitString(va_drivers_paths_env, ":", base::KEEP_WHITESPACE,
+                          base::SPLIT_WANT_NONEMPTY);
+  } else {
+    // All known default VA driver paths of distributions shipping
+    // vdpau-va-driver
+    va_drivers_paths = {
+        "/usr/lib32/dri",
+        "/usr/lib64/dri",
+        "/usr/lib/dri",
+
+        "/usr/lib/aarch64-linux-gnu/dri",
+        "/usr/lib/i386-linux-gnu/dri",
+        "/usr/lib/x86_64-linux-gnu/dri",
+    };
+  }
+
+  // For NVIDIA GPUs (i.e., DRM driver name "nvidia-drm"), libva will look for
+  // nvidia_drv_video.so [1]. Therefore, all we need to check is whether
+  // nvidia_drv_video.so actually points to vdpau_drv_video.so. This check is
+  // best effort: base::MakeAbsoluteFilePath() resolves symbolic links, but it's
+  // entirely possible that nvidia_drv_video.so is actually a hard link to
+  // vdpau_drv_video.so or just a plain rename of it. We don't attempt to detect
+  // those cases.
+  //
+  // [1]
+  // https://github.com/intel/libva/blob/b4870fdfe2d41b579036dae280dfc7a5e732127f/va/drm/va_drm_utils.c#L67
+  for (const auto& va_drivers_path : va_drivers_paths) {
+    const auto nvidia_va_driver_path = base::MakeAbsoluteFilePath(
+        base::FilePath(va_drivers_path).Append("nvidia_drv_video.so"));
+    if (nvidia_va_driver_path.BaseName().value() == "vdpau_drv_video.so") {
+      return true;
+    }
+  }
+
+  return false;
+}
+#endif
+
 }  // namespace
 
 // static
@@ -1511,6 +1567,19 @@ void VADisplayStateSingleton::PreSandboxInitialization() {
   VADisplayStateSingleton& va_display_state = GetInstance();
   base::AutoLock lock(va_display_state.lock_);
 
+#if BUILDFLAG(IS_LINUX)
+  std::string va_driver_name;
+  auto env = base::Environment::Create();
+  if (env->GetVar("LIBVA_DRIVER_NAME", &va_driver_name) &&
+      va_driver_name == "vdpau") {
+    // The vdpau VA driver will crash if used with VA/DRM. Do not open any DRM
+    // device if the user explicitly requested this driver.
+    return;
+  }
+
+  const bool is_nvidia_va_drm_broken = IsBrokenNvidiaVaapiDriverPresent();
+#endif
+
   constexpr char kRenderNodeFilePattern[] = "/dev/dri/renderD%d";
   // This loop ends on either the first card that does not exist or the first
   // render node that is not vgem.
@@ -1523,7 +1592,6 @@ void VADisplayStateSingleton::PreSandboxInitialization() {
     if (!drm_file.IsValid()) {
       return;
     }
-    // Skip the virtual graphics memory manager device.
     drmVersionPtr version = drmGetVersion(drm_file.GetPlatformFile());
     if (!version) {
       continue;
@@ -1532,9 +1600,18 @@ void VADisplayStateSingleton::PreSandboxInitialization() {
         version->name,
         base::checked_cast<std::string::size_type>(version->name_len));
     drmFreeVersion(version);
+    // Skip the virtual graphics memory manager device.
     if (base::EqualsCaseInsensitiveASCII(version_name, "vgem")) {
       continue;
     }
+#if BUILDFLAG(IS_LINUX)
+    // Skip NVIDIA GPUs if the VA-API driver used for them is known for crashing
+    // with VA/DRM.
+    if (is_nvidia_va_drm_broken &&
+        base::EqualsCaseInsensitiveASCII(version_name, "nvidia-drm")) {
+      continue;
+    }
+#endif
     va_display_state.drm_fd_ = base::ScopedFD(drm_file.TakePlatformFile());
     return;
   }
@@ -1763,14 +1840,23 @@ std::vector<SVCScalabilityMode> VaapiWrapper::GetSupportedScalabilityModes(
   if (media_profile == VP9PROFILE_PROFILE0) {
     scalability_modes.push_back(SVCScalabilityMode::kL1T2);
     scalability_modes.push_back(SVCScalabilityMode::kL1T3);
-    if (base::FeatureList::IsEnabled(kVaapiVp9kSVCHWEncoding) &&
-        GetDefaultVaEntryPoint(
+    if (GetDefaultVaEntryPoint(
             VaapiWrapper::kEncodeConstantQuantizationParameter, va_profile) ==
-            VAEntrypointEncSliceLP) {
-      scalability_modes.push_back(SVCScalabilityMode::kL2T2Key);
-      scalability_modes.push_back(SVCScalabilityMode::kL2T3Key);
-      scalability_modes.push_back(SVCScalabilityMode::kL3T2Key);
-      scalability_modes.push_back(SVCScalabilityMode::kL3T3Key);
+        VAEntrypointEncSliceLP) {
+      if (base::FeatureList::IsEnabled(kVaapiVp9kSVCHWEncoding)) {
+        scalability_modes.push_back(SVCScalabilityMode::kL2T2Key);
+        scalability_modes.push_back(SVCScalabilityMode::kL2T3Key);
+        scalability_modes.push_back(SVCScalabilityMode::kL3T2Key);
+        scalability_modes.push_back(SVCScalabilityMode::kL3T3Key);
+      }
+      if (base::FeatureList::IsEnabled(kVaapiVp9SModeHWEncoding)) {
+        scalability_modes.push_back(SVCScalabilityMode::kS2T1);
+        scalability_modes.push_back(SVCScalabilityMode::kS2T2);
+        scalability_modes.push_back(SVCScalabilityMode::kS2T3);
+        scalability_modes.push_back(SVCScalabilityMode::kS3T1);
+        scalability_modes.push_back(SVCScalabilityMode::kS3T2);
+        scalability_modes.push_back(SVCScalabilityMode::kS3T3);
+      }
     }
   }
 
@@ -2404,21 +2490,18 @@ scoped_refptr<VASurface> VaapiWrapper::CreateVASurfaceForPixmap(
     return nullptr;
   }
 
-#if BUILDFLAG(IS_LINUX)
-  // TODO(crbug.com/1326754): enable use DRIME_PRIME_2 API on Linux with the
-  // iHD driver.
-  const bool use_drm_prime_2 = false;
-#else
+  // TODO(b/233894465): use the DRM_PRIME_2 API with the Mesa Gallium driver
+  // when AMD supports it.
   // TODO(b/233924862): use the DRM_PRIME_2 API with protected content.
   // TODO(b/233929647): use the DRM_PRIME_2 API with the i965 driver.
   // TODO(b/236746283): remove the kNoModifier check once the modifier is
   // plumbed for JPEG decoding and encoding.
   const bool use_drm_prime_2 =
       (GetImplementationType() == VAImplementation::kIntelIHD ||
+       GetImplementationType() == VAImplementation::kChromiumFakeDriver ||
        GetImplementationType() == VAImplementation::kMesaGallium) &&
       !protected_content &&
       pixmap->GetBufferFormatModifier() != gfx::NativePixmapHandle::kNoModifier;
-#endif
 
   union {
     VADRMPRIMESurfaceDescriptor descriptor;
@@ -2445,7 +2528,8 @@ scoped_refptr<VASurface> VaapiWrapper::CreateVASurfaceForPixmap(
       va_format |= VA_RT_FORMAT_PROTECTED;
     } else {
       va_attrib_extbuf_and_fd.va_attrib_extbuf.flags =
-          VA_SURFACE_EXTBUF_DESC_PROTECTED;
+          VA_SURFACE_EXTBUF_DESC_PROTECTED |
+          VA_SURFACE_EXTBUF_DESC_ENABLE_TILING;
     }
   }
 
@@ -3036,6 +3120,24 @@ bool VaapiWrapper::GetSupportedPackedHeaders(VideoCodecProfile profile,
   packed_sps = attrib.value & VA_ENC_PACKED_HEADER_SEQUENCE;
   packed_pps = attrib.value & VA_ENC_PACKED_HEADER_PICTURE;
   packed_slice = attrib.value & VA_ENC_PACKED_HEADER_SLICE;
+
+  return true;
+}
+
+bool VaapiWrapper::GetMinAV1SegmentSize(VideoCodecProfile profile,
+                                        uint32_t& min_seg_size) {
+  CHECK(!enforce_sequence_affinity_ ||
+        sequence_checker_.CalledOnValidSequence());
+  const VAProfile va_profile = ProfileToVAProfile(profile);
+  VAConfigAttrib attrib{};
+  attrib.type = VAConfigAttribEncAV1Ext1;
+  base::AutoLockMaybe auto_lock(va_lock_.get());
+  const VAStatus va_res = vaGetConfigAttributes(va_display_, va_profile,
+                                                va_entrypoint_, &attrib, 1);
+  VA_SUCCESS_OR_RETURN(va_res, VaapiFunctions::kVAGetConfigAttributes, false);
+
+  min_seg_size = reinterpret_cast<VAConfigAttribValEncAV1Ext1*>(&attrib.value)
+                     ->bits.min_segid_block_size_accepted;
 
   return true;
 }

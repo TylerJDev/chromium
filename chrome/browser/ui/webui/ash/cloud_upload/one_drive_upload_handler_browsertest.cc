@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -207,9 +207,9 @@ class OneDriveUploadHandlerTest : public InProcessBrowserTest,
   }
 
   // Watch for a valid `uploaded_file_url`.
-  void OnUploadDone(const storage::FileSystemURL& uploaded_file_url,
+  void OnUploadDone(absl::optional<storage::FileSystemURL> uploaded_file_url,
                     int64_t size) {
-    ASSERT_TRUE(uploaded_file_url.is_valid());
+    ASSERT_TRUE(uploaded_file_url.has_value());
     EndWait();
   }
 
@@ -237,8 +237,13 @@ class OneDriveUploadHandlerTest : public InProcessBrowserTest,
  protected:
   base::FilePath my_files_dir_;
   base::FilePath read_only_dir_;
-  raw_ptr<file_manager::test::FakeProvidedFileSystemOneDrive, ExperimentalAsh>
+  raw_ptr<file_manager::test::FakeProvidedFileSystemOneDrive,
+          DanglingUntriaged | ExperimentalAsh>
       provided_file_system_;  // Owned by Service.
+  std::unique_ptr<ash::cloud_upload::CloudOpenMetrics> cloud_open_metrics_ =
+      std::make_unique<ash::cloud_upload::CloudOpenMetrics>();
+  base::SafeRef<CloudOpenMetrics> cloud_open_metrics_ref_ =
+      cloud_open_metrics_->GetSafeRef();
 
  private:
   base::test::ScopedFeatureList feature_list_;
@@ -261,7 +266,8 @@ IN_PROC_BROWSER_TEST_F(OneDriveUploadHandlerTest, UploadFromMyFiles) {
   OneDriveUploadHandler::Upload(
       profile(), source_file_url,
       base::BindOnce(&OneDriveUploadHandlerTest::OnUploadDone,
-                     base::Unretained(this)));
+                     base::Unretained(this)),
+      cloud_open_metrics_ref_);
   Wait();
 
   // Check that the source file has been moved to OneDrive.
@@ -285,7 +291,8 @@ IN_PROC_BROWSER_TEST_F(OneDriveUploadHandlerTest,
   OneDriveUploadHandler::Upload(
       profile(), source_file_url,
       base::BindOnce(&OneDriveUploadHandlerTest::OnUploadDone,
-                     base::Unretained(this)));
+                     base::Unretained(this)),
+      cloud_open_metrics_ref_);
   Wait();
 
   // Check that the source file has been copied to OneDrive.
@@ -322,7 +329,8 @@ IN_PROC_BROWSER_TEST_F(OneDriveUploadHandlerTest,
         }
       });
   SetOnNotificationDisplayedCallback(std::move(on_notification));
-  OneDriveUploadHandler::Upload(profile(), source_file_url, base::DoNothing());
+  OneDriveUploadHandler::Upload(profile(), source_file_url, base::DoNothing(),
+                                cloud_open_metrics_ref_);
   Wait();
 
   // Check that the source file still exists only at the intended source
@@ -361,7 +369,8 @@ IN_PROC_BROWSER_TEST_F(OneDriveUploadHandlerTest,
         }
       });
   SetOnNotificationDisplayedCallback(std::move(on_notification));
-  OneDriveUploadHandler::Upload(profile(), source_file_url, base::DoNothing());
+  OneDriveUploadHandler::Upload(profile(), source_file_url, base::DoNothing(),
+                                cloud_open_metrics_ref_);
   Wait();
 
   // Check that the source file still exists only at the intended source

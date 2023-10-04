@@ -41,6 +41,7 @@
 #include "gpu/command_buffer/service/skia_utils.h"
 #include "gpu/command_buffer/service/texture_manager.h"
 #include "gpu/vulkan/vulkan_image.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
 #include "ui/gfx/android/android_surface_control_compat.h"
 #include "ui/gfx/buffer_format_util.h"
@@ -266,9 +267,9 @@ class SkiaVkAHBImageRepresentation : public SkiaVkAndroidImageRepresentation {
     vulkan_image_ = std::move(vulkan_image);
     // TODO(bsalomon): Determine whether it makes sense to attempt to reuse this
     // if the vk_info stays the same on subsequent calls.
-    promise_texture_ = GrPromiseImageTexture::Make(
-        GrBackendTexture(size().width(), size().height(),
-                         CreateGrVkImageInfo(vulkan_image_.get())));
+    promise_texture_ = GrPromiseImageTexture::Make(GrBackendTextures::MakeVk(
+        size().width(), size().height(),
+        CreateGrVkImageInfo(vulkan_image_.get(), color_space())));
     DCHECK(promise_texture_);
   }
 };
@@ -535,8 +536,7 @@ OverlayImage* AHardwareBufferImageBacking::BeginOverlayAccess(
 
   if (write_sync_fd_.is_valid()) {
     gfx::GpuFenceHandle fence_handle;
-    fence_handle.owned_fd =
-        base::ScopedFD(HANDLE_EINTR(dup(write_sync_fd_.get())));
+    fence_handle.Adopt(base::ScopedFD(HANDLE_EINTR(dup(write_sync_fd_.get()))));
     begin_read_fence = std::move(fence_handle);
   }
 

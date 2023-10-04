@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/memory/raw_ptr.h"
 #include "base/threading/platform_thread.h"
 #include "chrome/renderer/accessibility/read_anything_app_model.h"
 
@@ -182,12 +183,27 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
     model_->set_selection_from_action(selection_from_action);
   }
 
+  void IncreaseTextSize() { model_->IncreaseTextSize(); }
+
+  void DecreaseTextSize() { model_->DecreaseTextSize(); }
+
+  void ResetTextSize() { model_->ResetTextSize(); }
+
+  std::string DefaultLanguageCode() { return model_->default_language_code(); }
+  void SetLanguageCode(std::string code) {
+    model_->set_default_language_code(code);
+  }
+
+  std::vector<std::string> GetSupportedFonts() {
+    return model_->GetSupportedFonts();
+  }
+
   ui::AXTreeID tree_id_;
 
  private:
   // ReadAnythingAppModel constructor and destructor are private so it's
   // not accessible by std::make_unique.
-  ReadAnythingAppModel* model_ = nullptr;
+  raw_ptr<ReadAnythingAppModel, ExperimentalRenderer> model_ = nullptr;
 };
 
 TEST_F(ReadAnythingAppModelTest, Theme) {
@@ -981,4 +997,88 @@ TEST_F(
   // Since 3 is a generic container with more than one child, its sibling nodes
   // are not included, so 2 is ignored.
   ASSERT_FALSE(SelectionNodeIdsContains(2));
+}
+
+TEST_F(ReadAnythingAppModelTest, ResetTextSize_ReturnsTextSizeToDefault) {
+  IncreaseTextSize();
+  IncreaseTextSize();
+  IncreaseTextSize();
+  ASSERT_GT(FontSize(), kReadAnythingDefaultFontScale);
+
+  ResetTextSize();
+  ASSERT_EQ(FontSize(), kReadAnythingDefaultFontScale);
+
+  DecreaseTextSize();
+  DecreaseTextSize();
+  DecreaseTextSize();
+  ASSERT_LT(FontSize(), kReadAnythingDefaultFontScale);
+
+  ResetTextSize();
+  ASSERT_EQ(FontSize(), kReadAnythingDefaultFontScale);
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       SupportedFonts_SetDefaultLanguageCode_ReturnsCorrectCode) {
+  ASSERT_EQ(DefaultLanguageCode(), "en-US");
+
+  SetLanguageCode("es");
+  ASSERT_EQ(DefaultLanguageCode(), "es");
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       SupportedFonts_InvalidLanguageCode_ReturnsDefaultFonts) {
+  SetLanguageCode("qr");
+  std::vector<std::string> expectedFonts = {"Sans-serif", "Serif"};
+  std::vector<std::string> fonts = GetSupportedFonts();
+
+  EXPECT_EQ(fonts.size(), expectedFonts.size());
+  for (size_t i = 0; i < fonts.size(); i++) {
+    ASSERT_EQ(fonts[i], expectedFonts[i]);
+  }
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       SupportedFonts_BeforeLanguageSet_ReturnsDefaultFonts) {
+  std::vector<std::string> expectedFonts = {"Sans-serif", "Serif"};
+  std::vector<std::string> fonts = GetSupportedFonts();
+
+  EXPECT_EQ(fonts.size(), expectedFonts.size());
+  for (size_t i = 0; i < fonts.size(); i++) {
+    ASSERT_EQ(fonts[i], expectedFonts[i]);
+  }
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       SupportedFonts_SetDefaultLanguageCode_ReturnsExpectedDefaultFonts) {
+  // English
+  SetLanguageCode("en");
+  std::vector<std::string> expectedFonts = {
+      "Poppins",     "Sans-serif",  "Serif",        "Comic Neue",
+      "Lexend Deca", "EB Garamond", "STIX Two Text"};
+  std::vector<std::string> fonts = GetSupportedFonts();
+
+  EXPECT_EQ(fonts.size(), expectedFonts.size());
+  for (size_t i = 0; i < fonts.size(); i++) {
+    ASSERT_EQ(fonts[i], expectedFonts[i]);
+  }
+
+  // Bulgarian
+  SetLanguageCode("bg");
+  expectedFonts = {"Sans-serif", "Serif", "EB Garamond", "STIX Two Text"};
+  fonts = GetSupportedFonts();
+
+  EXPECT_EQ(fonts.size(), expectedFonts.size());
+  for (size_t i = 0; i < fonts.size(); i++) {
+    ASSERT_EQ(fonts[i], expectedFonts[i]);
+  }
+
+  // Hindi
+  SetLanguageCode("hi");
+  expectedFonts = {"Poppins", "Sans-serif", "Serif"};
+  fonts = GetSupportedFonts();
+
+  EXPECT_EQ(fonts.size(), expectedFonts.size());
+  for (size_t i = 0; i < fonts.size(); i++) {
+    ASSERT_EQ(fonts[i], expectedFonts[i]);
+  }
 }

@@ -54,9 +54,9 @@ public class HistoryClustersProcessor extends BasicSuggestionProcessor {
     }
 
     @Override
-    public void onUrlFocusChange(boolean hasFocus) {
-        super.onUrlFocusChange(hasFocus);
-        if (!hasFocus) {
+    public void onOmniboxSessionStateChange(boolean activated) {
+        super.onOmniboxSessionStateChange(activated);
+        if (!activated) {
             OmniboxMetrics.recordResumeJourneyShown(mJourneysActionShownPosition);
         }
     }
@@ -72,7 +72,7 @@ public class HistoryClustersProcessor extends BasicSuggestionProcessor {
     @Override
     protected OmniboxDrawableState getFallbackIcon(AutocompleteMatch match) {
         var action = getHistoryClustersAction(match);
-        return OmniboxDrawableState.forDefaultIcon(mContext, action.icon.iconRes, false);
+        return OmniboxDrawableState.forSmallIcon(mContext, action.icon.iconRes, false);
     }
 
     @Override

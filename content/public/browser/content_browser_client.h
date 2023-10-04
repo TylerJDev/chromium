@@ -82,6 +82,10 @@
 #include "content/public/browser/posix_file_descriptor_info.h"
 #endif
 
+#if !BUILDFLAG(IS_ANDROID)
+#include "services/video_capture/public/mojom/video_effects_manager.mojom.h"
+#endif  // !BUILDFLAG(IS_ANDROID)
+
 namespace net {
 class SiteForCookies;
 class IsolationInfo;
@@ -949,10 +953,17 @@ class CONTENT_EXPORT ContentBrowserClient {
   // This method must be idempotent.
   virtual bool IsWebAttributionReportingAllowed();
 
-  // Allows the embedder to control if an Os source event should register as
-  // a Web Os or Os (App) source.
+  // Allows the embedder to control if an OS source event should register as
+  // a Web OS or OS (App) source.
   // This method must be idempotent.
-  virtual bool ShouldUseOsWebSourceAttributionReporting();
+  virtual bool ShouldUseOsWebSourceAttributionReporting(
+      content::RenderFrameHost* rfh);
+
+  // Allows the embedder to control if an OS trigger event should register as
+  // a Web OS or OS (App) trigger.
+  // This method must be idempotent.
+  virtual bool ShouldUseOsWebTriggerAttributionReporting(
+      content::RenderFrameHost* rfh);
 
   // Allows the embedder to control if Shared Storage API operations can happen
   // in a given context.
@@ -976,6 +987,26 @@ class CONTENT_EXPORT ContentBrowserClient {
       content::BrowserContext* browser_context,
       const url::Origin& top_frame_origin,
       const url::Origin& reporting_origin);
+
+  // Allows the embedder to control if Private Aggregation API debug mode
+  // operations can happen in a given context.
+  virtual bool IsPrivateAggregationDebugModeAllowed(
+      content::BrowserContext* browser_context,
+      const url::Origin& top_frame_origin,
+      const url::Origin& reporting_origin);
+
+  // Returns whether cookie deprecation label should be allowed for the
+  // profile. Defaults to false to ensure no traffic label is sent by default.
+  virtual bool IsCookieDeprecationLabelAllowed(
+      content::BrowserContext* browser_context);
+
+  // Returns whether cookie deprecation label should be allowed for the
+  // profile in a given context. Defaults to false to ensure no traffic label
+  // is sent by default.
+  virtual bool IsCookieDeprecationLabelAllowedForContext(
+      content::BrowserContext* browser_context,
+      const url::Origin& top_frame_origin,
+      const url::Origin& context_origin);
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Notification that a trust anchor was used by the given user.
@@ -1316,6 +1347,14 @@ class CONTENT_EXPORT ContentBrowserClient {
       const ServiceWorkerVersionBaseInfo& service_worker_version_info,
       mojo::BinderMapWithContext<const ServiceWorkerVersionBaseInfo&>* map) {}
 
+  // Allows the embedder to register browser channel-associated interfaces that
+  // are exposed through the ServiceWorker. `service_worker_version_info`
+  // contains the information to uniquely identify the service worker instance.
+  // `associated_registry` contains interfaces provided by the browser.
+  virtual void RegisterAssociatedInterfaceBindersForServiceWorker(
+      const ServiceWorkerVersionBaseInfo& service_worker_version_info,
+      blink::AssociatedInterfaceRegistry& associated_registry) {}
+
   // Allows the embedder to register per-WebUI interface brokers that are used
   // for handling Mojo.bindInterface in WebUI JavaScript.
   //
@@ -1495,8 +1534,10 @@ class CONTENT_EXPORT ContentBrowserClient {
   // This is called on the UI thread.
   virtual bool IsRendererCodeIntegrityEnabled();
 
-  // Performs a fast and orderly shutdown of the browser.
-  virtual void SessionEnding() {}
+  // Performs a fast and orderly shutdown of the browser. If present,
+  // `control_type` is a CTRL_* value from a Windows console control handler;
+  // see https://learn.microsoft.com/en-us/windows/console/handlerroutine.
+  virtual void SessionEnding(absl::optional<DWORD> control_type) {}
 
   // Returns true if the audio process should run with high priority. false
   // otherwise.
@@ -1815,8 +1856,7 @@ class CONTENT_EXPORT ContentBrowserClient {
   // |site_for_cookies| is empty, no domains are first-party).
   // |top_frame_origin| held by |isolation_info| represents the domain for
   // top-level frame, and can be used to look up preferences that are dependent
-  // on that. |party_context| hold by |isolation_info| is for the purposes of
-  // SameParty cookies inclusion calculation.
+  // on that.
   //
   // |*receiver| is always valid upon entry.
   //
@@ -1957,8 +1997,10 @@ class CONTENT_EXPORT ContentBrowserClient {
 
   // Called on IO or UI thread to determine whether or not to allow load and
   // render MHTML page from http/https URLs.
-  virtual bool ShouldForceDownloadResource(const GURL& url,
-                                           const std::string& mime_type);
+  virtual bool ShouldForceDownloadResource(
+      content::BrowserContext* browser_context,
+      const GURL& url,
+      const std::string& mime_type);
 
   virtual void CreateDeviceInfoService(
       RenderFrameHost* render_frame_host,
@@ -2382,17 +2424,23 @@ class CONTENT_EXPORT ContentBrowserClient {
   virtual bool ShouldServiceWorkerInheritPolicyContainerFromCreator(
       const GURL& url);
 
-  // Returns whether a context with the given |origin| should be allowed to make
-  // insecure private network requests.
+  enum class PrivateNetworkRequestPolicyOverride {
+    kForceAllow,
+    kBlockInsteadOfWarn,
+    kDefault,
+  };
+
+  // Returns whether and how we should override the default private network
+  // request policy.
   //
-  // See the CORS-RFC1918 spec for more details:
-  // https://wicg.github.io/cors-rfc1918.
+  // See the Private Network Access spec for more details:
+  // https://wicg.github.io/private-network-access.
   //
   // |browser_context| must not be nullptr. Caller retains ownership.
   // |origin| is the origin of a navigation ready to commit.
-  virtual bool ShouldAllowInsecurePrivateNetworkRequests(
-      BrowserContext* browser_context,
-      const url::Origin& origin);
+  virtual PrivateNetworkRequestPolicyOverride
+  ShouldOverridePrivateNetworkRequestPolicy(BrowserContext* browser_context,
+                                            const url::Origin& origin);
 
   // Whether the JIT should be disabled for the given |browser_context| and
   // |site_url|. Pass an empty GURL for |site_url| to get the default JIT policy
@@ -2592,6 +2640,25 @@ class CONTENT_EXPORT ContentBrowserClient {
       const storage::FileSystemURL& url,
       FileSystemAccessPermissionContext::HandleType handle_type,
       GetCloudIdentifiersCallback callback);
+
+  // Checks if the given BrowserContext allows to store the page loaded with
+  // "Cache-control: no-store" header in BFCache.
+  virtual bool ShouldAllowBackForwardCacheForCacheControlNoStorePage(
+      content::BrowserContext* browser_context);
+
+  // Set whether the browser is running in minimal mode (where most subsystems
+  // are left uninitialized).
+  virtual void SetIsMinimalMode(bool minimal) {}
+
+#if !BUILDFLAG(IS_ANDROID)
+  // Allows the embedder to correlate backend media services with profile-keyed
+  // effect settings.
+  virtual void BindVideoEffectsManager(
+      const std::string& device_id,
+      content::BrowserContext* browser_context,
+      mojo::PendingReceiver<video_capture::mojom::VideoEffectsManager>
+          video_effects_manager);
+#endif  // !BUILDFLAG(IS_ANDROID)
 };
 
 }  // namespace content

@@ -10,10 +10,14 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
+#include "base/synchronization/lock.h"
+#include "base/thread_annotations.h"
 #include "build/build_config.h"
+#include "gpu/command_buffer/common/constants.h"
 #include "gpu/command_buffer/service/dawn_caching_interface.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/gpu_gles2_export.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/dawn/include/dawn/native/DawnNative.h"
 #include "third_party/skia/include/gpu/graphite/ContextOptions.h"
 #include "third_party/skia/include/gpu/graphite/dawn/DawnTypes.h"
@@ -46,6 +50,9 @@ class GPU_GLES2_EXPORT DawnContextProvider {
       webgpu::DawnCachingInterfaceFactory* caching_interface_factory = nullptr,
       CacheBlobCallback callback = {});
 
+  static wgpu::BackendType GetDefaultBackendType();
+  static bool DefaultForceFallbackAdapter();
+
   DawnContextProvider(const DawnContextProvider&) = delete;
   DawnContextProvider& operator=(const DawnContextProvider&) = delete;
 
@@ -53,6 +60,9 @@ class GPU_GLES2_EXPORT DawnContextProvider {
 
   wgpu::Device GetDevice() const { return device_; }
   wgpu::BackendType backend_type() const { return backend_type_; }
+  bool is_vulkan_swiftshader_adapter() const {
+    return is_vulkan_swiftshader_adapter_;
+  }
   wgpu::Instance GetInstance() const;
 
   bool InitializeGraphiteContext(
@@ -70,9 +80,14 @@ class GPU_GLES2_EXPORT DawnContextProvider {
   Microsoft::WRL::ComPtr<ID3D11Device> GetD3D11Device() const;
 #endif
 
+  absl::optional<error::ContextLostReason> GetResetStatus() const;
+
+  void OnError(WGPUErrorType error_type, const char* message);
+
  private:
   explicit DawnContextProvider(
       webgpu::DawnCachingInterfaceFactory* caching_interface_factory);
+
   bool Initialize(wgpu::BackendType backend_type,
                   bool force_fallback_adapter,
                   const GpuPreferences& gpu_preferences,
@@ -83,7 +98,12 @@ class GPU_GLES2_EXPORT DawnContextProvider {
   std::unique_ptr<webgpu::DawnInstance> instance_;
   wgpu::Device device_;
   wgpu::BackendType backend_type_;
+  bool is_vulkan_swiftshader_adapter_ = false;
   std::unique_ptr<skgpu::graphite::Context> graphite_context_;
+
+  mutable base::Lock context_lost_lock_;
+  absl::optional<error::ContextLostReason> context_lost_reason_
+      GUARDED_BY(context_lost_lock_);
 };
 
 }  // namespace gpu

@@ -180,7 +180,8 @@ class LockScreenMediaControlsViewTest : public LoginTestBase {
   }
 
   void SimulateMediaSessionChanged(
-      media_session::mojom::MediaPlaybackState playback_state) {
+      media_session::mojom::MediaPlaybackState playback_state,
+      bool is_sensitive = false) {
     // Simulate media session change.
     media_controls_view_->MediaSessionChanged(base::UnguessableToken::Create());
 
@@ -188,6 +189,7 @@ class LockScreenMediaControlsViewTest : public LoginTestBase {
     media_session::mojom::MediaSessionInfoPtr session_info(
         media_session::mojom::MediaSessionInfo::New());
     session_info->playback_state = playback_state;
+    session_info->is_sensitive = is_sensitive;
 
     // Simulate media session information change.
     media_controls_view_->MediaSessionInfoChanged(session_info.Clone());
@@ -523,6 +525,22 @@ TEST_F(LockScreenMediaControlsViewTest, CloseButtonVisibility) {
   EXPECT_TRUE(media_controls_view_->IsDrawn());
   EXPECT_TRUE(close_button()->IsDrawn());
   EXPECT_FALSE(CloseButtonHasImage());
+}
+
+TEST_F(LockScreenMediaControlsViewTest, MediaControlsNotShownIfSensitive) {
+  SimulateMediaSessionChanged(
+      media_session::mojom::MediaPlaybackState::kPlaying,
+      /*is_sensitive=*/true);
+
+  EXPECT_FALSE(media_controls_view_->IsDrawn());
+}
+
+TEST_F(LockScreenMediaControlsViewTest, MediaControlsShownIfNotSensitive) {
+  SimulateMediaSessionChanged(
+      media_session::mojom::MediaPlaybackState::kPlaying,
+      /*is_sensitive=*/false);
+
+  EXPECT_TRUE(media_controls_view_->IsDrawn());
 }
 
 TEST_F(LockScreenMediaControlsViewTest, CloseButtonClick) {

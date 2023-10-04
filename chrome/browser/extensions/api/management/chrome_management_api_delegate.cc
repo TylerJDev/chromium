@@ -62,7 +62,6 @@
 #include "extensions/common/api/management.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_urls.h"
-#include "services/data_decoder/public/cpp/data_decoder.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 
@@ -189,7 +188,7 @@ class ManagementUninstallFunctionUninstallDialogDelegate
 
 void OnGenerateAppForLinkCompleted(
     extensions::ManagementGenerateAppForLinkFunction* function,
-    const web_app::AppId& app_id,
+    const webapps::AppId& app_id,
     webapps::InstallResultCode code) {
   const bool install_success =
       code == webapps::InstallResultCode::kSuccessNewInstall;
@@ -303,7 +302,7 @@ class ChromeAppForLinkDelegate : public extensions::AppForLinkDelegate {
   base::CancelableTaskTracker cancelable_task_tracker_;
 };
 
-void LaunchWebApp(const web_app::AppId& app_id, Profile* profile) {
+void LaunchWebApp(const webapps::AppId& app_id, Profile* profile) {
   // Look at prefs to find the right launch container. If the user has not set a
   // preference, the default launch value will be returned.
   // TODO(crbug.com/1003602): Make AppLaunchParams launch container Optional or
@@ -332,7 +331,7 @@ void LaunchWebApp(const web_app::AppId& app_id, Profile* profile) {
 }
 
 void OnWebAppInstallCompleted(InstallOrLaunchWebAppCallback callback,
-                              const web_app::AppId& app_id,
+                              const webapps::AppId& app_id,
                               webapps::InstallResultCode code) {
   InstallOrLaunchWebAppResult result =
       IsSuccess(code) ? InstallOrLaunchWebAppResult::kSuccess
@@ -345,7 +344,7 @@ void OnWebAppInstallabilityChecked(
     InstallOrLaunchWebAppCallback callback,
     std::unique_ptr<content::WebContents> web_contents,
     InstallableCheckResult result,
-    absl::optional<web_app::AppId> app_id) {
+    absl::optional<webapps::AppId> app_id) {
   if (!profile) {
     return;
   }
@@ -444,18 +443,6 @@ extensions::LaunchType ChromeManagementAPIDelegate::GetLaunchType(
     const extensions::ExtensionPrefs* prefs,
     const extensions::Extension* extension) const {
   return extensions::GetLaunchType(prefs, extension);
-}
-
-void ChromeManagementAPIDelegate::
-    GetPermissionWarningsByManifestFunctionDelegate(
-        extensions::ManagementGetPermissionWarningsByManifestFunction* function,
-        const std::string& manifest_str) const {
-  data_decoder::DataDecoder::ParseJsonIsolated(
-      manifest_str,
-      base::BindOnce(
-          &extensions::ManagementGetPermissionWarningsByManifestFunction::
-              OnParse,
-          function));
 }
 
 std::unique_ptr<extensions::InstallPromptDelegate>

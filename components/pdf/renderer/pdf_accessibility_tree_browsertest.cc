@@ -151,6 +151,10 @@ ui::AXTreeUpdate CreateMockOCRResult(const gfx::RectF& image_bounds,
 
   return child_tree_update;
 }
+
+uint32_t CalculateBatchCount(uint32_t page_count, uint32_t batch_size) {
+  return (page_count + batch_size - 1) / batch_size;
+}
 #endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 // This class overrides PdfAccessibilityActionHandler to record received
@@ -306,14 +310,12 @@ class TestPdfAccessibilityTree : public PdfAccessibilityTree {
     PdfAccessibilityTree::OnOcrDataReceived(ocr_requests, tree_updates);
   }
 
-  void CreateFakeOCRService(uint32_t pages_per_batch,
-                            bool create_empty_result) {
+  void CreateFakeOCRService(bool create_empty_result) {
     CreateOcrService();
     fake_annotator_ =
         std::make_unique<FakeScreenAIAnnotator>(create_empty_result);
     ocr_service_for_testing()->SetScreenAIAnnotatorForTesting(
         fake_annotator_->BindNewPipeAndPassRemote());
-    ocr_service_for_testing()->SetPagesPerBatchForTesting(pages_per_batch);
   }
 
  private:
@@ -363,6 +365,7 @@ class PdfAccessibilityTreeTest : public content::RenderViewTest {
 
     pdf_accessibility_tree_ = std::make_unique<TestPdfAccessibilityTree>(
         render_frame, &action_handler_, &image_fetcher_);
+    WaitForThreadTasks();
   }
 
  protected:
@@ -2207,11 +2210,16 @@ TEST_F(PdfAccessibilityTreeTest, TestShowContextMenuAction) {
 }
 
 #if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
+struct PdfOcrServiceTestBatchData {
+  uint32_t page_count;
+  uint32_t expected_batch_size;
+};
+
 class PdfOcrServiceTest
     : public PdfAccessibilityTreeTest,
-      public testing::WithParamInterface<
-          std::tuple</* is_ocr_service_started_before_pdf_loads */ bool,
-                     /* page_count */ uint32_t>> {
+      public testing::WithParamInterface<std::tuple<
+          /* is_ocr_service_started_before_pdf_loads */ bool,
+          PdfOcrServiceTestBatchData>> {
  public:
   PdfOcrServiceTest() : feature_list_(::features::kPdfOcr) {}
   PdfOcrServiceTest(const PdfOcrServiceTest&) = delete;
@@ -2222,7 +2230,6 @@ class PdfOcrServiceTest
   void CreateInaccessiblePdfAndOcrService(
       uint32_t page_count,
       bool is_ocr_service_started_before_pdf_loads,
-      uint32_t pages_per_batch,
       bool create_empty_results) {
     ASSERT_TRUE(pdf_accessibility_tree_);
     doc_info_.page_count = page_count;
@@ -2238,8 +2245,7 @@ class PdfOcrServiceTest
     page_objects_.images.push_back(image);
 
     if (is_ocr_service_started_before_pdf_loads) {
-      pdf_accessibility_tree_->CreateFakeOCRService(pages_per_batch,
-                                                    create_empty_results);
+      pdf_accessibility_tree_->CreateFakeOCRService(create_empty_results);
       ASSERT_NE(nullptr, pdf_accessibility_tree_->ocr_service_for_testing());
     }
 
@@ -2284,10 +2290,19 @@ class PdfOcrServiceTest
     ASSERT_EQ(0u, image2_node->GetChildCount());
 
     if (!is_ocr_service_started_before_pdf_loads) {
-      pdf_accessibility_tree_->CreateFakeOCRService(pages_per_batch,
-                                                    create_empty_results);
+      pdf_accessibility_tree_->CreateFakeOCRService(create_empty_results);
       ASSERT_NE(nullptr, pdf_accessibility_tree_->ocr_service_for_testing());
     }
+  }
+
+  bool GetIsOcrServiceStartedBeforePdfLoads() const {
+    return std::get<0>(GetParam());
+  }
+
+  uint32_t GetPageCount() const { return std::get<1>(GetParam()).page_count; }
+
+  uint32_t GetExpectedBatchSize() const {
+    return std::get<1>(GetParam()).expected_batch_size;
   }
 
  private:
@@ -2297,15 +2312,19 @@ class PdfOcrServiceTest
 TEST_P(PdfOcrServiceTest, PageBatching) {
   CreatePdfAccessibilityTree();
 
-  constexpr uint32_t kPagesPerBatch = 20u;
-  bool is_ocr_service_started_before_pdf_loads;
-  uint32_t page_count;
-  std::tie(is_ocr_service_started_before_pdf_loads, page_count) = GetParam();
+  const bool is_ocr_service_started_before_pdf_loads =
+      GetIsOcrServiceStartedBeforePdfLoads();
+  const uint32_t page_count = GetPageCount();
   ASSERT_NO_FATAL_FAILURE(CreateInaccessiblePdfAndOcrService(
-      page_count, is_ocr_service_started_before_pdf_loads, kPagesPerBatch,
+      page_count, is_ocr_service_started_before_pdf_loads,
       /*create_empty_results=*/false));
-  const uint32_t kBatchCount = (page_count / kPagesPerBatch) +
-                               ((page_count % kPagesPerBatch == 0u) ? 0u : 1u);
+
+  const uint32_t pages_per_batch =
+      pdf_accessibility_tree_->ocr_service_for_testing()
+          ->pages_per_batch_for_testing();
+  EXPECT_EQ(GetExpectedBatchSize(), pages_per_batch);
+
+  const uint32_t batch_count = CalculateBatchCount(page_count, pages_per_batch);
 
   ui::AXNode* root_node = pdf_accessibility_tree_->GetRoot();
   // The first node of the root node's children is a status node. There
@@ -2333,11 +2352,11 @@ TEST_P(PdfOcrServiceTest, PageBatching) {
       WaitForThreadTasks();
       WaitForThreadTasks();
 
-      if (page_count >= kPagesPerBatch && i >= kPagesPerBatch &&
+      if (page_count >= pages_per_batch && i >= pages_per_batch &&
           i != page_count - 1u) {
         // A postamble page informing the user that the OCR process is in
         // progress should be present after processing the first batch of
-        // OCR requests (i.e. when `i >= kPagesPerBatch`).
+        // OCR requests (i.e. when `i >= pages_per_batch`).
         const ui::AXTreeUpdate* postamble_update =
             pdf_accessibility_tree_->postamble_page_tree_update_for_testing();
         ASSERT_NE(nullptr, postamble_update);
@@ -2365,10 +2384,10 @@ TEST_P(PdfOcrServiceTest, PageBatching) {
   }
 
   const auto& tree_updates = pdf_accessibility_tree_->GetTreeUpdates();
-  ASSERT_EQ(kBatchCount, tree_updates.size());
+  ASSERT_EQ(batch_count, tree_updates.size());
   for (uint32_t i = 0; i < tree_updates.size(); ++i) {
     const std::vector<ui::AXTreeUpdate>& page_tree_updates = tree_updates[i];
-    if (page_count % kPagesPerBatch != 0u && i == 0) {
+    if (page_count % pages_per_batch != 0u && i == 0) {
       // The first batch should have the remaining pages that cannot be
       // processed by the rest of the batches because they are full. By design,
       // this is always set to 5u in the instantiation of these parameterized
@@ -2388,11 +2407,11 @@ TEST_P(PdfOcrServiceTest, PageBatching) {
     } else {
       // All other batches should be full, i.e., their page count should equal
       // the number of pages allowed in each batch.
-      ASSERT_EQ(kPagesPerBatch * 2u, page_tree_updates.size())
+      ASSERT_EQ(pages_per_batch * 2u, page_tree_updates.size())
           << "There should be 20 pages in the remaining batches, with two "
              "images per page.";
 
-      for (uint32_t j = 0; j < kPagesPerBatch * 2u; ++j) {
+      for (uint32_t j = 0; j < pages_per_batch * 2u; ++j) {
         EXPECT_EQ(page_tree_updates[j].nodes.size(), 1u);
         EXPECT_EQ(page_tree_updates[j].root_id,
                   page_tree_updates[j].nodes[0].id);
@@ -2406,14 +2425,16 @@ TEST_P(PdfOcrServiceTest, PageBatching) {
 TEST_P(PdfOcrServiceTest, UMAMetrics) {
   CreatePdfAccessibilityTree();
 
-  constexpr uint32_t kPagesPerBatch = 1u;
   base::HistogramTester histograms;
-  bool is_ocr_service_started_before_pdf_loads;
-  uint32_t page_count;
-  std::tie(is_ocr_service_started_before_pdf_loads, page_count) = GetParam();
+  const bool is_ocr_service_started_before_pdf_loads =
+      GetIsOcrServiceStartedBeforePdfLoads();
+  const uint32_t page_count = GetPageCount();
   ASSERT_NO_FATAL_FAILURE(CreateInaccessiblePdfAndOcrService(
-      page_count, is_ocr_service_started_before_pdf_loads, kPagesPerBatch,
+      page_count, is_ocr_service_started_before_pdf_loads,
       /*create_empty_results=*/false));
+  const uint32_t pages_per_batch =
+      pdf_accessibility_tree_->ocr_service_for_testing()
+          ->pages_per_batch_for_testing();
 
   for (uint32_t i = 0; i < page_count; ++i) {
     if (!is_ocr_service_started_before_pdf_loads) {
@@ -2443,11 +2464,9 @@ TEST_P(PdfOcrServiceTest, UMAMetrics) {
     WaitForThreadTasks();
   }
 
-  ASSERT_EQ(pdf_accessibility_tree_->GetTreeUpdates().size(), page_count);
-  for (uint32_t i = 0; i < page_count; ++i) {
-    // There are two mock images per page.
-    ASSERT_EQ(pdf_accessibility_tree_->GetTreeUpdates()[i].size(), 2u);
-  }
+  const auto& tree_updates = pdf_accessibility_tree_->GetTreeUpdates();
+  const uint32_t batch_count = CalculateBatchCount(page_count, pages_per_batch);
+  ASSERT_EQ(batch_count, tree_updates.size());
 
   histograms.ExpectBucketCount(
       "Accessibility.PdfOcr.ActiveWhenInaccessiblePdfOpened",
@@ -2466,17 +2485,34 @@ TEST_P(PdfOcrServiceTest, UMAMetrics) {
                                /*expected_count=*/page_count * 2);
   histograms.ExpectTotalCount("Accessibility.PdfOcr.PDFImages",
                               /*expected_count=*/page_count * 4);
+
+  // TODO(crbug.com/1443346): The current test fixture does not trigger
+  // `PdfAccessibilityTree::MaybeHandleAccessibilityChange` when OCR is enabled
+  // after tree load, and hence does result in calling
+  // `PdfAccessibilityTree::SetAccessibilityPageInfo` for the second time.
+  // Either update text fixture to be more realistic, or add metrics test to
+  // browser test without fake OCR service.
+  histograms.ExpectBucketCount("Accessibility.PDF.HasAccessibleText",
+                               /*sample=*/false,
+                               /*expected_count=*/1);
+  histograms.ExpectTotalCount("Accessibility.PDF.HasAccessibleText",
+                              /*expected_count=*/1);
+
+  histograms.ExpectBucketCount("Accessibility.PdfOcr.InaccessiblePdfPageCount",
+                               doc_info_.page_count,
+                               /*expected_count=*/1);
+  histograms.ExpectTotalCount("Accessibility.PdfOcr.InaccessiblePdfPageCount",
+                              /*expected_count=*/1);
 }
 
 TEST_P(PdfOcrServiceTest, EmptyOCRResults) {
   CreatePdfAccessibilityTree();
 
-  constexpr uint32_t kPagesPerBatch = 20u;
-  bool is_ocr_service_started_before_pdf_loads;
-  uint32_t page_count;
-  std::tie(is_ocr_service_started_before_pdf_loads, page_count) = GetParam();
+  const bool is_ocr_service_started_before_pdf_loads =
+      GetIsOcrServiceStartedBeforePdfLoads();
+  const uint32_t page_count = GetPageCount();
   ASSERT_NO_FATAL_FAILURE(CreateInaccessiblePdfAndOcrService(
-      page_count, is_ocr_service_started_before_pdf_loads, kPagesPerBatch,
+      page_count, is_ocr_service_started_before_pdf_loads,
       /*create_empty_results=*/true));
 
   for (uint32_t i = 0; i < page_count; ++i) {
@@ -2522,8 +2558,9 @@ TEST_P(PdfOcrServiceTest, EmptyOCRResults) {
   ui::AXNode* status_node = status_wrapper_node->GetChildAtIndex(0);
   ASSERT_NE(nullptr, status_node);
   ASSERT_EQ(ax::mojom::Role::kStatus, status_node->GetRole());
-  // Note that the string below needs to be synced with `IDS_PDF_OCR_NO_RESULT`.
-  constexpr char kPdfOcrNoResult[] = "No text converted from images";
+  // Note that the string below must be synced with `IDS_PDF_OCR_NO_RESULT`.
+  constexpr char kPdfOcrNoResult[] =
+      "This PDF is inaccessible. No text extracted";
   ASSERT_EQ(kPdfOcrNoResult,
             status_node->GetStringAttribute(ax::mojom::StringAttribute::kName));
 }
@@ -2536,7 +2573,10 @@ INSTANTIATE_TEST_SUITE_P(
     PdfOcrServiceTest,
     testing::Combine(
         /* is_ocr_service_started_before_pdf_loads */ testing::Bool(),
-        /* page_count */ testing::Values(5u, 105u, 280u)));
+        /* (page_count, expected_batch_size) */ testing::Values(
+            PdfOcrServiceTestBatchData(5u, 1u),
+            PdfOcrServiceTestBatchData(105u, 10u),
+            PdfOcrServiceTestBatchData(280u, 20u))));
 
 // TODO(crbug.com/1443341): Add test for end result on a non-synthetic
 // multi-page PDF.

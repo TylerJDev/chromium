@@ -6,13 +6,13 @@
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
 #include "base/check.h"
 #include "base/json/json_reader.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
@@ -24,8 +24,8 @@
 #include "components/attribution_reporting/event_report_windows.h"
 #include "components/attribution_reporting/filters.h"
 #include "components/attribution_reporting/parsing_utils.h"
-#include "components/attribution_reporting/source_registration_error.mojom-shared.h"
 #include "components/attribution_reporting/source_registration_error.mojom.h"
+#include "components/attribution_reporting/source_type.mojom.h"
 #include "components/attribution_reporting/suitable_origin.h"
 #include "mojo/public/cpp/bindings/default_construct_tag.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -35,21 +35,24 @@ namespace attribution_reporting {
 namespace {
 
 using ::attribution_reporting::mojom::SourceRegistrationError;
+using ::attribution_reporting::mojom::SourceType;
 
 constexpr char kAggregatableReportWindow[] = "aggregatable_report_window";
 constexpr char kAggregationKeys[] = "aggregation_keys";
 constexpr char kDestination[] = "destination";
-constexpr char kEventReportWindow[] = "event_report_window";
-constexpr char kEventReportWindows[] = "event_report_windows";
 constexpr char kExpiry[] = "expiry";
 constexpr char kFilterData[] = "filter_data";
 constexpr char kMaxEventLevelReports[] = "max_event_level_reports";
 constexpr char kSourceEventId[] = "source_event_id";
 
+bool IsMaxEventLevelReportsValid(int i) {
+  return i >= 0 && i <= kMaxSettableEventLevelAttributions;
+}
+
 base::expected<int, SourceRegistrationError> ParseMaxEventLevelReports(
     const base::Value& value) {
   absl::optional<int> i = value.GetIfInt();
-  if (!i.has_value() || *i < 0 || *i > kMaxSettableEventLevelAttributions) {
+  if (!i.has_value() || !IsMaxEventLevelReportsValid(*i)) {
     return base::unexpected(
         SourceRegistrationError::kMaxEventLevelReportsValueInvalid);
   }
@@ -57,72 +60,21 @@ base::expected<int, SourceRegistrationError> ParseMaxEventLevelReports(
   return *i;
 }
 
-base::expected<base::TimeDelta, SourceRegistrationError> ParseLegacyDuration(
-    const base::Value& value,
-    SourceRegistrationError error) {
-  // Note: The full range of uint64 seconds cannot be represented in the
-  // resulting `base::TimeDelta`, but this is fine because `base::Seconds()`
-  // properly clamps out-of-bound values and because the Attribution
-  // Reporting API itself clamps values to 30 days:
-  // https://wicg.github.io/attribution-reporting-api/#valid-source-expiry-range
-
-  if (absl::optional<int> int_value = value.GetIfInt()) {
-    if (*int_value < 0) {
-      return base::unexpected(error);
-    }
-    return base::Seconds(*int_value);
+int DefaultMaxEventLevelReports(SourceType source_type) {
+  switch (source_type) {
+    case SourceType::kNavigation:
+      return 3;
+    case SourceType::kEvent:
+      return 1;
   }
-
-  if (const std::string* str = value.GetIfString()) {
-    uint64_t seconds;
-    if (!base::StringToUint64(*str, &seconds)) {
-      return base::unexpected(error);
-    }
-    return base::Seconds(seconds);
-  }
-
-  return base::unexpected(error);
 }
 
-base::expected<void, SourceRegistrationError> ParseEventReportWindowOrWindows(
-    const base::Value::Dict& registration,
-    SourceRegistration& result) {
-  const base::Value* singular_window = registration.Find(kEventReportWindow);
-  const base::Value* multiple_windows = registration.Find(kEventReportWindows);
-
-  if (singular_window && multiple_windows) {
-    return base::unexpected(
-        SourceRegistrationError::kBothEventReportWindowFieldsFound);
-  }
-
-  if (singular_window) {
-    ASSIGN_OR_RETURN(
-        result.event_report_window,
-        ParseLegacyDuration(
-            *singular_window,
-            SourceRegistrationError::kEventReportWindowValueInvalid));
-    return base::ok();
-  }
-
-  if (multiple_windows) {
-    ASSIGN_OR_RETURN(result.event_report_windows,
-                     EventReportWindows::FromJSON(*multiple_windows));
-    return base::ok();
-  }
-
-  return base::ok();
-}
-
-void SerializeTimeDeltaInSeconds(base::Value::Dict& dict,
-                                 base::StringPiece key,
-                                 absl::optional<base::TimeDelta> value) {
-  if (value) {
-    int64_t seconds = value->InSeconds();
-    if (base::IsValueInRangeForNumericType<int>(seconds)) {
-      dict.Set(key, static_cast<int>(seconds));
-    } else {
-      SerializeInt64(dict, key, seconds);
-    }
+base::TimeDelta AdjustExpiry(base::TimeDelta expiry, SourceType source_type) {
+  switch (source_type) {
+    case SourceType::kNavigation:
+      return expiry;
+    case SourceType::kEvent:
+      return expiry.RoundToMultiple(base::Days(1));
   }
 }
 
@@ -152,7 +104,8 @@ SourceRegistration& SourceRegistration::operator=(SourceRegistration&&) =
 
 // static
 base::expected<SourceRegistration, SourceRegistrationError>
-SourceRegistration::Parse(base::Value::Dict registration) {
+SourceRegistration::Parse(base::Value::Dict registration,
+                          SourceType source_type) {
   ASSIGN_OR_RETURN(DestinationSet destination_set,
                    DestinationSet::FromJSON(registration.Find(kDestination)));
   SourceRegistration result(std::move(destination_set));
@@ -160,7 +113,8 @@ SourceRegistration::Parse(base::Value::Dict registration) {
   ASSIGN_OR_RETURN(result.filter_data,
                    FilterData::FromJSON(registration.Find(kFilterData)));
 
-  RETURN_IF_ERROR(ParseEventReportWindowOrWindows(registration, result));
+  ASSIGN_OR_RETURN(result.event_report_windows,
+                   EventReportWindows::FromJSON(registration));
 
   ASSIGN_OR_RETURN(
       result.aggregation_keys,
@@ -183,6 +137,11 @@ SourceRegistration::Parse(base::Value::Dict registration) {
     ASSIGN_OR_RETURN(result.expiry,
                      ParseLegacyDuration(
                          *value, SourceRegistrationError::kExpiryValueInvalid));
+
+    result.expiry =
+        std::clamp(result.expiry, kMinSourceExpiry, kMaxSourceExpiry);
+
+    result.expiry = AdjustExpiry(result.expiry, source_type);
   }
 
   if (const base::Value* value = registration.Find(kAggregatableReportWindow)) {
@@ -191,23 +150,32 @@ SourceRegistration::Parse(base::Value::Dict registration) {
         ParseLegacyDuration(
             *value,
             SourceRegistrationError::kAggregatableReportWindowValueInvalid));
+
+    result.aggregatable_report_window = std::clamp(
+        result.aggregatable_report_window, kMinReportWindow, result.expiry);
+  } else {
+    result.aggregatable_report_window = result.expiry;
   }
 
   if (const base::Value* value = registration.Find(kMaxEventLevelReports)) {
     ASSIGN_OR_RETURN(result.max_event_level_reports,
                      ParseMaxEventLevelReports(*value));
+  } else {
+    result.max_event_level_reports = DefaultMaxEventLevelReports(source_type);
   }
 
   result.debug_key = ParseDebugKey(registration);
 
   result.debug_reporting = ParseDebugReporting(registration);
 
+  CHECK(result.IsValid());
+  CHECK(result.IsValidForSourceType(source_type));
   return result;
 }
 
 // static
 base::expected<SourceRegistration, SourceRegistrationError>
-SourceRegistration::Parse(base::StringPiece json) {
+SourceRegistration::Parse(base::StringPiece json, SourceType source_type) {
   base::expected<SourceRegistration, SourceRegistrationError> source =
       base::unexpected(SourceRegistrationError::kInvalidJson);
 
@@ -216,7 +184,7 @@ SourceRegistration::Parse(base::StringPiece json) {
 
   if (value) {
     if (value->is_dict()) {
-      source = Parse(std::move(*value).TakeDict());
+      source = Parse(std::move(*value).TakeDict(), source_type);
     } else {
       source = base::unexpected(SourceRegistrationError::kRootWrongType);
     }
@@ -246,22 +214,41 @@ base::Value::Dict SourceRegistration::ToJson() const {
   SerializePriority(dict, priority);
 
   SerializeTimeDeltaInSeconds(dict, kExpiry, expiry);
-  SerializeTimeDeltaInSeconds(dict, kEventReportWindow, event_report_window);
+
+  if (event_report_windows.has_value()) {
+    event_report_windows->Serialize(dict);
+  }
+
   SerializeTimeDeltaInSeconds(dict, kAggregatableReportWindow,
                               aggregatable_report_window);
 
   SerializeDebugKey(dict, debug_key);
   SerializeDebugReporting(dict, debug_reporting);
 
-  if (event_report_windows.has_value()) {
-    dict.Set(kEventReportWindows, event_report_windows->ToJson());
-  }
-
-  if (max_event_level_reports.has_value()) {
-    dict.Set(kMaxEventLevelReports, max_event_level_reports.value());
-  }
+  dict.Set(kMaxEventLevelReports, max_event_level_reports);
 
   return dict;
+}
+
+bool SourceRegistration::IsValid() const {
+  if (expiry < kMinSourceExpiry || expiry > kMaxSourceExpiry) {
+    return false;
+  }
+
+  if (aggregatable_report_window < kMinReportWindow ||
+      aggregatable_report_window > expiry) {
+    return false;
+  }
+
+  if (!IsMaxEventLevelReportsValid(max_event_level_reports)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool SourceRegistration::IsValidForSourceType(SourceType source_type) const {
+  return expiry == AdjustExpiry(expiry, source_type);
 }
 
 }  // namespace attribution_reporting

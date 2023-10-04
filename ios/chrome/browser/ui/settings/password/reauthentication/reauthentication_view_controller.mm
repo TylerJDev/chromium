@@ -9,6 +9,7 @@
 #import "ios/chrome/browser/ui/settings/password/branded_navigation_item_title_view.h"
 #import "ios/chrome/browser/ui/settings/password/create_password_manager_title_view.h"
 #import "ios/chrome/browser/ui/settings/password/reauthentication/reauthentication_constants.h"
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
 #import "ios/chrome/common/ui/reauthentication/reauthentication_event.h"
 #import "ios/chrome/common/ui/reauthentication/reauthentication_protocol.h"
 #import "ios/chrome/grit/ios_strings.h"
@@ -28,6 +29,10 @@
     _reauthModule = reauthenticationModule;
     _reauthUponPresentation = reauthUponPresentation;
     self.navigationItem.hidesBackButton = YES;
+
+    // This view does not support large titles as it uses a custom title view.
+    self.navigationItem.largeTitleDisplayMode =
+        UINavigationItemLargeTitleDisplayModeNever;
   }
 
   return self;
@@ -38,11 +43,19 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
+  // Set background color matching the one used in the settings UI.
+  self.view.backgroundColor =
+      [UIColor colorNamed:kGroupedPrimaryBackgroundColor];
+
   [self setUpTitle];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
   [super viewWillAppear:animated];
+
+  // Restore navigation bar background color to its default value.
+  // The view controller under self in the stack could have changed it.
+  self.navigationController.navigationBar.backgroundColor = nil;
 
   if (_reauthUponPresentation) {
     [self recordAuthenticationEvent:ReauthenticationEvent::kAttempt];

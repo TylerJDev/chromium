@@ -4,7 +4,7 @@
 
 import {assert} from 'chrome://resources/js/assert_ts.js';
 
-import {ACMatchClassification, AutocompleteAdditionalInfo, AutocompleteMatch, OmniboxResponse} from './omnibox.mojom-webui.js';
+import {ACMatchClassification, AutocompleteMatch, DictionaryEntry, OmniboxResponse} from './omnibox.mojom-webui.js';
 import {OmniboxElement} from './omnibox_element.js';
 import {DisplayInputs, OmniboxInput} from './omnibox_input.js';
 // @ts-ignore:next-line
@@ -538,10 +538,12 @@ class OutputAnswerProperty extends FlexWrappingOutputProperty {
       classes: ACMatchClassification[]) {
     clearChildren(container);
     OutputAnswerProperty.classify(string, classes)
-        .map(
-            ({string, style}) => OutputJsonProperty.renderJsonWord(
-                string, OutputAnswerProperty.styleToClasses(style)))
-        .forEach(span => container.appendChild(span));
+        .forEach(({string, style}) => {
+          const span = document.createElement('span');
+          span.classList.add(...OutputAnswerProperty.styleToClasses(style));
+          span.textContent = string;
+          container.appendChild(span);
+        });
   }
 
   private static classify(string: string, classes: ACMatchClassification[]):
@@ -567,63 +569,15 @@ class OutputBooleanProperty extends OutputProperty {
     super((value ? 'is: ' : 'not: ') + filterName);
 
     const icon = document.createElement('div');
-    icon.classList.add(value ? 'check-mark' : 'x-mark');
+    icon.classList.add('icon', value ? 'check-icon' : 'x-icon');
     this.appendChild(icon);
 
     return this;
   }
 }
 
-class OutputJsonProperty extends OutputProperty {
-  private static classifications: Array<{re: RegExp, clazz: string}>;
-  private static spaceRegex: RegExp;
-
-  constructor(json: string) {
-    super(JSON.stringify(json, null, 2));
-
-    const pre = document.createElement('pre');
-    pre.classList.add('json');
-    json.split(/("(?:[^"\\]|\\.)*":?|\w+)/)
-        .map(word => {
-          return OutputJsonProperty.renderJsonWord(
-              word, [OutputJsonProperty.classifyJsonWord(word)]);
-        })
-        .forEach(jsonSpan => pre.appendChild(jsonSpan));
-    this.appendChild(pre);
-
-    return this;
-  }
-
-  static renderJsonWord(word: string, classes: string[]): HTMLElement {
-    const span = document.createElement('span');
-    span.classList.add(...classes);
-    span.textContent = word;
-    return span;
-  }
-
-  static classifyJsonWord(word: string): string {
-    // Statically creating the regexes only once.
-    OutputJsonProperty.classifications = OutputJsonProperty.classifications || [
-      {re: /^"[^]*":$/, clazz: 'key'},
-      {re: /^"[^]*"$/, clazz: 'string'},
-      {re: /true|false/, clazz: 'boolean'},
-      {re: /null/, clazz: 'null'},
-    ];
-    OutputJsonProperty.spaceRegex = OutputJsonProperty.spaceRegex || /^\s*$/;
-
-    if (Number.isNaN(Number(word))) {
-      const classification =
-          OutputJsonProperty.classifications.find(({re}) => re.test(word));
-      return classification && classification.clazz || '';
-    } else if (!OutputJsonProperty.spaceRegex.test(word)) {
-      return 'number';
-    }
-    return '';
-  }
-}
-
-class OutputAdditionalInfoProperty extends OutputProperty {
-  constructor(value: AutocompleteAdditionalInfo[]) {
+class OutputDictionaryProperty extends OutputProperty {
+  constructor(value: DictionaryEntry[]) {
     super(value.map(({key, value}) => `${key}: ${value}`).join('\n'));
 
     const container = document.createElement('div');
@@ -631,24 +585,30 @@ class OutputAdditionalInfoProperty extends OutputProperty {
     const pre = document.createElement('pre');
     pre.classList.add('json');
     value.forEach(({key, value}) => {
-      pre.appendChild(OutputJsonProperty.renderJsonWord(key + ': ', ['key']));
-      pre.appendChild(
-          OutputJsonProperty.renderJsonWord(value + '\n', ['number']));
+      const keySpan = document.createElement('span');
+      keySpan.classList.add('key');
+      keySpan.textContent = key + ': ';
+      pre.appendChild(keySpan);
+
+      const valueSpan = document.createElement('span');
+      valueSpan.classList.add('value');
+      valueSpan.textContent = value + '\n';
+      pre.appendChild(valueSpan);
     });
     container.appendChild(pre);
 
     const link = document.createElement('a');
+    link.classList.add('icon', 'download-icon');
     link.download = 'AdditionalInfo.json';
-    link.href = OutputAdditionalInfoProperty.createDownloadLink(value);
-    container.appendChild(link);
+    link.href = OutputDictionaryProperty.createDownloadLink(value);
+    container.insertBefore(link, container.firstChild);
 
     this.appendChild(container);
 
     return this;
   }
 
-  private static createDownloadLink(value: AutocompleteAdditionalInfo[]):
-      string {
+  private static createDownloadLink(value: DictionaryEntry[]): string {
     const obj = value.reduce((obj: Record<string, string>, {key, value}) => {
       obj[key] = value;
       return obj;
@@ -875,9 +835,13 @@ const COLUMNS: Column[] = [
       'pedal-id', false, 'Pedal ID\nThe ID of attached Pedal, or zero if none.',
       match => new OutputTextProperty(String(match.pedalId))),
   new Column(
+      ['Scoring Signals'], '', 'scoring-signals', false,
+      'Scoring Signals\nSignals used by the ML Model to score suggestions.',
+      match => new OutputDictionaryProperty(match.scoringSignals)),
+  new Column(
       ['Additional Info'], '', 'additional-info', true,
       'Additional Info\nProvider-specific information about the result.',
-      match => new OutputAdditionalInfoProperty(match.additionalInfo)),
+      match => new OutputDictionaryProperty(match.additionalInfo)),
 ];
 
 customElements.define('omnibox-output', OmniboxOutput);
@@ -897,9 +861,7 @@ customElements.define(
 customElements.define(
     'output-boolean-property', OutputBooleanProperty, {extends: 'td'});
 customElements.define(
-    'output-json-property', OutputJsonProperty, {extends: 'td'});
-customElements.define(
-    'output-additional-info-property', OutputAdditionalInfoProperty,
+    'output-additional-info-property', OutputDictionaryProperty,
     {extends: 'td'});
 customElements.define(
     'output-url-property', OutputUrlProperty, {extends: 'td'});

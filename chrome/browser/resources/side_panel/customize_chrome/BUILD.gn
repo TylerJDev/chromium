@@ -23,10 +23,13 @@ build_webui("build") {
     "categories.ts",
     "check_mark_wrapper.ts",
     "chrome_colors.ts",
+    "combobox/customize_chrome_combobox.ts",
     "hover_button.ts",
     "shortcuts.ts",
     "themes.ts",
     "theme_snapshot.ts",
+    "wallpaper_search_simple.ts",
+    "wallpaper_search.ts",
   ]
 
   non_web_component_files = [

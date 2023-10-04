@@ -472,6 +472,11 @@ ExtensionIdSet ExtensionManagement::GetForcePinnedList() const {
   return force_pinned_list;
 }
 
+bool ExtensionManagement::IsFileUrlNavigationAllowed(const ExtensionId& id) {
+  auto* setting = GetSettingsForId(id);
+  return setting && setting->file_url_navigation_allowed;
+}
+
 bool ExtensionManagement::CheckMinimumVersion(const Extension* extension,
                                               std::string* required_version) {
   auto* setting = GetSettingsForId(extension->id());
@@ -934,11 +939,13 @@ ExtensionManagementFactory::ExtensionManagementFactory()
 
 ExtensionManagementFactory::~ExtensionManagementFactory() {}
 
-KeyedService* ExtensionManagementFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+ExtensionManagementFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   TRACE_EVENT0("browser,startup",
                "ExtensionManagementFactory::BuildServiceInstanceFor");
-  return new ExtensionManagement(Profile::FromBrowserContext(context));
+  return std::make_unique<ExtensionManagement>(
+      Profile::FromBrowserContext(context));
 }
 
 void ExtensionManagementFactory::RegisterProfilePrefs(

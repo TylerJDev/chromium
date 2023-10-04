@@ -21,4 +21,6 @@ dictionary NavigateEventInit : EventInit {
   FormData? formData = null;
   DOMString? downloadRequest = null;
   any info;
+  boolean hasUAVisualTransition = false;
+  Element? sourceElement = null;
 };

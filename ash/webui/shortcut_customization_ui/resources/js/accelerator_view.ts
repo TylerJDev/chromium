@@ -13,16 +13,14 @@ import {String16} from 'chrome://resources/mojo/mojo/public/mojom/base/string16.
 import {PolymerElementProperties} from 'chrome://resources/polymer/v3_0/polymer/interfaces.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {AcceleratorResultData} from '../mojom-webui/ash/webui/shortcut_customization_ui/mojom/shortcut_customization.mojom-webui.js';
+import {AcceleratorResultData, UserAction} from '../mojom-webui/ash/webui/shortcut_customization_ui/mojom/shortcut_customization.mojom-webui.js';
 
 import {AcceleratorLookupManager} from './accelerator_lookup_manager.js';
 import {getTemplate} from './accelerator_view.html.js';
-import {keyToIconNameMap} from './input_key.js';
 import {getShortcutProvider} from './mojo_interface_provider.js';
 import {ModifierKeyCodes} from './shortcut_input.js';
-import {Accelerator, AcceleratorConfigResult, AcceleratorSource, AcceleratorState, Modifier, ShortcutProviderInterface, StandardAcceleratorInfo} from './shortcut_types.js';
-import {createEmptyAcceleratorInfo, getAccelerator, getModifiersForAcceleratorInfo, isCustomizationDisabled, isFunctionKey, isStandardAcceleratorInfo, keyCodeToModifier, LWIN_KEY, META_KEY, unidentifiedKeyCodeToKey} from './shortcut_utils.js';
-
+import {Accelerator, AcceleratorConfigResult, AcceleratorKeyState, AcceleratorSource, AcceleratorState, Modifier, ShortcutProviderInterface, StandardAcceleratorInfo} from './shortcut_types.js';
+import {createEmptyAcceleratorInfo, getAccelerator, getKeyDisplay, getModifiersForAcceleratorInfo, isCustomizationAllowed, isFunctionKey, isStandardAcceleratorInfo, keyCodeToModifier, keyToIconNameMap, LWIN_KEY, META_KEY, unidentifiedKeyCodeToKey} from './shortcut_utils.js';
 export interface AcceleratorViewElement {
   $: {
     container: HTMLDivElement,
@@ -386,6 +384,14 @@ export class AcceleratorViewElement extends AcceleratorViewElementBase {
         this.hasError = true;
         return;
       }
+      // Search with function keys are not allowed.
+      // TODO(b/286268215): localize string.
+      case AcceleratorConfigResult.kSearchWithFunctionKeyNotAllowed: {
+        this.statusMessage =
+            this.i18n('searchWithFunctionKeyNotAllowedStatusMessage');
+        this.hasError = true;
+        return;
+      }
       // Conflict with a locked accelerator.
       case AcceleratorConfigResult.kConflict:
       case AcceleratorConfigResult.kActionLocked: {
@@ -409,8 +415,24 @@ export class AcceleratorViewElement extends AcceleratorViewElementBase {
         this.hasError = true;
         return;
       }
+      case AcceleratorConfigResult.kNonSearchAcceleratorWarning: {
+        // TODO(jimmyxgong): Add the "Learn More" link when available.
+        this.statusMessage = this.i18n('warningSearchNotIncluded');
+        this.hasError = true;
+        return;
+      }
+      case AcceleratorConfigResult.kReservedKeyNotAllowed: {
+        this.statusMessage = this.i18n(
+            'reservedKeyNotAllowedStatusMessage',
+            this.pendingAcceleratorInfo.layoutProperties.standardAccelerator
+                .keyDisplay);
+        this.hasError = true;
+        return;
+      }
       case AcceleratorConfigResult.kSuccess: {
         this.fireUpdateEvent();
+        getShortcutProvider().recordUserAction(
+            UserAction.kSuccessfulModification);
         return;
       }
     }
@@ -421,7 +443,11 @@ export class AcceleratorViewElement extends AcceleratorViewElementBase {
    * Converts a keystroke event to an Accelerator Object.
    */
   private keystrokeToAccelerator(e: KeyboardEvent): Accelerator {
-    const output: Accelerator = {modifiers: 0, keyCode: 0};
+    const output: Accelerator = {
+      modifiers: 0,
+      keyCode: 0,
+      keyState: AcceleratorKeyState.PRESSED,
+    };
     if (e.metaKey) {
       output.modifiers = output.modifiers | Modifier.COMMAND;
     }
@@ -593,7 +619,7 @@ export class AcceleratorViewElement extends AcceleratorViewElementBase {
   private shouldShowLockIcon(): boolean {
     // Do not show lock icon in each row if customization is disabled or its
     // category is locked.
-    if (isCustomizationDisabled() || this.categoryIsLocked) {
+    if (!isCustomizationAllowed() || this.categoryIsLocked) {
       return false;
     }
     // Show lock icon if accelerator is locked.
@@ -604,7 +630,7 @@ export class AcceleratorViewElement extends AcceleratorViewElementBase {
   private shouldShowEditIcon(): boolean {
     // Do not show edit icon in each row if customization is disabled, the row
     // is displayed in edit-dialog(!showEditIcon) or category is locked.
-    if (isCustomizationDisabled() || !this.showEditIcon ||
+    if (!isCustomizationAllowed() || !this.showEditIcon ||
         this.categoryIsLocked) {
       return false;
     }
@@ -633,12 +659,7 @@ export class AcceleratorViewElement extends AcceleratorViewElementBase {
                 modifier =>
                     modifier === META_KEY ? metaKeyAriaLabel : modifier);
 
-    return [...modifiers, this.getAriaKeyDisplay(keyOrIcon)].join(' ');
-  }
-
-  private getAriaKeyDisplay(keyOrIcon: string): string {
-    const iconName = keyToIconNameMap[keyOrIcon];
-    return iconName ? iconName : keyOrIcon;
+    return [...modifiers, getKeyDisplay(keyOrIcon)].join(' ');
   }
 
   static get template(): HTMLTemplateElement {

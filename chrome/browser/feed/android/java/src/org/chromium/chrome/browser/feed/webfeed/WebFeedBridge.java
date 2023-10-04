@@ -31,8 +31,7 @@ public class WebFeedBridge {
 
     // Access to JNI test hooks for other libraries. This can go away once more Feed code is
     // migrated to chrome/browser/feed.
-    public static org.chromium.base.JniStaticTestMocker<WebFeedBridge.Natives>
-    getTestHooksForTesting() {
+    public static org.jni_zero.JniStaticTestMocker<WebFeedBridge.Natives> getTestHooksForTesting() {
         return WebFeedBridgeJni.TEST_HOOKS;
     }
 
@@ -210,6 +209,10 @@ public class WebFeedBridge {
         public final String url;
     }
 
+    public static boolean isCormorantEnabledForLocale() {
+        return WebFeedBridgeJni.get().isCormorantEnabledForLocale();
+    }
+
     /**
      * Requests to follow of the most relevant Web Feed represented by the provided URL.
      * @param tab The tab with the loaded page that should be followed.
@@ -305,5 +308,6 @@ public class WebFeedBridge {
         void incrementFollowedFromWebPageMenuCount();
         void queryWebFeed(String url, Callback<QueryResult> callback);
         void queryWebFeedId(String id, Callback<QueryResult> callback);
+        boolean isCormorantEnabledForLocale();
     }
 }
