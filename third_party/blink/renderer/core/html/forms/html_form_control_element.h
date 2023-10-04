@@ -47,7 +47,6 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
  public:
   ~HTMLFormControlElement() override;
   void Trace(Visitor*) const override;
-
   String formAction() const;
   void setFormAction(const AtomicString&);
   String formEnctype() const;
@@ -106,9 +105,16 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
   virtual PopoverTriggerSupport SupportsPopoverTriggering() const {
     return PopoverTriggerSupport::kNone;
   }
+
+  HTMLElement invokeTargetElement();
+  void setInvokeTargetElement(HTMLElement & target);
+
   // The IDL reflections:
   AtomicString popoverTargetAction() const;
   void setPopoverTargetAction(const AtomicString& value);
+
+  AtomicString invokeAction() const;
+  void setInvokeAction(const AtomicString& value);
 
   void DefaultEventHandler(Event&) override;
 
