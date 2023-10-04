@@ -100,7 +100,7 @@ enum SelectionMode { "select", "start", "end", "preserve" };
     [CEReactions, Reflect] attribute DOMString align;
     [CEReactions, Reflect] attribute DOMString useMap;
 
-    // HTML Media Capture
+    
     // https://w3c.github.io/html-media-capture/#the-capture-attribute
     [Measure, RuntimeEnabled=MediaCapture, Reflect] attribute DOMString capture;
 
