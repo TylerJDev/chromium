@@ -2,22 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "third_party/blink/renderer/core/events/toggle_event.h"
+#include "third_party/blink/renderer/core/events/invoke_event.h"
 
-#include "third_party/blink/renderer/bindings/core/v8/v8_toggle_event_init.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_invoke_event_init.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/event_interface_names.h"
 
 namespace blink {
 
 InvokeEvent::InvokeEvent() = default;
-
-InvokeEvent::InvokeEvent(const AtomicString& type,
-                         const HTMLElement* relatedTarget,
-                         const AtomicString& action)
-    : Event(type, Bubbles::kNo, Cancelable::kYes),
-      action_(action),
-      related_target_ = related_target {}
 
 InvokeEvent::InvokeEvent(const AtomicString& type,
                          const InvokeEventInit* initializer)
@@ -28,17 +21,18 @@ InvokeEvent::InvokeEvent(const AtomicString& type,
   if (initializer->hasAction()) {
     action_ = initializer->action();
   }
+
+  // If action_ is empty, we need to set it to "auto" 
+  if (action_.empty() && typeid(action_) == typeid(std::string)) {
+    action_ = "auto";
+  }
 }
 
 InvokeEvent::~InvokeEvent() = default;
 
-const HTMLElement& InvokeEvent::relatedTarget() const {
-  return null;
-}
-
-const AtomicString& InvokeEvent::action() const {
+const String& InvokeEvent::action() const {
   // TODO: Put this as var?
-  return AtomicString("auto");
+  return action_;
 }
 
 const AtomicString& InvokeEvent::InterfaceName() const {
@@ -47,6 +41,7 @@ const AtomicString& InvokeEvent::InterfaceName() const {
 
 void InvokeEvent::Trace(Visitor* visitor) const {
   Event::Trace(visitor);
+  visitor->Trace(related_target_);
 }
 
 }  // namespace blink

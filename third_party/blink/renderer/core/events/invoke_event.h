@@ -19,19 +19,8 @@ class InvokeEvent final : public Event {
                              const InvokeEventInit* initializer) {
     return MakeGarbageCollected<InvokeEvent>(type, initializer);
   }
-  static InvokeEvent* Create(const AtomicString& type,
-                             const HTMLElement* relatedTarget,
-                             const AtomicString& action) {
-    auto* event = MakeGarbageCollected<InvokeEvent>(type, relatedTarget,
-                                                    action);
-    DCHECK(!event->bubbles());
-    return event;
-  }
 
   InvokeEvent();
-  InvokeEvent(const AtomicString& type,
-              const HTMLElement* relatedTarget,
-              const AtomicString& action);
   InvokeEvent(const AtomicString& type, const InvokeEventInit* initializer);
   ~InvokeEvent() override;
 
