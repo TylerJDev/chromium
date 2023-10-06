@@ -21,9 +21,7 @@ InvokeEvent::InvokeEvent(const AtomicString& type,
   if (initializer->hasAction()) {
     action_ = initializer->action();
   }
-
-  // If action_ is empty, we need to set it to "auto" 
-  if (action_.empty() && typeid(action_) == typeid(std::string)) {
+  if (action_.empty()) {
     action_ = "auto";
   }
 }
@@ -31,7 +29,6 @@ InvokeEvent::InvokeEvent(const AtomicString& type,
 InvokeEvent::~InvokeEvent() = default;
 
 const String& InvokeEvent::action() const {
-  // TODO: Put this as var?
   return action_;
 }
 
@@ -40,8 +37,8 @@ const AtomicString& InvokeEvent::InterfaceName() const {
 }
 
 void InvokeEvent::Trace(Visitor* visitor) const {
-  Event::Trace(visitor);
   visitor->Trace(related_target_);
+  Event::Trace(visitor);
 }
 
 }  // namespace blink

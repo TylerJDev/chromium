@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_TOGGLE_EVENT_H_
-#define THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_TOGGLE_EVENT_H_
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_INVOKE_EVENT_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_INVOKE_EVENT_H_
 
 #include "third_party/blink/renderer/core/dom/events/event.h"
+#include "third_party/blink/renderer/core/dom/events/event_target.h"
 
 namespace blink {
 
@@ -37,9 +38,9 @@ class InvokeEvent final : public Event {
 
  private:
   Member<EventTarget> related_target_;
-  String action_; 
+  String action_;
 };
 
 }  // namespace blink
 
-#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_TOGGLE_EVENT_H_
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_INVOKE_EVENT_H_
