@@ -334,6 +334,13 @@ bool HTMLFormControlElement::IsSuccessfulSubmitButton() const {
   return CanBeSuccessfulSubmitButton() && !IsDisabledFormControl();
 }
 
+Element* HTMLFormControlElement::invokeTargetElement() {
+  if (!RuntimeEnabledFeatures::HTMLInvokeTargetAttributeEnabled()) {
+    return nullptr;
+  }
+  return GetElementAttribute(html_names::kInvoketargetAttr);
+}
+
 // The element referenced by the `popovertarget` attribute is returned if a)
 // that element exists, b) it is a valid Popover element, and c) this form
 // control supports popover triggering. The return value will include the

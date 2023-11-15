@@ -1,0 +1,46 @@
+<!--
+@MAC-ALLOW:AXExpanded
+@WIN-ALLOW:details-roles*
+@WIN-ALLOW:EXPANDED*
+@WIN-ALLOW:HASPOPUP*
+@WIN-ALLOW:haspopup*
+@BLINK-ALLOW:haspopup*
+@BLINK-ALLOW:expanded*
+@AURALINUX-ALLOW:details-roles*
+@AURALINUX-ALLOW:expanded*
+@AURALINUX-ALLOW:haspopup:*
+-->
+
+<!-- Closed Details -->
+<button invokeTarget="d1">Button details</button>
+<details id="d1">
+  <summary>Details closed</summary>
+  Details content
+</details>
+
+<!-- Opened Details -->
+<button invokeTarget="d2">Button details opened</button>
+<details id="d2" open>
+  <summary>Details opened</summary>
+  Details content
+</details>
+
+<!-- Closed Dialog -->
+<button invokeTarget="d3">Button dialog closed</button>
+<dialog id="d3">
+  Dialog content
+</dialog>
+
+<!-- Opened Dialog -->
+<button invokeTarget="d4">Button dialog opened</button>
+<dialog id="d4" open>
+  Dialog content
+</dialog>
+
+<!-- Pointing to Popover -->
+<button invoketarget="d5">Open Popover</button>
+<div id="d5" popover="auto">Hello world</div>
+
+<script>
+  // Test state of `<details>` open/closed
+</script>

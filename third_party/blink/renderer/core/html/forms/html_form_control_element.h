@@ -109,8 +109,7 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
     return PopoverTriggerSupport::kNone;
   }
 
-  HTMLElement* invokeTargetElement();
-  void setInvokeTargetElement(HTMLElement& target);
+  Element* invokeTargetElement();
 
   // The IDL reflections:
   AtomicString popoverTargetAction() const;

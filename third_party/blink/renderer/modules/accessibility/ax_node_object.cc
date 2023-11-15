@@ -2172,12 +2172,14 @@ AccessibilityExpanded AXNodeObject::IsExpanded() const {
       return popover->popoverOpen() ? kExpandedExpanded : kExpandedCollapsed;
     }
 
-    // For form controls that trigger popovers of type kAuto, dialogs and detail
-    // elements, set aria-expanded=false for each of their relative collapsed
-    // states and aria-expanded=true when they show.
     if (auto* invokee = form_control->invokeTargetElement()) {
-      if (invokee->PopoverType() == PopoverValueType::kAuto) {
-        return invokee->popoverOpen() ? kExpandedExpanded : kExpandedCollapsed;
+      CHECK(RuntimeEnabledFeatures::HTMLInvokeTargetAttributeEnabled());
+      // For form controls that trigger popovers of type kAuto, dialogs and detail
+      // elements, set aria-expanded=false for each of their relative collapsed
+      // states and aria-expanded=true when they show.
+      auto* popover_invokee = DynamicTo<HTMLElement>(invokee); 
+      if (popover_invokee && popover_invokee->PopoverType() == PopoverValueType::kAuto) {
+        return popover_invokee->popoverOpen() ? kExpandedExpanded : kExpandedCollapsed;
       }
 
       if (IsA<HTMLDialogElement>(invokee) || IsA<HTMLDetailsElement>(invokee)) {
